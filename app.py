@@ -146,7 +146,8 @@ def compute_max_pain(df):
         put_loss = sum(max(0, s - strike) * oi for s, oi in zip(strikes, put_oi))
         total_pain.append(call_loss + put_loss)
 
-    df["Total Pain"] = total_pain
+    df["Total Pain"] = [tp / 10_000_000 for tp in total_pain]
+
     return df
 
 def get_max_pain_strike(df):
@@ -221,4 +222,5 @@ if not df.empty:
     )
 else:
     st.warning("No option chain data available")
+
 
