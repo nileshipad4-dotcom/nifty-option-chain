@@ -1,13 +1,20 @@
+
 import streamlit as st
 from fyers_apiv3 import fyersModel
 import pandas as pd
 
 # ===============================
+# STREAMLIT CONFIG
+# ===============================
+st.set_page_config(page_title="NIFTY Option Chain", layout="wide")
+st.title("📊 NIFTY Option Chain (FYERS)")
+
+# ===============================
 # FYERS CREDENTIALS
+# ⚠️ DO NOT PUSH REAL TOKENS TO GITHUB
 # ===============================
 CLIENT_ID = "3VEZHWB1VB-100"     # e.g. ABCD1234-100
 ACCESS_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsiZDoxIiwieDowIiwieDoxIl0sImF0X2hhc2giOiJnQUFBQUFCcFJFaGxsclVBVTFyZVRqS3VucTZFS1FCMkx0UHZBLVZ6OU5hajJpQks3Tld4Z2RzRHJsSGNvd3lNZUtlRkM0SzdPX1pYRzRLSWZRS2NrYmpaR0h3QjRSQTdiWEg1TDdTY2sxdGlzTnM1RTR4T1hRUT0iLCJkaXNwbGF5X25hbWUiOiIiLCJvbXMiOiJLMSIsImhzbV9rZXkiOiIwNmUwMDA2NmU0NzNlOTAxM2JkZWI1MGM2NmFkZjYzNjYwYmUwYTQzNWRjZjU3YjUzYWQyOTJmMSIsImlzRGRwaUVuYWJsZWQiOiJOIiwiaXNNdGZFbmFibGVkIjoiTiIsImZ5X2lkIjoiRkFENDE5ODkiLCJhcHBUeXBlIjoxMDAsImV4cCI6MTc2NjE5MDYwMCwiaWF0IjoxNzY2MDgyNjYxLCJpc3MiOiJhcGkuZnllcnMuaW4iLCJuYmYiOjE3NjYwODI2NjEsInN1YiI6ImFjY2Vzc190b2tlbiJ9.R8ANyzeA1Lb0DOwLj4C3BZVyjHALLBEqFrbGWVpqM1Y"   
-
 
 # ===============================
 # CONFIG
@@ -39,7 +46,7 @@ def get_nifty_option_chain():
 
     if response.get("s") != "ok":
         st.error(response)
-        return pd.DataFrame()
+        return pd.DataFrame(), "Unknown"
 
     chain = response["data"]["optionsChain"]
 
@@ -54,10 +61,21 @@ def get_nifty_option_chain():
             "LTP": opt.get("ltp"),
             "OI": opt.get("oi"),
             "Volume": opt.get("volume"),
+            "Expiry": opt.get("expiry_date") or opt.get("expiry")
         })
 
     df = pd.DataFrame(rows)
 
+    if df.empty:
+        return pd.DataFrame(), "Unknown"
+
+    # Extract expiry (FYERS returns single expiry)
+    expiry_val = df["Expiry"].dropna().unique()
+    expiry_text = "Unknown"
+    if len(expiry_val) > 0:
+        expiry_text = pd.to_datetime(expiry_val[0]).strftime("%d %b %Y")
+
+    # Split CE / PE
     ce = df[df["Type"] == "CE"].rename(columns={
         "LTP": "Call Price",
         "OI": "Call OI",
@@ -77,19 +95,16 @@ def get_nifty_option_chain():
         how="outer"
     ).sort_values("Strike")
 
-    return final_df
+    return final_df, expiry_text
 
 # ===============================
-# STREAMLIT UI
+# UI ACTION
 # ===============================
-st.set_page_config(page_title="NIFTY Option Chain", layout="wide")
-
-st.title("📊 NIFTY Option Chain (FYERS)")
-
 if st.button("🔄 Fetch Option Chain"):
-    with st.spinner("Fetching data..."):
-        df = get_nifty_option_chain()
+    with st.spinner("Fetching option chain..."):
+        df, expiry = get_nifty_option_chain()
 
     if not df.empty:
         st.success("Data fetched successfully")
+        st.subheader(f"📅 Expiry: {expiry}")
         st.dataframe(df, use_container_width=True)
