@@ -1,17 +1,21 @@
-
-
 import streamlit as st
+import time
 from fyers_apiv3 import fyersModel
 import pandas as pd
 
-# ===============================
-# STREAMLIT CONFIG
-# ===============================
 st.set_page_config(page_title="NIFTY Option Chain", layout="wide")
 st.title("📊 NIFTY Option Chain (FYERS)")
 
 # 🔄 AUTO REFRESH EVERY 15 SECONDS
-st.autorefresh(interval=15_000, key="nifty_refresh")
+REFRESH_INTERVAL = 15
+
+if "last_refresh" not in st.session_state:
+    st.session_state.last_refresh = time.time()
+
+if time.time() - st.session_state.last_refresh > REFRESH_INTERVAL:
+    st.session_state.last_refresh = time.time()
+    st.experimental_rerun()
+
 
 # ===============================
 # FYERS CREDENTIALS
@@ -117,3 +121,4 @@ if not df.empty:
     st.dataframe(df, use_container_width=True)
 else:
     st.warning("No data received from FYERS")
+
