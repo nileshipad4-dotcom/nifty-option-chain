@@ -156,7 +156,7 @@ if lower_strike and upper_strike:
 # ===============================
 def highlight_spot_range(row):
     if row["Strike"] in (lower_strike, upper_strike):
-        return ["background-color: #ffd6e7"] * len(row)
+        return ["background-color: #ffffe0"] * len(row)
     return [""] * len(row)
 
 # ===============================
@@ -169,3 +169,4 @@ if not df.empty:
     )
 else:
     st.warning("No option chain data available")
+
