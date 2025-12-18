@@ -57,7 +57,7 @@ def get_spot_price():
     return res["d"][0]["v"]["lp"]
 
 # ===============================
-# OPTION CHAIN (NO GREEKS)
+# OPTION CHAIN
 # ===============================
 def get_option_chain():
     payload = {
@@ -67,7 +67,6 @@ def get_option_chain():
     }
 
     response = fyers.optionchain(data=payload)
-
     if response.get("s") != "ok":
         return pd.DataFrame(), "Unknown"
 
@@ -88,15 +87,13 @@ def get_option_chain():
         })
 
     df = pd.DataFrame(rows)
-
     if df.empty:
         return pd.DataFrame(), "Unknown"
 
     expiry_vals = df["Expiry"].dropna().unique()
     expiry_text = (
         pd.to_datetime(expiry_vals[0]).strftime("%d %b %Y")
-        if len(expiry_vals) > 0
-        else "Unknown"
+        if len(expiry_vals) > 0 else "Unknown"
     )
 
     ce = df[df["Type"] == "CE"].rename(columns={
@@ -121,16 +118,60 @@ def get_option_chain():
     return final_df, expiry_text
 
 # ===============================
+# PCR CALCULATION
+# ===============================
+def calculate_pcr(df):
+    call_oi = df["Call OI"].fillna(0).sum()
+    put_oi = df["Put OI"].fillna(0).sum()
+
+    call_vol = df["Call Volume"].fillna(0).sum()
+    put_vol = df["Put Volume"].fillna(0).sum()
+
+    pcr_oi = round(put_oi / call_oi, 3) if call_oi > 0 else None
+    pcr_vol = round(put_vol / call_vol, 3) if call_vol > 0 else None
+
+    return pcr_oi, pcr_vol
+
+# ===============================
+# MAX PAIN (OI BASED)
+# ===============================
+def compute_max_pain(df):
+    strikes = df["Strike"].values
+    call_oi = df["Call OI"].fillna(0).values
+    put_oi = df["Put OI"].fillna(0).values
+
+    total_pain = []
+    for i, strike in enumerate(strikes):
+        call_loss = sum(max(0, strike - s) * oi for s, oi in zip(strikes, call_oi))
+        put_loss = sum(max(0, s - strike) * oi for s, oi in zip(strikes, put_oi))
+        total_pain.append(call_loss + put_loss)
+
+    df["Total Pain"] = total_pain
+    return df
+
+def get_max_pain_strike(df):
+    if df.empty:
+        return None
+    return df.loc[df["Total Pain"].idxmin(), "Strike"]
+
+# ===============================
 # LOAD DATA
 # ===============================
 with st.spinner("Fetching live data..."):
     spot_price = get_spot_price()
     df, expiry = get_option_chain()
 
+if not df.empty:
+    pcr_oi, pcr_vol = calculate_pcr(df)
+    df = compute_max_pain(df)
+    max_pain_strike = get_max_pain_strike(df)
+else:
+    pcr_oi = pcr_vol = max_pain_strike = None
+
 # ===============================
 # HEADER
 # ===============================
-if spot_price is not None:
+if spot_price:
     st.subheader(f"{index_name} Live Price: {spot_price}")
 else:
     st.warning("Live price unavailable")
@@ -138,36 +179,46 @@ else:
 st.caption(f"📅 Expiry: {expiry} | 🔄 Auto-refresh every 15 seconds")
 
 # ===============================
+# PCR METRICS
+# ===============================
+col1, col2, col3 = st.columns(3)
+
+col1.metric("PCR (OI)", pcr_oi if pcr_oi is not None else "—")
+col2.metric("PCR (Volume)", pcr_vol if pcr_vol is not None else "—")
+col3.metric("Max Pain Strike", max_pain_strike if max_pain_strike else "—")
+
+# ===============================
 # FIND STRIKES AROUND SPOT
 # ===============================
-lower_strike = None
-upper_strike = None
+lower_strike = upper_strike = None
 
-if spot_price is not None and not df.empty:
+if spot_price and not df.empty:
     strikes = sorted(df["Strike"].dropna().unique())
     lower_strike = max([s for s in strikes if s <= spot_price], default=None)
     upper_strike = min([s for s in strikes if s >= spot_price], default=None)
 
-if lower_strike and upper_strike:
-    st.caption(f"📍 Spot trading between {lower_strike} and {upper_strike}")
-
 # ===============================
 # HIGHLIGHT ROWS
 # ===============================
-def highlight_spot_range(row):
+def highlight_rows(row):
+    styles = [""] * len(row)
+
     if row["Strike"] in (lower_strike, upper_strike):
-        return ["background-color: #add8e6"] * len(row)
-    return [""] * len(row)
+        styles = ["background-color: #add8e6"] * len(row)   # spot range
+
+    if max_pain_strike and row["Strike"] == max_pain_strike:
+        styles = ["background-color: #ffb347"] * len(row)   # max pain
+
+    return styles
 
 # ===============================
 # DISPLAY TABLE
 # ===============================
 if not df.empty:
     st.dataframe(
-        df.style.apply(highlight_spot_range, axis=1),
+        df.style.apply(highlight_rows, axis=1),
         use_container_width=True
     )
 else:
     st.warning("No option chain data available")
-
 
