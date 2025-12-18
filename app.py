@@ -10,7 +10,7 @@ import pandas as pd
 st.set_page_config(page_title="Option Chain Dashboard", layout="wide")
 st.title("📊 Option Chain Dashboard (FYERS)")
 
-# 🔄 AUTO REFRESH EVERY 15 SECONDS (VERSION SAFE)
+# 🔄 AUTO REFRESH EVERY 15 SECONDS
 components.html(
     "<meta http-equiv='refresh' content='15'>",
     height=0,
@@ -19,6 +19,7 @@ components.html(
 # ===============================
 # FYERS CREDENTIALS
 # ===============================
+
 CLIENT_ID = "3VEZHWB1VB-100"
 ACCESS_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsiZDoxIiwieDowIiwieDoxIl0sImF0X2hhc2giOiJnQUFBQUFCcFJFaGxsclVBVTFyZVRqS3VucTZFS1FCMkx0UHZBLVZ6OU5hajJpQks3Tld4Z2RzRHJsSGNvd3lNZUtlRkM0SzdPX1pYRzRLSWZRS2NrYmpaR0h3QjRSQTdiWEg1TDdTY2sxdGlzTnM1RTR4T1hRUT0iLCJkaXNwbGF5X25hbWUiOiIiLCJvbXMiOiJLMSIsImhzbV9rZXkiOiIwNmUwMDA2NmU0NzNlOTAxM2JkZWI1MGM2NmFkZjYzNjYwYmUwYTQzNWRjZjU3YjUzYWQyOTJmMSIsImlzRGRwaUVuYWJsZWQiOiJOIiwiaXNNdGZFbmFibGVkIjoiTiIsImZ5X2lkIjoiRkFENDE5ODkiLCJhcHBUeXBlIjoxMDAsImV4cCI6MTc2NjE5MDYwMCwiaWF0IjoxNzY2MDgyNjYxLCJpc3MiOiJhcGkuZnllcnMuaW4iLCJuYmYiOjE3NjYwODI2NjEsInN1YiI6ImFjY2Vzc190b2tlbiJ9.R8ANyzeA1Lb0DOwLj4C3BZVyjHALLBEqFrbGWVpqM1Y"
 
@@ -118,22 +119,20 @@ def get_option_chain():
     return final_df, expiry_text
 
 # ===============================
-# PCR CALCULATION
+# PCR
 # ===============================
 def calculate_pcr(df):
     call_oi = df["Call OI"].fillna(0).sum()
     put_oi = df["Put OI"].fillna(0).sum()
-
     call_vol = df["Call Volume"].fillna(0).sum()
     put_vol = df["Put Volume"].fillna(0).sum()
 
     pcr_oi = round(put_oi / call_oi, 3) if call_oi > 0 else None
     pcr_vol = round(put_vol / call_vol, 3) if call_vol > 0 else None
-
     return pcr_oi, pcr_vol
 
 # ===============================
-# MAX PAIN (OI BASED)
+# MAX PAIN (SCALED + INTEGER)
 # ===============================
 def compute_max_pain(df):
     strikes = df["Strike"].values
@@ -141,13 +140,12 @@ def compute_max_pain(df):
     put_oi = df["Put OI"].fillna(0).values
 
     total_pain = []
-    for i, strike in enumerate(strikes):
+    for strike in strikes:
         call_loss = sum(max(0, strike - s) * oi for s, oi in zip(strikes, call_oi))
-        put_loss = sum(max(0, s - strike) * oi for s, oi in zip(strikes, put_oi))
-        total_pain.append(call_loss + put_loss)
+        put_loss  = sum(max(0, s - strike) * oi for s, oi in zip(strikes, put_oi))
+        total_pain.append(int((call_loss + put_loss) / 10_000_000))  # ✅ NO DECIMALS
 
-    df["Total Pain"] = [tp / 10_000_000 for tp in total_pain]
-
+    df["Total Pain"] = total_pain
     return df
 
 def get_max_pain_strike(df):
@@ -180,19 +178,17 @@ else:
 st.caption(f"📅 Expiry: {expiry} | 🔄 Auto-refresh every 15 seconds")
 
 # ===============================
-# PCR METRICS
+# TOP METRICS
 # ===============================
-col1, col2, col3 = st.columns(3)
-
-col1.metric("PCR (OI)", pcr_oi if pcr_oi is not None else "—")
-col2.metric("PCR (Volume)", pcr_vol if pcr_vol is not None else "—")
-col3.metric("Max Pain Strike", max_pain_strike if max_pain_strike else "—")
+c1, c2, c3 = st.columns(3)
+c1.metric("PCR (OI)", pcr_oi if pcr_oi else "—")
+c2.metric("PCR (Volume)", pcr_vol if pcr_vol else "—")
+c3.metric("Max Pain Strike", max_pain_strike if max_pain_strike else "—")
 
 # ===============================
-# FIND STRIKES AROUND SPOT
+# SPOT RANGE
 # ===============================
 lower_strike = upper_strike = None
-
 if spot_price and not df.empty:
     strikes = sorted(df["Strike"].dropna().unique())
     lower_strike = max([s for s in strikes if s <= spot_price], default=None)
@@ -203,13 +199,10 @@ if spot_price and not df.empty:
 # ===============================
 def highlight_rows(row):
     styles = [""] * len(row)
-
     if row["Strike"] in (lower_strike, upper_strike):
-        styles = ["background-color: #add8e6"] * len(row)   # spot range
-
+        styles = ["background-color: #add8e6"] * len(row)
     if max_pain_strike and row["Strike"] == max_pain_strike:
-        styles = ["background-color: #ffb347"] * len(row)   # max pain
-
+        styles = ["background-color: #ffb347"] * len(row)
     return styles
 
 # ===============================
@@ -222,5 +215,3 @@ if not df.empty:
     )
 else:
     st.warning("No option chain data available")
-
-
