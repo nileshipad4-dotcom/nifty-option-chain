@@ -1,7 +1,4 @@
-
-
 import streamlit as st
-import time
 from fyers_apiv3 import fyersModel
 import pandas as pd
 
@@ -11,17 +8,8 @@ import pandas as pd
 st.set_page_config(page_title="Option Chain Dashboard", layout="wide")
 st.title("📊 Option Chain Dashboard (FYERS)")
 
-# ===============================
-# AUTO REFRESH (15 SECONDS)
-# ===============================
-REFRESH_INTERVAL = 15
-
-if "last_refresh" not in st.session_state:
-    st.session_state.last_refresh = time.time()
-
-if time.time() - st.session_state.last_refresh > REFRESH_INTERVAL:
-    st.session_state.last_refresh = time.time()
-    st.experimental_rerun()
+# 🔄 AUTO REFRESH EVERY 15 SECONDS
+st.autorefresh(interval=15_000, key="option_chain_refresh")
 
 # ===============================
 # FYERS CREDENTIALS (SECRETS)
@@ -183,4 +171,5 @@ if not df.empty:
     )
 else:
     st.warning("No option chain data available")
+
 
