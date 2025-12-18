@@ -1,3 +1,4 @@
+
 import streamlit as st
 import streamlit.components.v1 as components
 from fyers_apiv3 import fyersModel
@@ -9,7 +10,7 @@ import pandas as pd
 st.set_page_config(page_title="Option Chain Dashboard", layout="wide")
 st.title("📊 Option Chain Dashboard (FYERS)")
 
-# 🔄 AUTO REFRESH EVERY 15 SECONDS (VERSION-SAFE)
+# 🔄 AUTO REFRESH EVERY 15 SECONDS (VERSION SAFE)
 components.html(
     "<meta http-equiv='refresh' content='15'>",
     height=0,
@@ -17,7 +18,6 @@ components.html(
 
 # ===============================
 # FYERS CREDENTIALS
-# ⚠️ FOR PRODUCTION, USE st.secrets
 # ===============================
 CLIENT_ID = "3VEZHWB1VB-100"
 ACCESS_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsiZDoxIiwieDowIiwieDoxIl0sImF0X2hhc2giOiJnQUFBQUFCcFJFaGxsclVBVTFyZVRqS3VucTZFS1FCMkx0UHZBLVZ6OU5hajJpQks3Tld4Z2RzRHJsSGNvd3lNZUtlRkM0SzdPX1pYRzRLSWZRS2NrYmpaR0h3QjRSQTdiWEg1TDdTY2sxdGlzTnM1RTR4T1hRUT0iLCJkaXNwbGF5X25hbWUiOiIiLCJvbXMiOiJLMSIsImhzbV9rZXkiOiIwNmUwMDA2NmU0NzNlOTAxM2JkZWI1MGM2NmFkZjYzNjYwYmUwYTQzNWRjZjU3YjUzYWQyOTJmMSIsImlzRGRwaUVuYWJsZWQiOiJOIiwiaXNNdGZFbmFibGVkIjoiTiIsImZ5X2lkIjoiRkFENDE5ODkiLCJhcHBUeXBlIjoxMDAsImV4cCI6MTc2NjE5MDYwMCwiaWF0IjoxNzY2MDgyNjYxLCJpc3MiOiJhcGkuZnllcnMuaW4iLCJuYmYiOjE3NjYwODI2NjEsInN1YiI6ImFjY2Vzc190b2tlbiJ9.R8ANyzeA1Lb0DOwLj4C3BZVyjHALLBEqFrbGWVpqM1Y"
@@ -37,14 +37,8 @@ fyers = fyersModel.FyersModel(
 # INDEX CONFIG
 # ===============================
 INDEX_CONFIG = {
-    "NIFTY": {
-        "symbol": "NSE:NIFTY50-INDEX",
-        "step": 50
-    },
-    "BANKNIFTY": {
-        "symbol": "NSE:NIFTYBANK-INDEX",
-        "step": 100
-    }
+    "NIFTY": {"symbol": "NSE:NIFTY50-INDEX"},
+    "BANKNIFTY": {"symbol": "NSE:NIFTYBANK-INDEX"},
 }
 
 # ===============================
@@ -52,7 +46,6 @@ INDEX_CONFIG = {
 # ===============================
 index_name = st.selectbox("Select Index", ["NIFTY", "BANKNIFTY"])
 symbol = INDEX_CONFIG[index_name]["symbol"]
-strike_step = INDEX_CONFIG[index_name]["step"]
 
 # ===============================
 # LIVE INDEX PRICE
@@ -119,14 +112,8 @@ def get_option_chain():
     })
 
     final_df = pd.merge(
-        ce[[
-            "Strike",
-            "Call Price", "Call OI", "Call Volume"
-        ]],
-        pe[[
-            "Strike",
-            "Put Price", "Put OI", "Put Volume"
-        ]],
+        ce[["Strike", "Call Price", "Call OI", "Call Volume"]],
+        pe[["Strike", "Put Price", "Put OI", "Put Volume"]],
         on="Strike",
         how="outer"
     ).sort_values("Strike")
@@ -151,25 +138,24 @@ else:
 st.caption(f"📅 Expiry: {expiry} | 🔄 Auto-refresh every 15 seconds")
 
 # ===============================
-# ATM STRIKE
+# FIND STRIKES AROUND SPOT
 # ===============================
-if spot_price is not None:
-    lower_strike = None
+lower_strike = None
 upper_strike = None
 
 if spot_price is not None and not df.empty:
     strikes = sorted(df["Strike"].dropna().unique())
-
     lower_strike = max([s for s in strikes if s <= spot_price], default=None)
     upper_strike = min([s for s in strikes if s >= spot_price], default=None)
-else:
-    atm_strike = None
+
+if lower_strike and upper_strike:
+    st.caption(f"📍 Spot trading between {lower_strike} and {upper_strike}")
 
 # ===============================
-# HIGHLIGHT ATM ROW
+# HIGHLIGHT ROWS
 # ===============================
-def highlight_atm(row):
-    if atm_strike is not None and row["Strike"] == atm_strike:
+def highlight_spot_range(row):
+    if row["Strike"] in (lower_strike, upper_strike):
         return ["background-color: #ffd6e7"] * len(row)
     return [""] * len(row)
 
@@ -178,9 +164,8 @@ def highlight_atm(row):
 # ===============================
 if not df.empty:
     st.dataframe(
-        df.style.apply(highlight_atm, axis=1),
+        df.style.apply(highlight_spot_range, axis=1),
         use_container_width=True
     )
 else:
     st.warning("No option chain data available")
-
