@@ -154,7 +154,14 @@ st.caption(f"📅 Expiry: {expiry} | 🔄 Auto-refresh every 15 seconds")
 # ATM STRIKE
 # ===============================
 if spot_price is not None:
-    atm_strike = round(spot_price / strike_step) * strike_step
+    lower_strike = None
+upper_strike = None
+
+if spot_price is not None and not df.empty:
+    strikes = sorted(df["Strike"].dropna().unique())
+
+    lower_strike = max([s for s in strikes if s <= spot_price], default=None)
+    upper_strike = min([s for s in strikes if s >= spot_price], default=None)
 else:
     atm_strike = None
 
@@ -176,3 +183,4 @@ if not df.empty:
     )
 else:
     st.warning("No option chain data available")
+
