@@ -9,19 +9,18 @@ import pandas as pd
 st.set_page_config(page_title="Option Chain Dashboard", layout="wide")
 st.title("📊 Option Chain Dashboard (FYERS)")
 
-# 🔄 AUTO REFRESH EVERY 15 SECONDS (VERSION SAFE)
+# 🔄 AUTO REFRESH EVERY 15 SECONDS (VERSION-SAFE)
 components.html(
     "<meta http-equiv='refresh' content='15'>",
     height=0,
 )
 
 # ===============================
-# FYERS CREDENTIALS (SECRETS)
+# FYERS CREDENTIALS
+# ⚠️ FOR PRODUCTION, USE st.secrets
 # ===============================
 CLIENT_ID = "3VEZHWB1VB-100"
 ACCESS_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsiZDoxIiwieDowIiwieDoxIl0sImF0X2hhc2giOiJnQUFBQUFCcFJFaGxsclVBVTFyZVRqS3VucTZFS1FCMkx0UHZBLVZ6OU5hajJpQks3Tld4Z2RzRHJsSGNvd3lNZUtlRkM0SzdPX1pYRzRLSWZRS2NrYmpaR0h3QjRSQTdiWEg1TDdTY2sxdGlzTnM1RTR4T1hRUT0iLCJkaXNwbGF5X25hbWUiOiIiLCJvbXMiOiJLMSIsImhzbV9rZXkiOiIwNmUwMDA2NmU0NzNlOTAxM2JkZWI1MGM2NmFkZjYzNjYwYmUwYTQzNWRjZjU3YjUzYWQyOTJmMSIsImlzRGRwaUVuYWJsZWQiOiJOIiwiaXNNdGZFbmFibGVkIjoiTiIsImZ5X2lkIjoiRkFENDE5ODkiLCJhcHBUeXBlIjoxMDAsImV4cCI6MTc2NjE5MDYwMCwiaWF0IjoxNzY2MDgyNjYxLCJpc3MiOiJhcGkuZnllcnMuaW4iLCJuYmYiOjE3NjYwODI2NjEsInN1YiI6ImFjY2Vzc190b2tlbiJ9.R8ANyzeA1Lb0DOwLj4C3BZVyjHALLBEqFrbGWVpqM1Y"
-   
-
 
 # ===============================
 # FYERS INIT
@@ -55,14 +54,16 @@ symbol = INDEX_CONFIG[index_name]["symbol"]
 strike_step = INDEX_CONFIG[index_name]["step"]
 
 # ===============================
-# LIVE PRICE
+# LIVE INDEX PRICE
 # ===============================
 def get_spot_price():
     res = fyers.quotes({"symbols": symbol})
+    if res.get("s") != "ok":
+        return None
     return res["d"][0]["v"]["lp"]
 
 # ===============================
-# OPTION CHAIN + GREEKS
+# OPTION CHAIN + GREEKS (SAFE)
 # ===============================
 def get_option_chain():
     payload = {
@@ -74,11 +75,11 @@ def get_option_chain():
     response = fyers.optionchain(data=payload)
 
     if response.get("s") != "ok":
-        return pd.DataFrame(), None
+        return pd.DataFrame(), "Unknown"
 
-    chain = response["data"]["optionsChain"]
-
+    chain = response["data"].get("optionsChain", [])
     rows = []
+
     for opt in chain:
         if opt.get("option_type") not in ("CE", "PE"):
             continue
@@ -89,21 +90,24 @@ def get_option_chain():
             "LTP": opt.get("ltp"),
             "OI": opt.get("oi"),
             "Volume": opt.get("volume"),
-
-            # GREEKS
             "Delta": opt.get("delta"),
             "Gamma": opt.get("gamma"),
             "Vega": opt.get("vega"),
-
             "Expiry": opt.get("expiry_date") or opt.get("expiry")
         })
 
     df = pd.DataFrame(rows)
 
-    expiry_val = df["Expiry"].dropna().unique()
-    expiry_text = pd.to_datetime(expiry_val[0]).strftime("%d %b %Y")
+    if df.empty:
+        return pd.DataFrame(), "Unknown"
 
-    # SPLIT CE / PE
+    expiry_vals = df["Expiry"].dropna().unique()
+    expiry_text = (
+        pd.to_datetime(expiry_vals[0]).strftime("%d %b %Y")
+        if len(expiry_vals) > 0
+        else "Unknown"
+    )
+
     ce = df[df["Type"] == "CE"].rename(columns={
         "LTP": "Call Price",
         "OI": "Call OI",
@@ -149,19 +153,26 @@ with st.spinner("Fetching live data..."):
 # ===============================
 # HEADER
 # ===============================
-st.subheader(f"{index_name} Live Price: {spot_price}")
+if spot_price is not None:
+    st.subheader(f"{index_name} Live Price: {spot_price}")
+else:
+    st.warning("Live price unavailable")
+
 st.caption(f"📅 Expiry: {expiry} | 🔄 Auto-refresh every 15 seconds")
 
 # ===============================
 # ATM STRIKE
 # ===============================
-atm_strike = round(spot_price / strike_step) * strike_step
+if spot_price is not None:
+    atm_strike = round(spot_price / strike_step) * strike_step
+else:
+    atm_strike = None
 
 # ===============================
 # HIGHLIGHT ATM ROW
 # ===============================
 def highlight_atm(row):
-    if row["Strike"] == atm_strike:
+    if atm_strike is not None and row["Strike"] == atm_strike:
         return ["background-color: #ffd6e7"] * len(row)
     return [""] * len(row)
 
@@ -175,7 +186,4 @@ if not df.empty:
     )
 else:
     st.warning("No option chain data available")
-
-
-
 
