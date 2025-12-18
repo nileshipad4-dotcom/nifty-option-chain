@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 from fyers_apiv3 import fyersModel
 import pandas as pd
 
@@ -8,8 +9,11 @@ import pandas as pd
 st.set_page_config(page_title="Option Chain Dashboard", layout="wide")
 st.title("📊 Option Chain Dashboard (FYERS)")
 
-# 🔄 AUTO REFRESH EVERY 15 SECONDS
-st.autorefresh(interval=15_000, key="option_chain_refresh")
+# 🔄 AUTO REFRESH EVERY 15 SECONDS (VERSION SAFE)
+components.html(
+    "<meta http-equiv='refresh' content='15'>",
+    height=0,
+)
 
 # ===============================
 # FYERS CREDENTIALS (SECRETS)
@@ -171,5 +175,6 @@ if not df.empty:
     )
 else:
     st.warning("No option chain data available")
+
 
 
