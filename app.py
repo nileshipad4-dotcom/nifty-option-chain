@@ -22,6 +22,7 @@ components.html(
 CLIENT_ID = "3VEZHWB1VB-100"
 ACCESS_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsiZDoxIiwieDowIiwieDoxIl0sImF0X2hhc2giOiJnQUFBQUFCcFJFaGxsclVBVTFyZVRqS3VucTZFS1FCMkx0UHZBLVZ6OU5hajJpQks3Tld4Z2RzRHJsSGNvd3lNZUtlRkM0SzdPX1pYRzRLSWZRS2NrYmpaR0h3QjRSQTdiWEg1TDdTY2sxdGlzTnM1RTR4T1hRUT0iLCJkaXNwbGF5X25hbWUiOiIiLCJvbXMiOiJLMSIsImhzbV9rZXkiOiIwNmUwMDA2NmU0NzNlOTAxM2JkZWI1MGM2NmFkZjYzNjYwYmUwYTQzNWRjZjU3YjUzYWQyOTJmMSIsImlzRGRwaUVuYWJsZWQiOiJOIiwiaXNNdGZFbmFibGVkIjoiTiIsImZ5X2lkIjoiRkFENDE5ODkiLCJhcHBUeXBlIjoxMDAsImV4cCI6MTc2NjE5MDYwMCwiaWF0IjoxNzY2MDgyNjYxLCJpc3MiOiJhcGkuZnllcnMuaW4iLCJuYmYiOjE3NjYwODI2NjEsInN1YiI6ImFjY2Vzc190b2tlbiJ9.R8ANyzeA1Lb0DOwLj4C3BZVyjHALLBEqFrbGWVpqM1Y"
 
+
 # ===============================
 # FYERS INIT
 # ===============================
@@ -63,7 +64,7 @@ def get_spot_price():
     return res["d"][0]["v"]["lp"]
 
 # ===============================
-# OPTION CHAIN + GREEKS (SAFE)
+# OPTION CHAIN (NO GREEKS)
 # ===============================
 def get_option_chain():
     payload = {
@@ -90,9 +91,6 @@ def get_option_chain():
             "LTP": opt.get("ltp"),
             "OI": opt.get("oi"),
             "Volume": opt.get("volume"),
-            "Delta": opt.get("delta"),
-            "Gamma": opt.get("gamma"),
-            "Vega": opt.get("vega"),
             "Expiry": opt.get("expiry_date") or opt.get("expiry")
         })
 
@@ -111,31 +109,23 @@ def get_option_chain():
     ce = df[df["Type"] == "CE"].rename(columns={
         "LTP": "Call Price",
         "OI": "Call OI",
-        "Volume": "Call Volume",
-        "Delta": "Call Delta",
-        "Gamma": "Call Gamma",
-        "Vega": "Call Vega"
+        "Volume": "Call Volume"
     })
 
     pe = df[df["Type"] == "PE"].rename(columns={
         "LTP": "Put Price",
         "OI": "Put OI",
-        "Volume": "Put Volume",
-        "Delta": "Put Delta",
-        "Gamma": "Put Gamma",
-        "Vega": "Put Vega"
+        "Volume": "Put Volume"
     })
 
     final_df = pd.merge(
         ce[[
             "Strike",
-            "Call Price", "Call OI", "Call Volume",
-            "Call Delta", "Call Gamma", "Call Vega"
+            "Call Price", "Call OI", "Call Volume"
         ]],
         pe[[
             "Strike",
-            "Put Price", "Put OI", "Put Volume",
-            "Put Delta", "Put Gamma", "Put Vega"
+            "Put Price", "Put OI", "Put Volume"
         ]],
         on="Strike",
         how="outer"
@@ -186,4 +176,3 @@ if not df.empty:
     )
 else:
     st.warning("No option chain data available")
-
