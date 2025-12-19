@@ -1,4 +1,5 @@
 
+
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
 from fyers_apiv3 import fyersModel
@@ -10,7 +11,7 @@ import pandas as pd
 st.set_page_config(page_title="Option Chain Dashboard", layout="wide")
 st.title("📊 Option Chain Dashboard (FYERS)")
 
-# 🔄 AUTO REFRESH EVERY 15 SECONDS (CORRECT WAY)
+# 🔄 AUTO REFRESH EVERY 15 SECONDS
 st_autorefresh(interval=15 * 1000, key="fyers_refresh")
 
 # ===============================
@@ -166,6 +167,7 @@ else:
 # ===============================
 if spot_price:
     st.subheader(f"{index_name} Live Price: {spot_price}")
+
 st.caption(f"📅 Expiry: {expiry} | 🔄 Auto-refresh every 15 seconds")
 
 # ===============================
@@ -177,10 +179,41 @@ c2.metric("PCR (Volume)", pcr_vol if pcr_vol else "—")
 c3.metric("Max Pain Strike", max_pain_strike if max_pain_strike else "—")
 
 # ===============================
+# FIND STRIKES AROUND SPOT
+# ===============================
+lower_strike = upper_strike = None
+
+if spot_price and not df.empty:
+    strikes = sorted(df["Strike"].dropna())
+    lower_strike = max([s for s in strikes if s <= spot_price], default=None)
+    upper_strike = min([s for s in strikes if s >= spot_price], default=None)
+
+if lower_strike and upper_strike:
+    st.caption(f"📍 Spot trading between {lower_strike} and {upper_strike}")
+
+# ===============================
+# ROW HIGHLIGHTING
+# ===============================
+def highlight_rows(row):
+    styles = [""] * len(row)
+
+    # Spot range
+    if row["Strike"] in (lower_strike, upper_strike):
+        styles = ["background-color: #add8e6"] * len(row)
+
+    # Max Pain
+    if max_pain_strike and row["Strike"] == max_pain_strike:
+        styles = ["background-color: #ffb347"] * len(row)
+
+    return styles
+
+# ===============================
 # DISPLAY
 # ===============================
-st.dataframe(df, use_container_width=True)
-
-
-
-
+if not df.empty:
+    st.dataframe(
+        df.style.apply(highlight_rows, axis=1),
+        use_container_width=True
+    )
+else:
+    st.warning("No option chain data available")
