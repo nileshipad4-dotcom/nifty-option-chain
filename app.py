@@ -168,7 +168,7 @@ else:
 if spot_price:
     st.subheader(f"{index_name} Live Price: {spot_price}")
 
-st.caption(f"📅 Expiry: {expiry} | 🔄 Auto-refresh every 15 seconds")
+st.caption(f"📅 Expiry: {expiry} | 🔄 Auto-refresh every 30 seconds")
 
 # ===============================
 # METRICS
@@ -217,5 +217,6 @@ if not df.empty:
     )
 else:
     st.warning("No option chain data available")
+
 
 
