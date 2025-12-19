@@ -1,6 +1,6 @@
 
 import streamlit as st
-import streamlit.components.v1 as components
+from streamlit_autorefresh import st_autorefresh
 from fyers_apiv3 import fyersModel
 import pandas as pd
 
@@ -10,16 +10,12 @@ import pandas as pd
 st.set_page_config(page_title="Option Chain Dashboard", layout="wide")
 st.title("📊 Option Chain Dashboard (FYERS)")
 
-# 🔄 AUTO REFRESH EVERY 15 SECONDS
-components.html(
-    "<meta http-equiv='refresh' content='15'>",
-    height=0,
-)
+# 🔄 AUTO REFRESH EVERY 15 SECONDS (CORRECT WAY)
+st_autorefresh(interval=15 * 1000, key="fyers_refresh")
 
 # ===============================
 # FYERS CREDENTIALS
 # ===============================
-
 CLIENT_ID = "3VEZHWB1VB-100"
 ACCESS_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsiZDoxIiwieDowIiwieDoxIl0sImF0X2hhc2giOiJnQUFBQUFCcFJFaGxsclVBVTFyZVRqS3VucTZFS1FCMkx0UHZBLVZ6OU5hajJpQks3Tld4Z2RzRHJsSGNvd3lNZUtlRkM0SzdPX1pYRzRLSWZRS2NrYmpaR0h3QjRSQTdiWEg1TDdTY2sxdGlzTnM1RTR4T1hRUT0iLCJkaXNwbGF5X25hbWUiOiIiLCJvbXMiOiJLMSIsImhzbV9rZXkiOiIwNmUwMDA2NmU0NzNlOTAxM2JkZWI1MGM2NmFkZjYzNjYwYmUwYTQzNWRjZjU3YjUzYWQyOTJmMSIsImlzRGRwaUVuYWJsZWQiOiJOIiwiaXNNdGZFbmFibGVkIjoiTiIsImZ5X2lkIjoiRkFENDE5ODkiLCJhcHBUeXBlIjoxMDAsImV4cCI6MTc2NjE5MDYwMCwiaWF0IjoxNzY2MDgyNjYxLCJpc3MiOiJhcGkuZnllcnMuaW4iLCJuYmYiOjE3NjYwODI2NjEsInN1YiI6ImFjY2Vzc190b2tlbiJ9.R8ANyzeA1Lb0DOwLj4C3BZVyjHALLBEqFrbGWVpqM1Y"
 
@@ -143,15 +139,13 @@ def compute_max_pain(df):
     for strike in strikes:
         call_loss = sum(max(0, strike - s) * oi for s, oi in zip(strikes, call_oi))
         put_loss  = sum(max(0, s - strike) * oi for s, oi in zip(strikes, put_oi))
-        total_pain.append(int((call_loss + put_loss) / 10_000_000))  # ✅ NO DECIMALS
+        total_pain.append(int((call_loss + put_loss) / 10_000_000))
 
     df["Total Pain"] = total_pain
     return df
 
 def get_max_pain_strike(df):
-    if df.empty:
-        return None
-    return df.loc[df["Total Pain"].idxmin(), "Strike"]
+    return df.loc[df["Total Pain"].idxmin(), "Strike"] if not df.empty else None
 
 # ===============================
 # LOAD DATA
@@ -172,13 +166,10 @@ else:
 # ===============================
 if spot_price:
     st.subheader(f"{index_name} Live Price: {spot_price}")
-else:
-    st.warning("Live price unavailable")
-
 st.caption(f"📅 Expiry: {expiry} | 🔄 Auto-refresh every 15 seconds")
 
 # ===============================
-# TOP METRICS
+# METRICS
 # ===============================
 c1, c2, c3 = st.columns(3)
 c1.metric("PCR (OI)", pcr_oi if pcr_oi else "—")
@@ -186,32 +177,10 @@ c2.metric("PCR (Volume)", pcr_vol if pcr_vol else "—")
 c3.metric("Max Pain Strike", max_pain_strike if max_pain_strike else "—")
 
 # ===============================
-# SPOT RANGE
+# DISPLAY
 # ===============================
-lower_strike = upper_strike = None
-if spot_price and not df.empty:
-    strikes = sorted(df["Strike"].dropna().unique())
-    lower_strike = max([s for s in strikes if s <= spot_price], default=None)
-    upper_strike = min([s for s in strikes if s >= spot_price], default=None)
+st.dataframe(df, use_container_width=True)
 
-# ===============================
-# HIGHLIGHT ROWS
-# ===============================
-def highlight_rows(row):
-    styles = [""] * len(row)
-    if row["Strike"] in (lower_strike, upper_strike):
-        styles = ["background-color: #add8e6"] * len(row)
-    if max_pain_strike and row["Strike"] == max_pain_strike:
-        styles = ["background-color: #ffb347"] * len(row)
-    return styles
 
-# ===============================
-# DISPLAY TABLE
-# ===============================
-if not df.empty:
-    st.dataframe(
-        df.style.apply(highlight_rows, axis=1),
-        use_container_width=True
-    )
-else:
-    st.warning("No option chain data available")
+
+
