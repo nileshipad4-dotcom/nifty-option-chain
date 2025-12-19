@@ -11,7 +11,7 @@ import pandas as pd
 st.set_page_config(page_title="Option Chain Dashboard", layout="wide")
 st.title("📊 Option Chain Dashboard (FYERS)")
 
-# 🔄 AUTO REFRESH EVERY 15 SECONDS
+# 🔄 AUTO REFRESH EVERY 30 SECONDS
 st_autorefresh(interval=30 * 1000, key="fyers_refresh")
 
 # ===============================
@@ -217,4 +217,5 @@ if not df.empty:
     )
 else:
     st.warning("No option chain data available")
+
 
