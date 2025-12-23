@@ -1,7 +1,3 @@
-
-
-
-
 from kiteconnect import KiteConnect
 import pandas as pd
 from datetime import datetime
@@ -13,10 +9,36 @@ import os
 API_KEY = "bkgv59vaazn56c42"
 ACCESS_TOKEN = "giMaA7SuUyWA1r9P34zVTOVlPcWG847C"
 
-
-STOCKS = ["360ONE","ABB","ABCAPITAL","ADANIENT","ADANIGREEN","ADANIENSOL","ADANIPORTS","ALKEM","AMBER","AMBUJACEM","ANGELONE","APLAPOLLO","APOLLOHOSP","ASHOKLEY","ASIANPAINT","ASTRAL","AUROPHARMA","AUBANK","AXISBANK","BAJAJ-AUTO","BAJAJFINSV","BAJFINANCE","BANDHANBNK","BANKBARODA","BANKINDIA","BDL","BEL","BHARATFORG","BHARTIARTL","BHEL","BIOCON","BPCL","BRITANNIA","BSE","CAMS","CANBK","CDSL","CGPOWER","CHOLAFIN","CIPLA","COALINDIA","COFORGE","COLPAL","CONCOR","CROMPTON","CUMMINSIND","CYIENT","DABUR","DALBHARAT","DELHIVERY","DIVISLAB","DLF","DMART","DRREDDY","EICHERMOT","ETERNAL","EXIDEIND","FEDERALBNK","FORTIS","GAIL","GMRAIRPORT","GODREJCP","GODREJPROP","GRASIM","HAL","HAVELLS","HCLTECH","HDFCAMC","HDFCBANK","HDFCLIFE","HEROMOTOCO","HFCL","HINDALCO","HINDPETRO","HINDUNILVR","HINDZINC","HUDCO","IEX","ICICIBANK","ICICIGI","ICICIPRULI","IDFCFIRSTB","IIFL","INDHOTEL","INDIANB","INDIGO","INDUSTOWER","INFY","INOXWIND","IOC","IRCTC","IRFC","IREDA","ITC","JINDALSTEL","JIOFIN","JSWENERGY","JSWSTEEL","JUBLFOOD","KALYANKJIL","KAYNES","KEI","KFINTECH","KPITTECH","KOTAKBANK","LAURUSLABS","LICHSGFIN","LICI","LODHA","LT","LTIM","LTF","LUPIN","M&M","MANAPPURAM","MARICO","MARUTI","MAXHEALTH","MAZDOCK","MCX","MFSL","MPHASIS","MOTHERSON","MUTHOOTFIN","NAUKRI","NATIONALUM","NBCC","NCC","NESTLEIND","NHPC","NMDC","NTPC","NUVAMA","NYKAA","OBEROIRLTY","OFSS","OIL","ONGC","PAGEIND","PATANJALI","PAYTM","PERSISTENT","PETRONET","PFC","PGEL","PHOENIXLTD","PIDILITIND","PIIND","PNB","PNBHOUSING","POLICYBZR","POLYCAB","POWERGRID","PRESTIGE","RBLBANK","RECLTD","RELIANCE","RVNL","SAIL","SAMMAANCAP","SBICARD","SBILIFE","SBIN","SHREECEM","SHRIRAMFIN","SIEMENS","SOLARINDS","SONACOMS","SRF","SUNPHARMA","SUZLON","SYNGENE","TATACONSUM","TATAELXSI","TATAPOWER","TATASTEEL","TATATECH","TCS","TECHM","TITAGARH","TITAN","TORNTPHARM","TORNTPOWER","TRENT","TVSMOTOR","ULTRACEMCO","UNITDSPR","UNIONBANK","UNOMINDA","UPL","VEDL","VBL","VOLTAS","WIPRO","YESBANK","ZYDUSLIFE"]
-
-
+STOCKS = [
+    "360ONE","ABB","ABCAPITAL","ADANIENT","ADANIGREEN","ADANIENSOL","ADANIPORTS",
+    "ALKEM","AMBER","AMBUJACEM","ANGELONE","APLAPOLLO","APOLLOHOSP","ASHOKLEY",
+    "ASIANPAINT","ASTRAL","AUROPHARMA","AUBANK","AXISBANK","BAJAJ-AUTO",
+    "BAJAJFINSV","BAJFINANCE","BANDHANBNK","BANKBARODA","BANKINDIA","BDL","BEL",
+    "BHARATFORG","BHARTIARTL","BHEL","BIOCON","BPCL","BRITANNIA","BSE","CAMS",
+    "CANBK","CDSL","CGPOWER","CHOLAFIN","CIPLA","COALINDIA","COFORGE","COLPAL",
+    "CONCOR","CROMPTON","CUMMINSIND","CYIENT","DABUR","DALBHARAT","DELHIVERY",
+    "DIVISLAB","DLF","DMART","DRREDDY","EICHERMOT","ETERNAL","EXIDEIND",
+    "FEDERALBNK","FORTIS","GAIL","GMRAIRPORT","GODREJCP","GODREJPROP","GRASIM",
+    "HAL","HAVELLS","HCLTECH","HDFCAMC","HDFCBANK","HDFCLIFE","HEROMOTOCO",
+    "HFCL","HINDALCO","HINDPETRO","HINDUNILVR","HINDZINC","HUDCO","IEX",
+    "ICICIBANK","ICICIGI","ICICIPRULI","IDFCFIRSTB","IIFL","INDHOTEL",
+    "INDIANB","INDIGO","INDUSTOWER","INFY","INOXWIND","IOC","IRCTC","IRFC",
+    "IREDA","ITC","JINDALSTEL","JIOFIN","JSWENERGY","JSWSTEEL","JUBLFOOD",
+    "KALYANKJIL","KAYNES","KEI","KFINTECH","KPITTECH","KOTAKBANK",
+    "LAURUSLABS","LICHSGFIN","LICI","LODHA","LT","LTIM","LTF","LUPIN","M&M",
+    "MANAPPURAM","MARICO","MARUTI","MAXHEALTH","MAZDOCK","MCX","MFSL",
+    "MPHASIS","MOTHERSON","MUTHOOTFIN","NAUKRI","NATIONALUM","NBCC","NCC",
+    "NESTLEIND","NHPC","NMDC","NTPC","NUVAMA","NYKAA","OBEROIRLTY","OFSS",
+    "OIL","ONGC","PAGEIND","PATANJALI","PAYTM","PERSISTENT","PETRONET",
+    "PFC","PGEL","PHOENIXLTD","PIDILITIND","PIIND","PNB","PNBHOUSING",
+    "POLICYBZR","POLYCAB","POWERGRID","PRESTIGE","RBLBANK","RECLTD",
+    "RELIANCE","RVNL","SAIL","SAMMAANCAP","SBICARD","SBILIFE","SBIN",
+    "SHREECEM","SHRIRAMFIN","SIEMENS","SOLARINDS","SONACOMS","SRF",
+    "SUNPHARMA","SUZLON","SYNGENE","TATACONSUM","TATAELXSI","TATAPOWER",
+    "TATASTEEL","TATATECH","TCS","TECHM","TITAGARH","TITAN","TORNTPHARM",
+    "TORNTPOWER","TRENT","TVSMOTOR","ULTRACEMCO","UNITDSPR","UNIONBANK",
+    "UNOMINDA","UPL","VEDL","VBL","VOLTAS","WIPRO","YESBANK","ZYDUSLIFE"
+]
 
 DATA_DIR = "data"
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -31,9 +53,17 @@ kite.set_access_token(ACCESS_TOKEN)
 instruments = pd.DataFrame(kite.instruments("NFO"))
 
 # ==================================================
-# FETCH OPTION CHAIN (NEAREST EXPIRY)
+# FETCH OPTION CHAIN + STOCK LTP
 # ==================================================
 def fetch_option_chain(stock):
+
+    # -------- STOCK LTP (ONCE) --------
+    try:
+        spot = kite.quote([f"NSE:{stock}"])
+        stock_ltp = spot[f"NSE:{stock}"]["last_price"]
+    except:
+        stock_ltp = None
+
     df = instruments[
         (instruments["name"] == stock) &
         (instruments["segment"] == "NFO-OPT")
@@ -65,25 +95,18 @@ def fetch_option_chain(stock):
             "CE_OI": ce_q.get("oi"),
             "PE_LTP": pe_q.get("last_price"),
             "PE_OI": pe_q.get("oi"),
-            "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M")
+            "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M"),
+            "Stock_LTP": stock_ltp          # 👈 LAST COLUMN
         })
 
     return pd.DataFrame(rows)
 
 # ==================================================
-# MAX PAIN CALCULATION (PER STOCK, PER STRIKE)
+# MAX PAIN CALCULATION
 # ==================================================
 def compute_max_pain(df):
-    """
-    Uses the exact logic provided by the user.
-    Requires columns:
-    Strike, CE_LTP, CE_OI, PE_LTP, PE_OI
-    """
-
     df = df.copy()
-
-    # Force numeric (CRITICAL)
-    for col in ["Strike", "CE_LTP", "CE_OI", "PE_LTP", "PE_OI"]:
+    for col in ["Strike","CE_LTP","CE_OI","PE_LTP","PE_OI"]:
         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
     A = df["CE_LTP"]
@@ -93,7 +116,6 @@ def compute_max_pain(df):
     L = df["PE_OI"]
 
     mp = []
-
     for i in range(len(df)):
         value = (
             -sum(A[i:] * B[i:])
@@ -117,10 +139,7 @@ def main():
         if df is None or df.empty:
             continue
 
-        # IMPORTANT: sort by strike before max pain
         df = df.sort_values("Strike").reset_index(drop=True)
-
-        # Compute max pain PER STOCK
         df = compute_max_pain(df)
 
         all_data.append(df)
