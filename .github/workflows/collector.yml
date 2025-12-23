@@ -2,47 +2,61 @@ name: Auto Update Kite Option Chain CSV
 
 on:
   schedule:
-    - cron: "*/5 * * * *"
-  workflow_dispatch:
+    - cron: "*/5 * * * *"   # every 5 minutes
+  workflow_dispatch:        # allow manual trigger
 
 permissions:
-  contents: write
+  contents: write           # REQUIRED to push CSV files
 
 jobs:
   collect:
     runs-on: ubuntu-latest
 
     steps:
+      # ----------------------------------
+      # Checkout repository
+      # ----------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # ----------------------------------
+      # Set up Python
+      # ----------------------------------
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
 
+      # ----------------------------------
+      # Install dependencies
+      # ----------------------------------
       - name: Install dependencies
         run: |
-          pip install --upgrade pip
+          python -m pip install --upgrade pip
           pip install kiteconnect pandas
 
+      # ----------------------------------
+      # Run option chain collector
+      # ----------------------------------
       - name: Run collector
-        env:
-          KITE_API_KEY: ${{ secrets.KITE_API_KEY }}
-          KITE_ACCESS_TOKEN: ${{ secrets.KITE_ACCESS_TOKEN }}
         run: |
           python collector_kite.py
 
+      # ----------------------------------
+      # Commit & push generated CSV files
+      # ----------------------------------
       - name: Commit and push CSV files
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
 
-          git add data/*.csv
+          # Force add CSVs even if data/ is gitignored
+          git add -f data/*.csv
 
+          # Commit only if there are changes
           if git diff --cached --quiet; then
-            echo "No changes"
+            echo "No changes to commit"
           else
-            git commit -m "Auto update Kite option chain CSV"
+            git commit -m "Auto update option chain snapshot"
             git push
           fi
