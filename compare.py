@@ -11,7 +11,7 @@ st.title("📊 Max Pain Comparison Dashboard")
 DATA_DIR = "data"
 
 # =====================================
-# LOAD CSV FILES (LATEST → OLDEST, NO CACHING)
+# LOAD CSV FILES (LATEST → OLDEST)
 # =====================================
 def load_csv_files():
     files = []
@@ -23,7 +23,6 @@ def load_csv_files():
             ts = f.replace("option_chain_", "").replace(".csv", "")
             files.append((ts, os.path.join(DATA_DIR, f)))
 
-    # 🔥 LATEST → OLDEST
     return sorted(files, reverse=True)
 
 csv_files = load_csv_files()
@@ -36,7 +35,7 @@ timestamps = [ts for ts, _ in csv_files]
 file_map = {ts: path for ts, path in csv_files}
 
 # =====================================
-# DROPDOWNS (LATEST PRESELECTED)
+# DROPDOWNS
 # =====================================
 col1, col2 = st.columns(2)
 
@@ -75,12 +74,10 @@ compare_df["Delta_Max_Pain"] = (
 )
 
 # =====================================
-# FORMAT NUMBERS (FINAL, FIXED)
+# FORMAT NUMBERS
 # =====================================
-# Strike → integer
 compare_df["Strike"] = compare_df["Strike"].astype(int)
 
-# Stock_LTP → EXACTLY ONE DECIMAL (NO TRAILING ZEROS)
 compare_df["Stock_LTP"] = (
     compare_df["Stock_LTP"]
     .astype(float)
@@ -88,9 +85,33 @@ compare_df["Stock_LTP"] = (
     .map(lambda x: f"{x:.1f}")
 )
 
-# Move Stock_LTP to LAST column
+# Move Stock_LTP to last column
 stock_ltp = compare_df.pop("Stock_LTP")
 compare_df["Stock_LTP"] = stock_ltp
+
+# =====================================
+# INSERT BLANK ROW AFTER EACH STOCK
+# =====================================
+rows = []
+
+for stock, sdf in compare_df.sort_values(["Stock", "Strike"]).groupby("Stock"):
+    rows.append(sdf)
+    
+    # Blank spacer row
+    blank = pd.DataFrame(
+        [{col: "" for col in compare_df.columns}]
+    )
+    blank["Stock"] = stock
+    blank["_spacer"] = True
+    rows.append(blank)
+
+final_df = pd.concat(rows, ignore_index=True)
+
+# Ensure marker column exists
+if "_spacer" not in final_df.columns:
+    final_df["_spacer"] = False
+
+final_df["_spacer"] = final_df["_spacer"].fillna(False)
 
 # =====================================
 # HIGHLIGHTING LOGIC
@@ -99,44 +120,57 @@ def highlight_rows(df):
     styles = pd.DataFrame("", index=df.index, columns=df.columns)
 
     for stock in df["Stock"].unique():
-        sdf = df[df["Stock"] == stock].sort_values("Strike")
+        sdf = df[(df["Stock"] == stock) & (~df["_spacer"])].sort_values("Strike")
 
-        # LTP as float for comparison
+        if sdf.empty:
+            continue
+
         ltp = float(sdf["Stock_LTP"].iloc[0])
         strikes = sdf["Strike"].values
 
         below_idx = None
         above_idx = None
 
-        # Find strikes just below & above LTP
         for i in range(len(strikes) - 1):
             if strikes[i] <= ltp <= strikes[i + 1]:
                 below_idx = sdf.index[i]
                 above_idx = sdf.index[i + 1]
                 break
 
-        # 🔴 MAX PAIN — STRICTLY FROM TIMESTAMP 1 (LATEST)
         max_pain_idx = sdf[f"Max_Pain_{t1}"].idxmin()
 
-        # 🔵 Highlight strikes around LTP (dark blue)
         if below_idx is not None:
             styles.loc[below_idx] = "background-color: #003366; color: white"
         if above_idx is not None:
             styles.loc[above_idx] = "background-color: #003366; color: white"
 
-        # 🔴 Override with max pain (dark red)
         styles.loc[max_pain_idx] = "background-color: #8B0000; color: white"
+
+    # Spacer rows: force white background
+    spacer_rows = df["_spacer"]
+    styles.loc[spacer_rows] = "background-color: white"
 
     return styles
 
 # =====================================
-# DISPLAY
+# DISPLAY (WITH HALF-HEIGHT BLANK ROW)
 # =====================================
 st.subheader(f"Comparison: {t1} (Latest) vs {t2} (Older)")
 
+st.markdown(
+    """
+    <style>
+    tr:has(td:empty) {
+        height: 16px;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 styled_df = (
-    compare_df
-    .sort_values(["Stock", "Strike"])
+    final_df
+    .drop(columns=["_spacer"])
     .style
     .apply(highlight_rows, axis=None)
 )
@@ -148,7 +182,7 @@ st.dataframe(styled_df, use_container_width=True)
 # =====================================
 st.download_button(
     "⬇️ Download Comparison CSV",
-    compare_df.to_csv(index=False),
+    final_df.drop(columns=["_spacer"]).to_csv(index=False),
     f"max_pain_comparison_{t1}_vs_{t2}.csv",
     "text/csv"
 )
