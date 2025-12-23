@@ -11,7 +11,7 @@ st.title("📊 Max Pain Comparison Dashboard")
 DATA_DIR = "data"
 
 # =====================================
-# LOAD CSV FILES (NO CACHING – IMPORTANT)
+# LOAD CSV FILES (NO CACHING)
 # =====================================
 def load_csv_files():
     files = []
@@ -19,7 +19,7 @@ def load_csv_files():
         return files
 
     for f in os.listdir(DATA_DIR):
-        if f.lower().endswith(".csv") and f.startswith("option_chain_"):
+        if f.startswith("option_chain_") and f.endswith(".csv"):
             ts = f.replace("option_chain_", "").replace(".csv", "")
             files.append((ts, os.path.join(DATA_DIR, f)))
 
@@ -27,12 +27,6 @@ def load_csv_files():
 
 csv_files = load_csv_files()
 
-# DEBUG (safe to keep)
-st.write("Detected CSV snapshots:", [ts for ts, _ in csv_files])
-
-# =====================================
-# VALIDATION
-# =====================================
 if len(csv_files) < 2:
     st.error("Need at least 2 CSV files to compare.")
     st.stop()
@@ -46,37 +40,26 @@ file_map = {ts: path for ts, path in csv_files}
 col1, col2 = st.columns(2)
 
 with col1:
-    t1 = st.selectbox(
-        "Select Timestamp 1",
-        timestamps,
-        index=len(timestamps) - 2
-    )
+    t1 = st.selectbox("Select Timestamp 1", timestamps, index=len(timestamps) - 2)
 
 with col2:
-    t2 = st.selectbox(
-        "Select Timestamp 2",
-        timestamps,
-        index=len(timestamps) - 1
-    )
+    t2 = st.selectbox("Select Timestamp 2", timestamps, index=len(timestamps) - 1)
 
 # =====================================
-# LOAD SELECTED CSVs
+# LOAD DATA
 # =====================================
 df1 = pd.read_csv(file_map[t1])
 df2 = pd.read_csv(file_map[t2])
 
-# =====================================
-# REQUIRED COLUMNS CHECK
-# =====================================
 required_cols = {"Stock", "Strike", "Max_Pain", "Stock_LTP"}
 if not required_cols.issubset(df1.columns) or not required_cols.issubset(df2.columns):
-    st.error("CSV format mismatch. Required columns missing.")
+    st.error("CSV format mismatch.")
     st.stop()
 
 # =====================================
-# PREPARE DATA
+# PREPARE COMPARISON DATA
 # =====================================
-df1 = df1[["Stock", "Strike", "Stock_LTP", "Max_Pain"]].rename(
+df1 = df1[["Stock", "Strike", "Max_Pain", "Stock_LTP"]].rename(
     columns={"Max_Pain": f"Max_Pain_{t1}"}
 )
 
@@ -84,36 +67,64 @@ df2 = df2[["Stock", "Strike", "Max_Pain"]].rename(
     columns={"Max_Pain": f"Max_Pain_{t2}"}
 )
 
-# =====================================
-# MERGE & COMPARE
-# =====================================
-compare_df = pd.merge(
-    df1,
-    df2,
-    on=["Stock", "Strike"],
-    how="inner"
-)
+compare_df = pd.merge(df1, df2, on=["Stock", "Strike"], how="inner")
 
 compare_df["Delta_Max_Pain"] = (
     compare_df[f"Max_Pain_{t1}"] - compare_df[f"Max_Pain_{t2}"]
 )
 
+# Move Stock_LTP to last column
+stock_ltp = compare_df.pop("Stock_LTP")
+compare_df["Stock_LTP"] = stock_ltp
+
+# =====================================
+# HIGHLIGHTING LOGIC
+# =====================================
+def highlight_rows(df):
+
+    styles = pd.DataFrame("", index=df.index, columns=df.columns)
+
+    for stock in df["Stock"].unique():
+        sdf = df[df["Stock"] == stock].sort_values("Strike")
+
+        ltp = sdf["Stock_LTP"].iloc[0]
+
+        # Find strike interval containing LTP
+        strike_range_idx = None
+        strikes = sdf["Strike"].values
+
+        for i in range(len(strikes) - 1):
+            if strikes[i] <= ltp <= strikes[i + 1]:
+                strike_range_idx = sdf.index[i]
+                break
+
+        # Find max pain strike (timestamp 1)
+        max_pain_idx = sdf[f"Max_Pain_{t1}"].idxmin()
+
+        # Apply LTP range highlight first
+        if strike_range_idx is not None:
+            styles.loc[strike_range_idx] = "background-color: #fff3cd"
+
+        # Override with Max Pain highlight (RED)
+        styles.loc[max_pain_idx] = "background-color: #f8d7da"
+
+    return styles
+
 # =====================================
 # DISPLAY
 # =====================================
-st.subheader(f"Comparison: {t1}  vs  {t2}")
+st.subheader(f"Comparison: {t1} vs {t2}")
 
-st.dataframe(
-    compare_df.sort_values(["Stock", "Strike"]),
-    use_container_width=True
-)
+styled_df = compare_df.sort_values(["Stock", "Strike"]).style.apply(highlight_rows, axis=None)
+
+st.dataframe(styled_df, use_container_width=True)
 
 # =====================================
 # DOWNLOAD
 # =====================================
 st.download_button(
-    label="⬇️ Download Comparison CSV",
-    data=compare_df.to_csv(index=False),
-    file_name=f"max_pain_comparison_{t1}_vs_{t2}.csv",
-    mime="text/csv"
+    "⬇️ Download Comparison CSV",
+    compare_df.to_csv(index=False),
+    f"max_pain_comparison_{t1}_vs_{t2}.csv",
+    "text/csv"
 )
