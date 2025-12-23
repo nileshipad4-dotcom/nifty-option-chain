@@ -74,14 +74,21 @@ compare_df["Delta_Max_Pain"] = (
 )
 
 # =====================================
-# FORMAT NUMBERS (FINAL FIX)
+# FORMAT NUMBERS (CRITICAL FIX)
 # =====================================
+
+# Strike → integer
 compare_df["Strike"] = compare_df["Strike"].astype(int)
 
-# 🔥 Stock LTP → ONLY ONE DECIMAL
-compare_df["Stock_LTP"] = compare_df["Stock_LTP"].round(1)
+# Stock_LTP → EXACTLY ONE DECIMAL (STRING FORMAT, NO TRAILING ZEROS)
+compare_df["Stock_LTP"] = (
+    compare_df["Stock_LTP"]
+    .astype(float)
+    .round(1)
+    .map(lambda x: f"{x:.1f}")
+)
 
-# Move Stock_LTP to last column
+# Move Stock_LTP to LAST column
 stock_ltp = compare_df.pop("Stock_LTP")
 compare_df["Stock_LTP"] = stock_ltp
 
@@ -89,33 +96,36 @@ compare_df["Stock_LTP"] = stock_ltp
 # HIGHLIGHTING LOGIC
 # =====================================
 def highlight_rows(df):
+
     styles = pd.DataFrame("", index=df.index, columns=df.columns)
 
     for stock in df["Stock"].unique():
         sdf = df[df["Stock"] == stock].sort_values("Strike")
-        ltp = sdf["Stock_LTP"].iloc[0]
+
+        # Convert LTP back to float ONLY for comparison
+        ltp = float(sdf["Stock_LTP"].iloc[0])
         strikes = sdf["Strike"].values
 
         below_idx = None
         above_idx = None
 
-        # Strike just below & above LTP
+        # Find strikes just below & above LTP
         for i in range(len(strikes) - 1):
             if strikes[i] <= ltp <= strikes[i + 1]:
                 below_idx = sdf.index[i]
                 above_idx = sdf.index[i + 1]
                 break
 
-        # 🔴 MAX PAIN — EXPLICITLY BASED ON TIMESTAMP 1
+        # 🔴 MAX PAIN — BASED STRICTLY ON TIMESTAMP 1
         max_pain_idx = sdf[f"Max_Pain_{t1}"].idxmin()
 
-        # Highlight below & above LTP (dark blue)
+        # 🔵 Highlight strikes around LTP (dark blue)
         if below_idx is not None:
             styles.loc[below_idx] = "background-color: #003366; color: white"
         if above_idx is not None:
             styles.loc[above_idx] = "background-color: #003366; color: white"
 
-        # Override with max pain highlight (dark red)
+        # 🔴 Override with max pain (dark red)
         styles.loc[max_pain_idx] = "background-color: #8B0000; color: white"
 
     return styles
