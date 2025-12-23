@@ -1,7 +1,13 @@
 from kiteconnect import KiteConnect
 import pandas as pd
 from datetime import datetime
+import pytz
 import os
+
+# ==================================================
+# TIMEZONE (IST)
+# ==================================================
+IST = pytz.timezone("Asia/Kolkata")
 
 # ==================================================
 # CONFIG (ENTER YOUR CREDENTIALS HERE)
@@ -57,7 +63,7 @@ instruments = pd.DataFrame(kite.instruments("NFO"))
 # ==================================================
 def fetch_option_chain(stock):
 
-    # -------- STOCK LTP (ONCE) --------
+    # -------- STOCK LTP --------
     try:
         spot = kite.quote([f"NSE:{stock}"])
         stock_ltp = spot[f"NSE:{stock}"]["last_price"]
@@ -95,8 +101,8 @@ def fetch_option_chain(stock):
             "CE_OI": ce_q.get("oi"),
             "PE_LTP": pe_q.get("last_price"),
             "PE_OI": pe_q.get("oi"),
-            "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M"),
-            "Stock_LTP": stock_ltp          # 👈 LAST COLUMN
+            "timestamp": datetime.now(IST).strftime("%Y-%m-%d %H:%M"),
+            "Stock_LTP": stock_ltp
         })
 
     return pd.DataFrame(rows)
@@ -106,6 +112,7 @@ def fetch_option_chain(stock):
 # ==================================================
 def compute_max_pain(df):
     df = df.copy()
+
     for col in ["Strike","CE_LTP","CE_OI","PE_LTP","PE_OI"]:
         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
@@ -150,7 +157,7 @@ def main():
 
     final_df = pd.concat(all_data, ignore_index=True)
 
-    run_ts = datetime.utcnow().strftime("%Y-%m-%d_%H-%M")
+    run_ts = datetime.now(IST).strftime("%Y-%m-%d_%H-%M")
     filename = f"{DATA_DIR}/option_chain_{run_ts}.csv"
 
     final_df.to_csv(filename, index=False)
