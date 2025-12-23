@@ -85,7 +85,7 @@ compare_df["Stock_LTP"] = (
     .map(lambda x: f"{x:.1f}")
 )
 
-# Move Stock_LTP to last column
+# Move Stock_LTP to LAST column
 stock_ltp = compare_df.pop("Stock_LTP")
 compare_df["Stock_LTP"] = stock_ltp
 
@@ -95,26 +95,20 @@ compare_df["Stock_LTP"] = stock_ltp
 rows = []
 
 for stock, sdf in compare_df.sort_values(["Stock", "Strike"]).groupby("Stock"):
-    rows.append(sdf)
-    
-    # Blank spacer row
-    blank = pd.DataFrame(
-        [{col: "" for col in compare_df.columns}]
-    )
+    rows.append(sdf.assign(_spacer=False))
+
+    blank = pd.DataFrame([{col: "" for col in compare_df.columns}])
     blank["Stock"] = stock
     blank["_spacer"] = True
     rows.append(blank)
 
 final_df = pd.concat(rows, ignore_index=True)
 
-# Ensure marker column exists
-if "_spacer" not in final_df.columns:
-    final_df["_spacer"] = False
-
+# Ensure _spacer exists everywhere
 final_df["_spacer"] = final_df["_spacer"].fillna(False)
 
 # =====================================
-# HIGHLIGHTING LOGIC
+# HIGHLIGHTING LOGIC (SAFE)
 # =====================================
 def highlight_rows(df):
     styles = pd.DataFrame("", index=df.index, columns=df.columns)
@@ -137,6 +131,7 @@ def highlight_rows(df):
                 above_idx = sdf.index[i + 1]
                 break
 
+        # 🔴 Max Pain based on Timestamp 1
         max_pain_idx = sdf[f"Max_Pain_{t1}"].idxmin()
 
         if below_idx is not None:
@@ -146,17 +141,17 @@ def highlight_rows(df):
 
         styles.loc[max_pain_idx] = "background-color: #8B0000; color: white"
 
-    # Spacer rows: force white background
-    spacer_rows = df["_spacer"]
-    styles.loc[spacer_rows] = "background-color: white"
+    # Spacer rows: white background
+    styles.loc[df["_spacer"]] = "background-color: white"
 
     return styles
 
 # =====================================
-# DISPLAY (WITH HALF-HEIGHT BLANK ROW)
+# DISPLAY
 # =====================================
 st.subheader(f"Comparison: {t1} (Latest) vs {t2} (Older)")
 
+# Half-height spacer rows
 st.markdown(
     """
     <style>
@@ -170,10 +165,12 @@ st.markdown(
 
 styled_df = (
     final_df
-    .drop(columns=["_spacer"])
     .style
     .apply(highlight_rows, axis=None)
 )
+
+# Hide _spacer column visually
+styled_df = styled_df.hide(axis="columns", subset=["_spacer"])
 
 st.dataframe(styled_df, use_container_width=True)
 
