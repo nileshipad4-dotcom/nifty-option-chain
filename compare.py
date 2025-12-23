@@ -3,6 +3,13 @@ import pandas as pd
 import os
 from datetime import datetime
 
+st.write("Current working directory:", os.getcwd())
+
+if os.path.exists("data"):
+    st.write("Files in data/:", os.listdir("data"))
+else:
+    st.error("data/ directory does NOT exist")
+
 # =====================================
 # STREAMLIT CONFIG
 # =====================================
