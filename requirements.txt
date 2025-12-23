@@ -1,6 +1,4 @@
 streamlit
+kiteconnect
 pandas
-fyers-apiv3
-streamlit-autorefresh
-
 
