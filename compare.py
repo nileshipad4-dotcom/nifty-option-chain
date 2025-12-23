@@ -74,13 +74,9 @@ compare_df["Delta_Max_Pain"] = (
 )
 
 # =====================================
-# FORMAT NUMBERS (NEW)
+# FORMAT NUMBERS
 # =====================================
-
-# Strike → integer (remove decimals)
 compare_df["Strike"] = compare_df["Strike"].astype(int)
-
-# Stock_LTP → round to 2 decimals
 compare_df["Stock_LTP"] = compare_df["Stock_LTP"].round(2)
 
 # Move Stock_LTP to last column
@@ -91,6 +87,7 @@ compare_df["Stock_LTP"] = stock_ltp
 # HIGHLIGHTING LOGIC
 # =====================================
 def highlight_rows(df):
+
     styles = pd.DataFrame("", index=df.index, columns=df.columns)
 
     for stock in df["Stock"].unique():
@@ -98,22 +95,27 @@ def highlight_rows(df):
         ltp = sdf["Stock_LTP"].iloc[0]
         strikes = sdf["Strike"].values
 
-        # Strike interval where LTP lies
-        strike_range_idx = None
+        below_idx = None
+        above_idx = None
+
+        # Find strikes just below and above LTP
         for i in range(len(strikes) - 1):
             if strikes[i] <= ltp <= strikes[i + 1]:
-                strike_range_idx = sdf.index[i]
+                below_idx = sdf.index[i]
+                above_idx = sdf.index[i + 1]
                 break
 
-        # Max pain strike (timestamp 1)
+        # Find max pain strike (timestamp 1)
         max_pain_idx = sdf[f"Max_Pain_{t1}"].idxmin()
 
-        # LTP range highlight (yellow)
-        if strike_range_idx is not None:
-            styles.loc[strike_range_idx] = "background-color: #fff3cd"
+        # Highlight below & above LTP (dark blue)
+        if below_idx is not None:
+            styles.loc[below_idx] = "background-color: #003366; color: white"
+        if above_idx is not None:
+            styles.loc[above_idx] = "background-color: #003366; color: white"
 
-        # Max pain highlight (red, highest priority)
-        styles.loc[max_pain_idx] = "background-color: #f8d7da"
+        # Override with max pain highlight (dark red)
+        styles.loc[max_pain_idx] = "background-color: #8B0000; color: white"
 
     return styles
 
