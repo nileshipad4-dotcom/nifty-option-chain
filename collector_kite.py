@@ -4,8 +4,8 @@ from datetime import datetime
 import os
 
 # ================= CONFIG =================
-API_KEY = "your_api_key_here"
-ACCESS_TOKEN = "your_access_token_here"
+API_KEY = "bkgv59vaazn56c42"
+ACCESS_TOKEN = "giMaA7SuUyWA1r9P34zVTOVlPcWG847C"
 
 STOCKS = ["RELIANCE", "HDFCBANK", "ICICIBANK"]
 
