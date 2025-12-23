@@ -1,3 +1,4 @@
+
 from kiteconnect import KiteConnect
 import pandas as pd
 from datetime import datetime
@@ -51,21 +52,31 @@ def fetch_option_chain(stock):
             "CE_OI": ce_q.get("oi"),
             "PE_LTP": pe_q.get("last_price"),
             "PE_OI": pe_q.get("oi"),
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M")
+            "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M")
         })
 
     return pd.DataFrame(rows)
 
 # ================= MAIN =================
 def main():
+    all_rows = []
+
     for stock in STOCKS:
         df = fetch_option_chain(stock)
-        if df is None:
-            continue
+        if df is not None:
+            all_rows.append(df)
 
-        out = f"{DATA_DIR}/{stock.lower()}.csv"
-        df.to_csv(out, mode="a", header=not os.path.exists(out), index=False)
-        print(f"[OK] {stock} saved")
+    if not all_rows:
+        print("No data fetched")
+        return
+
+    final_df = pd.concat(all_rows, ignore_index=True)
+
+    run_ts = datetime.utcnow().strftime("%Y-%m-%d_%H-%M")
+    filename = f"{DATA_DIR}/option_chain_{run_ts}.csv"
+
+    final_df.to_csv(filename, index=False)
+    print(f"[OK] Saved {filename}")
 
 if __name__ == "__main__":
     main()
