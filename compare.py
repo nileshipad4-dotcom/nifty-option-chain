@@ -11,7 +11,7 @@ st.title("📊 Max Pain Comparison Dashboard")
 DATA_DIR = "data"
 
 # =====================================
-# LOAD CSV FILES (NO CACHING)
+# LOAD CSV FILES (LATEST → OLDEST, NO CACHING)
 # =====================================
 def load_csv_files():
     files = []
@@ -23,7 +23,8 @@ def load_csv_files():
             ts = f.replace("option_chain_", "").replace(".csv", "")
             files.append((ts, os.path.join(DATA_DIR, f)))
 
-    return sorted(files)
+    # 🔥 LATEST → OLDEST
+    return sorted(files, reverse=True)
 
 csv_files = load_csv_files()
 
@@ -35,15 +36,15 @@ timestamps = [ts for ts, _ in csv_files]
 file_map = {ts: path for ts, path in csv_files}
 
 # =====================================
-# DROPDOWNS
+# DROPDOWNS (LATEST PRESELECTED)
 # =====================================
 col1, col2 = st.columns(2)
 
 with col1:
-    t1 = st.selectbox("Select Timestamp 1", timestamps, index=len(timestamps) - 2)
+    t1 = st.selectbox("Select Timestamp 1 (Latest)", timestamps, index=0)
 
 with col2:
-    t2 = st.selectbox("Select Timestamp 2", timestamps, index=len(timestamps) - 1)
+    t2 = st.selectbox("Select Timestamp 2 (Older)", timestamps, index=1)
 
 # =====================================
 # LOAD DATA
@@ -74,13 +75,12 @@ compare_df["Delta_Max_Pain"] = (
 )
 
 # =====================================
-# FORMAT NUMBERS (CRITICAL FIX)
+# FORMAT NUMBERS (FINAL, FIXED)
 # =====================================
-
 # Strike → integer
 compare_df["Strike"] = compare_df["Strike"].astype(int)
 
-# Stock_LTP → EXACTLY ONE DECIMAL (STRING FORMAT, NO TRAILING ZEROS)
+# Stock_LTP → EXACTLY ONE DECIMAL (NO TRAILING ZEROS)
 compare_df["Stock_LTP"] = (
     compare_df["Stock_LTP"]
     .astype(float)
@@ -96,13 +96,12 @@ compare_df["Stock_LTP"] = stock_ltp
 # HIGHLIGHTING LOGIC
 # =====================================
 def highlight_rows(df):
-
     styles = pd.DataFrame("", index=df.index, columns=df.columns)
 
     for stock in df["Stock"].unique():
         sdf = df[df["Stock"] == stock].sort_values("Strike")
 
-        # Convert LTP back to float ONLY for comparison
+        # LTP as float for comparison
         ltp = float(sdf["Stock_LTP"].iloc[0])
         strikes = sdf["Strike"].values
 
@@ -116,7 +115,7 @@ def highlight_rows(df):
                 above_idx = sdf.index[i + 1]
                 break
 
-        # 🔴 MAX PAIN — BASED STRICTLY ON TIMESTAMP 1
+        # 🔴 MAX PAIN — STRICTLY FROM TIMESTAMP 1 (LATEST)
         max_pain_idx = sdf[f"Max_Pain_{t1}"].idxmin()
 
         # 🔵 Highlight strikes around LTP (dark blue)
@@ -133,7 +132,7 @@ def highlight_rows(df):
 # =====================================
 # DISPLAY
 # =====================================
-st.subheader(f"Comparison: {t1} vs {t2}")
+st.subheader(f"Comparison: {t1} (Latest) vs {t2} (Older)")
 
 styled_df = (
     compare_df
