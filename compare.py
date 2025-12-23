@@ -74,10 +74,12 @@ compare_df["Delta_Max_Pain"] = (
 )
 
 # =====================================
-# FORMAT NUMBERS
+# FORMAT NUMBERS (FINAL FIX)
 # =====================================
 compare_df["Strike"] = compare_df["Strike"].astype(int)
-compare_df["Stock_LTP"] = compare_df["Stock_LTP"].round(2)
+
+# 🔥 Stock LTP → ONLY ONE DECIMAL
+compare_df["Stock_LTP"] = compare_df["Stock_LTP"].round(1)
 
 # Move Stock_LTP to last column
 stock_ltp = compare_df.pop("Stock_LTP")
@@ -87,7 +89,6 @@ compare_df["Stock_LTP"] = stock_ltp
 # HIGHLIGHTING LOGIC
 # =====================================
 def highlight_rows(df):
-
     styles = pd.DataFrame("", index=df.index, columns=df.columns)
 
     for stock in df["Stock"].unique():
@@ -98,14 +99,14 @@ def highlight_rows(df):
         below_idx = None
         above_idx = None
 
-        # Find strikes just below and above LTP
+        # Strike just below & above LTP
         for i in range(len(strikes) - 1):
             if strikes[i] <= ltp <= strikes[i + 1]:
                 below_idx = sdf.index[i]
                 above_idx = sdf.index[i + 1]
                 break
 
-        # Find max pain strike (timestamp 1)
+        # 🔴 MAX PAIN — EXPLICITLY BASED ON TIMESTAMP 1
         max_pain_idx = sdf[f"Max_Pain_{t1}"].idxmin()
 
         # Highlight below & above LTP (dark blue)
