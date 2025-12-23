@@ -73,6 +73,16 @@ compare_df["Delta_Max_Pain"] = (
     compare_df[f"Max_Pain_{t1}"] - compare_df[f"Max_Pain_{t2}"]
 )
 
+# =====================================
+# FORMAT NUMBERS (NEW)
+# =====================================
+
+# Strike → integer (remove decimals)
+compare_df["Strike"] = compare_df["Strike"].astype(int)
+
+# Stock_LTP → round to 2 decimals
+compare_df["Stock_LTP"] = compare_df["Stock_LTP"].round(2)
+
 # Move Stock_LTP to last column
 stock_ltp = compare_df.pop("Stock_LTP")
 compare_df["Stock_LTP"] = stock_ltp
@@ -81,31 +91,28 @@ compare_df["Stock_LTP"] = stock_ltp
 # HIGHLIGHTING LOGIC
 # =====================================
 def highlight_rows(df):
-
     styles = pd.DataFrame("", index=df.index, columns=df.columns)
 
     for stock in df["Stock"].unique():
         sdf = df[df["Stock"] == stock].sort_values("Strike")
-
         ltp = sdf["Stock_LTP"].iloc[0]
-
-        # Find strike interval containing LTP
-        strike_range_idx = None
         strikes = sdf["Strike"].values
 
+        # Strike interval where LTP lies
+        strike_range_idx = None
         for i in range(len(strikes) - 1):
             if strikes[i] <= ltp <= strikes[i + 1]:
                 strike_range_idx = sdf.index[i]
                 break
 
-        # Find max pain strike (timestamp 1)
+        # Max pain strike (timestamp 1)
         max_pain_idx = sdf[f"Max_Pain_{t1}"].idxmin()
 
-        # Apply LTP range highlight first
+        # LTP range highlight (yellow)
         if strike_range_idx is not None:
             styles.loc[strike_range_idx] = "background-color: #fff3cd"
 
-        # Override with Max Pain highlight (RED)
+        # Max pain highlight (red, highest priority)
         styles.loc[max_pain_idx] = "background-color: #f8d7da"
 
     return styles
@@ -115,7 +122,12 @@ def highlight_rows(df):
 # =====================================
 st.subheader(f"Comparison: {t1} vs {t2}")
 
-styled_df = compare_df.sort_values(["Stock", "Strike"]).style.apply(highlight_rows, axis=None)
+styled_df = (
+    compare_df
+    .sort_values(["Stock", "Strike"])
+    .style
+    .apply(highlight_rows, axis=None)
+)
 
 st.dataframe(styled_df, use_container_width=True)
 
