@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime
 import pytz
 import os
+import time
 
 # ==================================================
 # TIMEZONE (IST)
@@ -59,15 +60,33 @@ kite.set_access_token(ACCESS_TOKEN)
 instruments = pd.DataFrame(kite.instruments("NFO"))
 
 # ==================================================
+# HELPERS (CRITICAL FOR STABILITY)
+# ==================================================
+def chunk_list(lst, size=50):
+    for i in range(0, len(lst), size):
+        yield lst[i:i + size]
+
+def safe_quote(symbols, retries=3, delay=1):
+    for i in range(retries):
+        try:
+            return kite.quote(symbols)
+        except Exception as e:
+            if i == retries - 1:
+                raise
+            time.sleep(delay)
+
+# ==================================================
 # FETCH OPTION CHAIN + STOCK LTP
 # ==================================================
 def fetch_option_chain(stock):
 
-    # -------- STOCK LTP --------
+    # ---------- STOCK LTP ----------
     try:
-        spot = kite.quote([f"NSE:{stock}"])
+        spot = safe_quote([f"NSE:{stock}"])
         stock_ltp = spot[f"NSE:{stock}"]["last_price"]
-    except:
+        time.sleep(0.2)
+    except Exception as e:
+        print(f"[WARN] Spot LTP failed for {stock}: {e}")
         stock_ltp = None
 
     df = instruments[
@@ -83,7 +102,15 @@ def fetch_option_chain(stock):
     df = df[df["expiry"] == expiry]
 
     symbols = ["NFO:" + ts for ts in df["tradingsymbol"]]
-    quotes = kite.quote(symbols)
+
+    quotes = {}
+    for batch in chunk_list(symbols, 50):
+        try:
+            quotes.update(safe_quote(batch))
+            time.sleep(0.3)
+        except Exception as e:
+            print(f"[WARN] Option quotes failed for {stock}: {e}")
+            return None
 
     rows = []
     for strike in sorted(df["strike"].unique()):
@@ -142,14 +169,19 @@ def main():
     all_data = []
 
     for stock in STOCKS:
-        df = fetch_option_chain(stock)
-        if df is None or df.empty:
+        print(f"[INFO] Processing {stock}")
+        try:
+            df = fetch_option_chain(stock)
+            if df is None or df.empty:
+                continue
+
+            df = df.sort_values("Strike").reset_index(drop=True)
+            df = compute_max_pain(df)
+            all_data.append(df)
+
+        except Exception as e:
+            print(f"[ERROR] Skipped {stock}: {e}")
             continue
-
-        df = df.sort_values("Strike").reset_index(drop=True)
-        df = compute_max_pain(df)
-
-        all_data.append(df)
 
     if not all_data:
         print("No data fetched")
