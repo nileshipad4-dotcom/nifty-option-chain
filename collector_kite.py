@@ -3,15 +3,14 @@ import pandas as pd
 from datetime import datetime
 import pytz
 import os
-import time
 
 # ==================================================
-# TIMEZONE (IST)
+# TIMEZONE
 # ==================================================
 IST = pytz.timezone("Asia/Kolkata")
 
 # ==================================================
-# CONFIG (ENTER YOUR CREDENTIALS HERE)
+# CONFIG
 # ==================================================
 API_KEY = "bkgv59vaazn56c42"
 ACCESS_TOKEN = "DVXrf2lu1ogz5VDrC9UXhz0fE1hMvzz3"
@@ -47,8 +46,21 @@ STOCKS = [
     "UNOMINDA","UPL","VEDL","VBL","VOLTAS","WIPRO","YESBANK","ZYDUSLIFE"
 ]
 
+# ==================================================
+# DATA DIRECTORY BOOTSTRAP (NEW)
+# ==================================================
 DATA_DIR = "data"
 os.makedirs(DATA_DIR, exist_ok=True)
+
+PLACEHOLDER_FILE = os.path.join(DATA_DIR, "README.csv")
+if not os.path.exists(PLACEHOLDER_FILE):
+    pd.DataFrame(
+        columns=[
+            "Stock","Expiry","Strike",
+            "CE_LTP","CE_OI","PE_LTP","PE_OI",
+            "Stock_LTP","timestamp","Max_Pain"
+        ]
+    ).to_csv(PLACEHOLDER_FILE, index=False)
 
 # ==================================================
 # INIT KITE
@@ -56,92 +68,59 @@ os.makedirs(DATA_DIR, exist_ok=True)
 kite = KiteConnect(api_key=API_KEY)
 kite.set_access_token(ACCESS_TOKEN)
 
-# Load instruments once
+# ==================================================
+# LOAD INSTRUMENTS
+# ==================================================
+print("[INFO] Loading instruments")
 instruments = pd.DataFrame(kite.instruments("NFO"))
 
 # ==================================================
-# HELPERS (CRITICAL FOR STABILITY)
+# HELPERS
 # ==================================================
-def chunk_list(lst, size=50):
+def chunk(lst, size=500):
     for i in range(0, len(lst), size):
         yield lst[i:i + size]
 
-def safe_quote(symbols, retries=3, delay=1):
-    for i in range(retries):
-        try:
-            return kite.quote(symbols)
-        except Exception as e:
-            if i == retries - 1:
-                raise
-            time.sleep(delay)
-
 # ==================================================
-# FETCH OPTION CHAIN + STOCK LTP
+# PREPARE OPTION SYMBOLS
 # ==================================================
-def fetch_option_chain(stock):
+print("[INFO] Preparing option chain symbols")
 
-    # ---------- STOCK LTP ----------
-    try:
-        spot = safe_quote([f"NSE:{stock}"])
-        stock_ltp = spot[f"NSE:{stock}"]["last_price"]
-        time.sleep(0.2)
-    except Exception as e:
-        print(f"[WARN] Spot LTP failed for {stock}: {e}")
-        stock_ltp = None
+option_map = {}
+all_option_symbols = []
 
+for stock in STOCKS:
     df = instruments[
         (instruments["name"] == stock) &
         (instruments["segment"] == "NFO-OPT")
     ].copy()
 
     if df.empty:
-        return None
+        continue
 
     df["expiry"] = pd.to_datetime(df["expiry"])
     expiry = df["expiry"].min()
     df = df[df["expiry"] == expiry]
 
-    symbols = ["NFO:" + ts for ts in df["tradingsymbol"]]
-
-    quotes = {}
-    for batch in chunk_list(symbols, 50):
-        try:
-            quotes.update(safe_quote(batch))
-            time.sleep(0.3)
-        except Exception as e:
-            print(f"[WARN] Option quotes failed for {stock}: {e}")
-            return None
-
-    rows = []
-    for strike in sorted(df["strike"].unique()):
-        ce = df[(df["strike"] == strike) & (df["instrument_type"] == "CE")]
-        pe = df[(df["strike"] == strike) & (df["instrument_type"] == "PE")]
-
-        ce_q = quotes.get("NFO:" + ce.iloc[0]["tradingsymbol"], {}) if not ce.empty else {}
-        pe_q = quotes.get("NFO:" + pe.iloc[0]["tradingsymbol"], {}) if not pe.empty else {}
-
-        rows.append({
-            "Stock": stock,
-            "Expiry": expiry.date(),
-            "Strike": strike,
-            "CE_LTP": ce_q.get("last_price"),
-            "CE_OI": ce_q.get("oi"),
-            "PE_LTP": pe_q.get("last_price"),
-            "PE_OI": pe_q.get("oi"),
-            "timestamp": datetime.now(IST).strftime("%Y-%m-%d %H:%M"),
-            "Stock_LTP": stock_ltp
-        })
-
-    return pd.DataFrame(rows)
+    option_map[stock] = df
+    all_option_symbols.extend("NFO:" + df["tradingsymbol"])
 
 # ==================================================
-# MAX PAIN CALCULATION
+# BULK QUOTES
+# ==================================================
+print("[INFO] Fetching option quotes")
+option_quotes = {}
+for batch in chunk(all_option_symbols):
+    option_quotes.update(kite.quote(batch))
+
+print("[INFO] Fetching stock LTPs")
+spot_quotes = kite.quote([f"NSE:{s}" for s in STOCKS])
+
+# ==================================================
+# MAX PAIN
 # ==================================================
 def compute_max_pain(df):
-    df = df.copy()
-
-    for col in ["Strike","CE_LTP","CE_OI","PE_LTP","PE_OI"]:
-        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+    df = df.fillna(0)
 
     A = df["CE_LTP"]
     B = df["CE_OI"]
@@ -151,52 +130,57 @@ def compute_max_pain(df):
 
     mp = []
     for i in range(len(df)):
-        value = (
+        val = (
             -sum(A[i:] * B[i:])
             + G.iloc[i] * sum(B[:i]) - sum(G[:i] * B[:i])
             - sum(M[:i] * L[:i])
             + sum(G[i:] * L[i:]) - G.iloc[i] * sum(L[i:])
         )
-        mp.append(int(value / 10000))
+        mp.append(int(val / 10000))
 
     df["Max_Pain"] = mp
     return df
 
 # ==================================================
-# MAIN
+# PROCESS
 # ==================================================
-def main():
-    all_data = []
+print("[INFO] Processing stocks")
 
-    for stock in STOCKS:
-        print(f"[INFO] Processing {stock}")
-        try:
-            df = fetch_option_chain(stock)
-            if df is None or df.empty:
-                continue
+all_data = []
+now_ts = datetime.now(IST).strftime("%Y-%m-%d %H:%M")
 
-            df = df.sort_values("Strike").reset_index(drop=True)
-            df = compute_max_pain(df)
-            all_data.append(df)
+for stock, df in option_map.items():
+    rows = []
+    stock_ltp = spot_quotes.get(f"NSE:{stock}", {}).get("last_price")
 
-        except Exception as e:
-            print(f"[ERROR] Skipped {stock}: {e}")
-            continue
+    for strike in sorted(df["strike"].unique()):
+        ce = df[(df["strike"] == strike) & (df["instrument_type"] == "CE")]
+        pe = df[(df["strike"] == strike) & (df["instrument_type"] == "PE")]
 
-    if not all_data:
-        print("No data fetched")
-        return
+        ce_q = option_quotes.get("NFO:" + ce.iloc[0]["tradingsymbol"], {}) if not ce.empty else {}
+        pe_q = option_quotes.get("NFO:" + pe.iloc[0]["tradingsymbol"], {}) if not pe.empty else {}
 
-    final_df = pd.concat(all_data, ignore_index=True)
+        rows.append({
+            "Stock": stock,
+            "Expiry": df["expiry"].iloc[0].date(),
+            "Strike": strike,
+            "CE_LTP": ce_q.get("last_price"),
+            "CE_OI": ce_q.get("oi"),
+            "PE_LTP": pe_q.get("last_price"),
+            "PE_OI": pe_q.get("oi"),
+            "Stock_LTP": stock_ltp,
+            "timestamp": now_ts,
+        })
 
-    run_ts = datetime.now(IST).strftime("%Y-%m-%d_%H-%M")
-    filename = f"{DATA_DIR}/option_chain_{run_ts}.csv"
-
-    final_df.to_csv(filename, index=False)
-    print(f"[OK] Saved {filename}")
+    stock_df = pd.DataFrame(rows).sort_values("Strike")
+    stock_df = compute_max_pain(stock_df)
+    all_data.append(stock_df)
 
 # ==================================================
-# ENTRY POINT
+# SAVE
 # ==================================================
-if __name__ == "__main__":
-    main()
+final_df = pd.concat(all_data, ignore_index=True)
+filename = f"{DATA_DIR}/option_chain_{datetime.now(IST).strftime('%Y-%m-%d_%H-%M')}.csv"
+final_df.to_csv(filename, index=False)
+
+print(f"[OK] Saved {filename}")
