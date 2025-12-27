@@ -2,6 +2,9 @@ import streamlit as st
 import pandas as pd
 import os
 
+# =====================================
+# STREAMLIT CONFIG
+# =====================================
 st.set_page_config(page_title="Max Pain Comparison", layout="wide")
 st.title("📊 Max Pain Comparison Dashboard")
 
@@ -12,10 +15,14 @@ DATA_DIR = "data"
 # =====================================
 def load_csv_files():
     files = []
+    if not os.path.exists(DATA_DIR):
+        return files
+
     for f in os.listdir(DATA_DIR):
         if f.startswith("option_chain_") and f.endswith(".csv"):
             ts = f.replace("option_chain_", "").replace(".csv", "")
             files.append((ts, os.path.join(DATA_DIR, f)))
+
     return sorted(files, reverse=True)
 
 csv_files = load_csv_files()
@@ -64,13 +71,16 @@ df3 = df3[["Stock","Strike","Max_Pain"]].rename(
 # =====================================
 # MERGE
 # =====================================
-df = df1.merge(df2, on=["Stock","Strike"]).merge(df3, on=["Stock","Strike"])
+df = (
+    df1
+    .merge(df2, on=["Stock","Strike"])
+    .merge(df3, on=["Stock","Strike"])
+)
 
 # =====================================
 # CALCULATIONS
 # =====================================
 df["Δ MP (TS1-TS2)"] = df[t1_lbl] - df[t2_lbl]
-df[f"{t2_lbl} (ref)"] = df[t2_lbl]
 df["Δ MP (TS2-TS3)"] = df[t2_lbl] - df[t3_lbl]
 
 # =====================================
@@ -89,7 +99,6 @@ df = df[
         t1_lbl,
         t2_lbl,
         "Δ MP (TS1-TS2)",
-        f"{t2_lbl} (ref)",
         t3_lbl,
         "Δ MP (TS2-TS3)",
         "Stock_LTP",
