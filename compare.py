@@ -54,6 +54,8 @@ t3_lbl = short_ts(t3)
 
 delta_12 = f"Δ MP ({t1_lbl}-{t2_lbl})"
 delta_23 = f"Δ MP ({t2_lbl}-{t3_lbl})"
+sum_12_col = f"Σ {delta_12}"
+sum_23_col = f"Σ {delta_23}"
 
 # =====================================
 # LOAD DATA
@@ -79,27 +81,18 @@ df[delta_12] = df[t1_lbl] - df[t2_lbl]
 df[delta_23] = df[t2_lbl] - df[t3_lbl]
 
 # =====================================
-# ROLLING SUMS (±3 STRIKES, PER STOCK)
+# ROLLING SUMS (±3 STRIKES)
 # =====================================
-sum_12_col = f"Σ {delta_12}"
-sum_23_col = f"Σ {delta_23}"
-
 df[sum_12_col] = np.nan
 df[sum_23_col] = np.nan
 
 for stock, sdf in df.sort_values("Strike").groupby("Stock"):
     idx = sdf.index
     df.loc[idx, sum_12_col] = (
-        sdf[delta_12]
-        .rolling(window=7, center=True, min_periods=1)
-        .sum()
-        .values
+        sdf[delta_12].rolling(7, center=True, min_periods=1).sum().values
     )
     df.loc[idx, sum_23_col] = (
-        sdf[delta_23]
-        .rolling(window=7, center=True, min_periods=1)
-        .sum()
-        .values
+        sdf[delta_23].rolling(7, center=True, min_periods=1).sum().values
     )
 
 # =====================================
@@ -121,7 +114,7 @@ df = df[
 ]
 
 # =====================================
-# INSERT WHITE BLANK ROWS
+# INSERT BLANK ROWS
 # =====================================
 rows = []
 for stock, sdf in df.sort_values(["Stock", "Strike"]).groupby("Stock"):
@@ -141,9 +134,10 @@ def highlight_rows(data):
             (data["Stock"] == stock) & data["Strike"].notna()
         ].sort_values("Strike")
 
-        if sdf.empty:
+        if len(sdf) < 3:
             continue
 
+        # ATM highlight
         ltp = float(sdf["Stock_LTP"].iloc[0])
         strikes = sdf["Strike"].values
 
@@ -153,7 +147,21 @@ def highlight_rows(data):
                 styles.loc[sdf.index[i + 1]] = "background-color:#003366;color:white"
                 break
 
+        # Max Pain (TS1)
         styles.loc[sdf[t1_lbl].idxmin()] = "background-color:#8B0000;color:white"
+
+        # ============================
+        # Σ Δ MP (TS1-TS2) TREND CHECK
+        # ============================
+        vals = sdf[sum_12_col].astype(float).values
+        diffs = np.diff(vals)
+
+        if len(diffs) > 0:
+            inc_ratio = np.sum(diffs > 0) / len(diffs)
+            if inc_ratio >= 0.9:
+                styles.loc[sdf.index, sum_12_col] = (
+                    "background-color:#8B0000;color:white"
+                )
 
     return styles
 
