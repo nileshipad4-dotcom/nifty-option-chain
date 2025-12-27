@@ -34,6 +34,10 @@ if len(csv_files) < 3:
 timestamps = [ts for ts, _ in csv_files]
 file_map = {ts: path for ts, path in csv_files}
 
+# Extract readable time only
+def short_ts(ts):
+    return ts.split("_")[-1].replace("-", ":")
+
 # =====================================
 # DROPDOWNS
 # =====================================
@@ -48,6 +52,10 @@ with col2:
 with col3:
     t3 = st.selectbox("Select Timestamp 3 (Older)", timestamps, index=2)
 
+t1_label = short_ts(t1)
+t2_label = short_ts(t2)
+t3_label = short_ts(t3)
+
 # =====================================
 # LOAD DATA
 # =====================================
@@ -56,7 +64,7 @@ df2 = pd.read_csv(file_map[t2])
 df3 = pd.read_csv(file_map[t3])
 
 required_cols = {"Stock", "Strike", "Max_Pain", "Stock_LTP"}
-if not required_cols.issubset(df1.columns) or not required_cols.issubset(df2.columns):
+if not required_cols.issubset(df1.columns):
     st.error("CSV format mismatch.")
     st.stop()
 
@@ -64,15 +72,15 @@ if not required_cols.issubset(df1.columns) or not required_cols.issubset(df2.col
 # PREPARE COMPARISON DATA
 # =====================================
 df1 = df1[["Stock", "Strike", "Max_Pain", "Stock_LTP"]].rename(
-    columns={"Max_Pain": f"Max_Pain_{t1}"}
+    columns={"Max_Pain": t1_label}
 )
 
 df2 = df2[["Stock", "Strike", "Max_Pain"]].rename(
-    columns={"Max_Pain": f"Max_Pain_{t2}"}
+    columns={"Max_Pain": t2_label}
 )
 
 df3 = df3[["Stock", "Strike", "Max_Pain"]].rename(
-    columns={"Max_Pain": f"Max_Pain_{t3}"}
+    columns={"Max_Pain": t3_label}
 )
 
 compare_df = (
@@ -81,15 +89,9 @@ compare_df = (
     .merge(df3, on=["Stock", "Strike"], how="inner")
 )
 
-# Delta between t1 and t2 (existing)
-compare_df["Delta_Max_Pain"] = (
-    compare_df[f"Max_Pain_{t1}"] - compare_df[f"Max_Pain_{t2}"]
-)
-
-# NEW: Delta between t2 and t3
-compare_df[f"Delta_Max_Pain_{t2}_minus_{t3}"] = (
-    compare_df[f"Max_Pain_{t2}"] - compare_df[f"Max_Pain_{t3}"]
-)
+# Delta calculations
+compare_df["Δ MP 1"] = compare_df[t1_label] - compare_df[t2_label]
+compare_df["Δ MP 2"] = compare_df[t2_label] - compare_df[t3_label]
 
 # =====================================
 # FORMAT NUMBERS
@@ -103,7 +105,6 @@ compare_df["Stock_LTP"] = (
     .map(lambda x: f"{x:.1f}")
 )
 
-# Move Stock_LTP to LAST column
 stock_ltp = compare_df.pop("Stock_LTP")
 compare_df["Stock_LTP"] = stock_ltp
 
@@ -144,8 +145,7 @@ def highlight_rows(df):
                 above_idx = sdf.index[i + 1]
                 break
 
-        # Max Pain based on Timestamp 1
-        max_pain_idx = sdf[f"Max_Pain_{t1}"].idxmin()
+        max_pain_idx = sdf[t1_label].idxmin()
 
         if below_idx is not None:
             styles.loc[below_idx] = "background-color: #003366; color: white"
@@ -160,7 +160,7 @@ def highlight_rows(df):
 # =====================================
 # DISPLAY
 # =====================================
-st.subheader(f"Comparison: {t1} vs {t2} vs {t3}")
+st.subheader(f"Comparison: {t1_label} vs {t2_label} vs {t3_label}")
 
 st.markdown(
     """
@@ -188,6 +188,6 @@ st.dataframe(styled_df, use_container_width=True)
 st.download_button(
     "⬇️ Download Comparison CSV",
     final_df.drop(columns=["_spacer"]).to_csv(index=False),
-    f"max_pain_comparison_{t1}_vs_{t2}_vs_{t3}.csv",
+    f"max_pain_comparison_{t1_label}_vs_{t2_label}_vs_{t3_label}.csv",
     "text/csv"
 )
