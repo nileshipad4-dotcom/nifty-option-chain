@@ -19,10 +19,10 @@ def load_csv_files():
     if not os.path.exists(DATA_DIR):
         return files
 
-    for fname in os.listdir(DATA_DIR):
-        if fname.startswith("option_chain_") and fname.endswith(".csv"):
-            ts = fname.replace("option_chain_", "").replace(".csv", "")
-            files.append((ts, os.path.join(DATA_DIR, fname)))
+    for f in os.listdir(DATA_DIR):
+        if f.startswith("option_chain_") and f.endswith(".csv"):
+            ts = f.replace("option_chain_", "").replace(".csv", "")
+            files.append((ts, os.path.join(DATA_DIR, f)))
 
     return sorted(files, reverse=True)
 
@@ -42,11 +42,11 @@ def short_ts(ts):
 # =====================================
 c1, c2, c3 = st.columns(3)
 with c1:
-    t1 = st.selectbox("Timestamp 1 (Latest)", timestamps, index=0)
+    t1 = st.selectbox("Timestamp 1 (Latest)", timestamps, 0)
 with c2:
-    t2 = st.selectbox("Timestamp 2", timestamps, index=1)
+    t2 = st.selectbox("Timestamp 2", timestamps, 1)
 with c3:
-    t3 = st.selectbox("Timestamp 3", timestamps, index=2)
+    t3 = st.selectbox("Timestamp 3", timestamps, 2)
 
 t1_lbl = short_ts(t1)
 t2_lbl = short_ts(t2)
@@ -95,20 +95,6 @@ delta_23 = f"Δ MP ({t2_lbl}-{t3_lbl})"
 
 df[delta_12] = df[t1_lbl] - df[t2_lbl]
 df[delta_23] = df[t2_lbl] - df[t3_lbl]
-
-# =====================================
-# NUMBER FORMATTING
-# =====================================
-# All numeric columns except Stock_LTP → integers
-num_cols = df.columns.drop(["Stock", "Stock_LTP"])
-for col in num_cols:
-    df[col] = pd.to_numeric(df[col], errors="coerce").round(0)
-
-# Stock LTP → 2 decimals
-df["Stock_LTP"] = (
-    pd.to_numeric(df["Stock_LTP"], errors="coerce")
-    .round(2)
-)
 
 # =====================================
 # FINAL COLUMN ORDER
@@ -164,6 +150,16 @@ def highlight_rows(data):
     return styles
 
 # =====================================
+# DISPLAY FORMATTERS (SAFE)
+# =====================================
+formatters = {}
+for col in final_df.columns:
+    if col == "Stock_LTP":
+        formatters[col] = "{:.2f}"
+    elif col != "Stock":
+        formatters[col] = "{:.0f}"
+
+# =====================================
 # DISPLAY
 # =====================================
 st.subheader(f"Comparison: {t1_lbl} vs {t2_lbl} vs {t3_lbl}")
@@ -180,7 +176,10 @@ st.markdown(
 )
 
 st.dataframe(
-    final_df.style.apply(highlight_rows, axis=None),
+    final_df
+        .style
+        .apply(highlight_rows, axis=None)
+        .format(formatters, na_rep=""),
     use_container_width=True,
 )
 
