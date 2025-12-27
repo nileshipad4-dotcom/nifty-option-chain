@@ -34,7 +34,7 @@ if len(csv_files) < 3:
 timestamps = [ts for ts, _ in csv_files]
 file_map = {ts: path for ts, path in csv_files}
 
-# Extract readable time only
+# Convert filename timestamp → HH:MM
 def short_ts(ts):
     return ts.split("_")[-1].replace("-", ":")
 
@@ -72,15 +72,15 @@ if not required_cols.issubset(df1.columns):
 # PREPARE COMPARISON DATA
 # =====================================
 df1 = df1[["Stock", "Strike", "Max_Pain", "Stock_LTP"]].rename(
-    columns={"Max_Pain": t1_label}
+    columns={"Max_Pain": f"Max_Pain_{t1}"}
 )
 
 df2 = df2[["Stock", "Strike", "Max_Pain"]].rename(
-    columns={"Max_Pain": t2_label}
+    columns={"Max_Pain": f"Max_Pain_{t2}"}
 )
 
 df3 = df3[["Stock", "Strike", "Max_Pain"]].rename(
-    columns={"Max_Pain": t3_label}
+    columns={"Max_Pain": f"Max_Pain_{t3}"}
 )
 
 compare_df = (
@@ -89,7 +89,14 @@ compare_df = (
     .merge(df3, on=["Stock", "Strike"], how="inner")
 )
 
-# Delta calculations
+# 🔥 FIX: rename AFTER merge (this was the bug)
+compare_df = compare_df.rename(columns={
+    f"Max_Pain_{t1}": t1_label,
+    f"Max_Pain_{t2}": t2_label,
+    f"Max_Pain_{t3}": t3_label,
+})
+
+# Delta columns
 compare_df["Δ MP 1"] = compare_df[t1_label] - compare_df[t2_label]
 compare_df["Δ MP 2"] = compare_df[t2_label] - compare_df[t3_label]
 
