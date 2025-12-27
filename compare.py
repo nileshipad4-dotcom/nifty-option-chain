@@ -140,7 +140,7 @@ def highlight_rows(data):
             (data["Stock"] == stock) & data["Strike"].notna()
         ].sort_values("Strike")
 
-        if len(sdf) < 9:   # need at least 4+1+4 rows
+        if len(sdf) < 9:
             continue
 
         # ATM highlight
@@ -156,26 +156,34 @@ def highlight_rows(data):
         # Max Pain (TS1)
         styles.loc[sdf[t1_lbl].idxmin()] = "background-color:#8B0000;color:white"
 
-        # ---------------------------------
-        # Σ Δ MP (TS1–TS2) TREND CHECK
-        # IGNORE TOP 4 & BOTTOM 4
-        # ---------------------------------
+        # =============================
+        # TREND CHECK SOURCE
+        # ignore top 4 & bottom 4
+        # =============================
         mid = sdf.iloc[4:-4]
         vals = mid[sum_12_col].astype(float).values
         diffs = np.diff(vals)
 
-        if len(diffs) > 0:
-            inc_ratio = np.sum(diffs > 0) / len(diffs)
-            dec_ratio = np.sum(diffs < 0) / len(diffs)
+        if len(diffs) == 0:
+            continue
 
-            if inc_ratio >= 0.9:
-                styles.loc[sdf.index, sum_12_col] = (
-                    "background-color:#8B0000;color:white"
-                )
-            elif dec_ratio >= 0.9:
-                styles.loc[sdf.index, sum_12_col] = (
-                    "background-color:#004d00;color:white"
-                )
+        inc_ratio = np.sum(diffs > 0) / len(diffs)
+        dec_ratio = np.sum(diffs < 0) / len(diffs)
+
+        if inc_ratio >= 0.9:
+            color = "background-color:#8B0000;color:white"
+        elif dec_ratio >= 0.9:
+            color = "background-color:#004d00;color:white"
+        else:
+            continue
+
+        # Σ Δ MP → all rows
+        styles.loc[sdf.index, sum_12_col] = color
+
+        # Δ MP columns → exclude only top & bottom row
+        inner_idx = sdf.index[1:-1]
+        styles.loc[inner_idx, delta_12] = color
+        styles.loc[inner_idx, delta_23] = color
 
     return styles
 
