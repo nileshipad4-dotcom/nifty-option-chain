@@ -89,10 +89,16 @@ df[sum_23_col] = np.nan
 for stock, sdf in df.sort_values("Strike").groupby("Stock"):
     idx = sdf.index
     df.loc[idx, sum_12_col] = (
-        sdf[delta_12].rolling(7, center=True, min_periods=1).sum().values
+        sdf[delta_12]
+        .rolling(window=7, center=True, min_periods=1)
+        .sum()
+        .values
     )
     df.loc[idx, sum_23_col] = (
-        sdf[delta_23].rolling(7, center=True, min_periods=1).sum().values
+        sdf[delta_23]
+        .rolling(window=7, center=True, min_periods=1)
+        .sum()
+        .values
     )
 
 # =====================================
@@ -134,7 +140,7 @@ def highlight_rows(data):
             (data["Stock"] == stock) & data["Strike"].notna()
         ].sort_values("Strike")
 
-        if len(sdf) < 3:
+        if len(sdf) < 7:
             continue
 
         # ATM highlight
@@ -150,10 +156,12 @@ def highlight_rows(data):
         # Max Pain (TS1)
         styles.loc[sdf[t1_lbl].idxmin()] = "background-color:#8B0000;color:white"
 
-        # ============================
-        # Σ Δ MP (TS1-TS2) TREND CHECK
-        # ============================
-        vals = sdf[sum_12_col].astype(float).values
+        # ---------------------------------
+        # Σ Δ MP (TS1-TS2) 90% INCREASING
+        # (IGNORE TOP 3 & BOTTOM 3 STRIKES)
+        # ---------------------------------
+        mid = sdf.iloc[3:-3]
+        vals = mid[sum_12_col].astype(float).values
         diffs = np.diff(vals)
 
         if len(diffs) > 0:
