@@ -136,10 +136,9 @@ def highlight(df):
 # =====================================
 st.subheader(f"Comparison: {t1_lbl} vs {t2_lbl} vs {t3_lbl}")
 
-styled = df.style.apply(highlight, axis=None)
-
 st.dataframe(
-    styled.rename(columns=display_columns),
+    df.rename(columns=display_columns)
+      .style.apply(highlight, axis=None),
     use_container_width=True
 )
 
