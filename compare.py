@@ -58,14 +58,24 @@ df1 = pd.read_csv(file_map[t1])
 df2 = pd.read_csv(file_map[t2])
 df3 = pd.read_csv(file_map[t3])
 
-df1 = df1[["Stock","Strike","Max_Pain","Stock_LTP"]].rename(columns={"Max_Pain": t1_lbl})
-df2 = df2[["Stock","Strike","Max_Pain"]].rename(columns={"Max_Pain": t2_lbl})
-df3 = df3[["Stock","Strike","Max_Pain"]].rename(columns={"Max_Pain": t3_lbl})
+df1 = df1[["Stock","Strike","Max_Pain","Stock_LTP"]].rename(
+    columns={"Max_Pain": t1_lbl}
+)
+df2 = df2[["Stock","Strike","Max_Pain"]].rename(
+    columns={"Max_Pain": t2_lbl}
+)
+df3 = df3[["Stock","Strike","Max_Pain"]].rename(
+    columns={"Max_Pain": t3_lbl}
+)
 
 # =====================================
 # MERGE
 # =====================================
-df = df1.merge(df2, on=["Stock","Strike"]).merge(df3, on=["Stock","Strike"])
+df = (
+    df1
+    .merge(df2, on=["Stock","Strike"])
+    .merge(df3, on=["Stock","Strike"])
+)
 
 # =====================================
 # CALCULATIONS
@@ -107,14 +117,16 @@ display_columns = {
     t3_lbl: t3_lbl,
 }
 
+df_display = df.rename(columns=display_columns)
+
 # =====================================
 # HIGHLIGHTING
 # =====================================
-def highlight(df):
-    styles = pd.DataFrame("", index=df.index, columns=df.columns)
+def highlight(data):
+    styles = pd.DataFrame("", index=data.index, columns=data.columns)
 
-    for stock in df["Stock"].unique():
-        sdf = df[df["Stock"] == stock].sort_values("Strike")
+    for stock in data["Stock"].unique():
+        sdf = data[data["Stock"] == stock].sort_values("Strike")
         if sdf.empty:
             continue
 
@@ -137,8 +149,7 @@ def highlight(df):
 st.subheader(f"Comparison: {t1_lbl} vs {t2_lbl} vs {t3_lbl}")
 
 st.dataframe(
-    df.rename(columns=display_columns)
-      .style.apply(highlight, axis=None),
+    df_display.style.apply(highlight, axis=None),
     use_container_width=True
 )
 
@@ -147,7 +158,7 @@ st.dataframe(
 # =====================================
 st.download_button(
     "⬇️ Download CSV",
-    df.rename(columns=display_columns).to_csv(index=False),
+    df_display.to_csv(index=False),
     f"max_pain_{t1_lbl}_{t2_lbl}_{t3_lbl}.csv",
     "text/csv"
 )
