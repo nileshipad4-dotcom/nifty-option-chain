@@ -97,14 +97,18 @@ df[delta_12] = df[t1_lbl] - df[t2_lbl]
 df[delta_23] = df[t2_lbl] - df[t3_lbl]
 
 # =====================================
-# FORMAT
+# NUMBER FORMATTING
 # =====================================
-df["Strike"] = df["Strike"].astype(int)
-df["Stock_LTP"] = df["Stock_LTP"].astype(float).round(1)
+# All numeric columns except Stock_LTP → integers
+num_cols = df.columns.drop(["Stock", "Stock_LTP"])
+for col in num_cols:
+    df[col] = pd.to_numeric(df[col], errors="coerce").round(0)
 
-# Move Stock_LTP to last
-stock_ltp = df.pop("Stock_LTP")
-df["Stock_LTP"] = stock_ltp
+# Stock LTP → 2 decimals
+df["Stock_LTP"] = (
+    pd.to_numeric(df["Stock_LTP"], errors="coerce")
+    .round(2)
+)
 
 # =====================================
 # FINAL COLUMN ORDER
@@ -139,7 +143,10 @@ def highlight_rows(data):
     styles = pd.DataFrame("", index=data.index, columns=data.columns)
 
     for stock in data["Stock"].dropna().unique():
-        sdf = data[(data["Stock"] == stock) & data["Strike"].notna()].sort_values("Strike")
+        sdf = data[
+            (data["Stock"] == stock) & data["Strike"].notna()
+        ].sort_values("Strike")
+
         if sdf.empty:
             continue
 
