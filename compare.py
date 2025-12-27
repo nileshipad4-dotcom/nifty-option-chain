@@ -78,6 +78,33 @@ df = (
 df[delta_12] = df[t1_lbl] - df[t2_lbl]
 df[delta_23] = df[t2_lbl] - df[t3_lbl]
 
+# =====================================
+# ROLLING SUMS (±3 STRIKES, PER STOCK)
+# =====================================
+sum_12_col = f"Σ {delta_12}"
+sum_23_col = f"Σ {delta_23}"
+
+df[sum_12_col] = np.nan
+df[sum_23_col] = np.nan
+
+for stock, sdf in df.sort_values("Strike").groupby("Stock"):
+    idx = sdf.index
+    df.loc[idx, sum_12_col] = (
+        sdf[delta_12]
+        .rolling(window=7, center=True, min_periods=1)
+        .sum()
+        .values
+    )
+    df.loc[idx, sum_23_col] = (
+        sdf[delta_23]
+        .rolling(window=7, center=True, min_periods=1)
+        .sum()
+        .values
+    )
+
+# =====================================
+# FINAL COLUMN ORDER
+# =====================================
 df = df[
     [
         "Stock",
@@ -87,12 +114,14 @@ df = df[
         delta_12,
         t3_lbl,
         delta_23,
+        sum_12_col,
+        sum_23_col,
         "Stock_LTP",
     ]
 ]
 
 # =====================================
-# INSERT BLANK ROWS
+# INSERT WHITE BLANK ROWS
 # =====================================
 rows = []
 for stock, sdf in df.sort_values(["Stock", "Strike"]).groupby("Stock"):
@@ -112,10 +141,9 @@ def highlight_rows(data):
             (data["Stock"] == stock) & data["Strike"].notna()
         ].sort_values("Strike")
 
-        if len(sdf) < 3:
+        if sdf.empty:
             continue
 
-        # ---- ATM + Max Pain highlight (existing)
         ltp = float(sdf["Stock_LTP"].iloc[0])
         strikes = sdf["Strike"].values
 
@@ -126,22 +154,6 @@ def highlight_rows(data):
                 break
 
         styles.loc[sdf[t1_lbl].idxmin()] = "background-color:#8B0000;color:white"
-
-        # ---- NEW: Delta MP monotonic coloring
-        for delta_col, asc_color, desc_color in [
-            (delta_12, "#8B0000", "#004d00"),
-            (delta_23, "#8B0000", "#004d00"),
-        ]:
-            vals = sdf[delta_col].astype(float).values
-            diffs = np.diff(vals)
-
-            asc_ratio = np.sum(diffs > 0) / len(diffs)
-            desc_ratio = np.sum(diffs < 0) / len(diffs)
-
-            if asc_ratio >= 0.9:
-                styles.loc[sdf.index, delta_col] = f"background-color:{asc_color};color:white"
-            elif desc_ratio >= 0.9:
-                styles.loc[sdf.index, delta_col] = f"background-color:{desc_color};color:white"
 
     return styles
 
