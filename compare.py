@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import os
-import numpy as np
 
 # =====================================
 # STREAMLIT CONFIG
@@ -113,15 +112,15 @@ df = df[
 ]
 
 # =====================================
-# INSERT WHITE BLANK ROWS
+# INSERT BLANK WHITE ROWS (FIXED FOR REAL)
 # =====================================
 rows = []
 for stock, sdf in df.sort_values(["Stock", "Strike"]).groupby("Stock"):
     rows.append(sdf)
-    blank = {col: np.nan for col in df.columns}
-    blank["Stock"] = ""   # force empty string instead of None
-    rows.append(pd.DataFrame([blank]))
 
+    # ALL empty strings — no NaN, no None
+    blank = {col: "" for col in df.columns}
+    rows.append(pd.DataFrame([blank]))
 
 final_df = pd.concat(rows, ignore_index=True)
 
@@ -131,16 +130,19 @@ final_df = pd.concat(rows, ignore_index=True)
 def highlight_rows(data):
     styles = pd.DataFrame("", index=data.index, columns=data.columns)
 
-    for stock in data["Stock"].dropna().unique():
+    for stock in data["Stock"].unique():
+        if not stock:
+            continue
+
         sdf = data[
-            (data["Stock"] == stock) & data["Strike"].notna()
+            (data["Stock"] == stock) & (data["Strike"] != "")
         ].sort_values("Strike")
 
         if sdf.empty:
             continue
 
         ltp = float(sdf["Stock_LTP"].iloc[0])
-        strikes = sdf["Strike"].values
+        strikes = sdf["Strike"].astype(float).values
 
         for i in range(len(strikes) - 1):
             if strikes[i] <= ltp <= strikes[i + 1]:
@@ -148,18 +150,20 @@ def highlight_rows(data):
                 styles.loc[sdf.index[i + 1]] = "background-color:#003366;color:white"
                 break
 
-        styles.loc[sdf[t1_lbl].idxmin()] = "background-color:#8B0000;color:white"
+        styles.loc[sdf[t1_lbl].astype(float).idxmin()] = (
+            "background-color:#8B0000;color:white"
+        )
 
     return styles
 
 # =====================================
-# DISPLAY FORMATTERS (SAFE)
+# DISPLAY FORMATTERS
 # =====================================
 formatters = {}
 for col in final_df.columns:
     if col == "Stock_LTP":
         formatters[col] = "{:.2f}"
-    elif col != "Stock":
+    elif col not in ["Stock"]:
         formatters[col] = "{:.0f}"
 
 # =====================================
