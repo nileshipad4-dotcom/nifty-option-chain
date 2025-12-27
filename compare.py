@@ -140,7 +140,7 @@ def highlight_rows(data):
             (data["Stock"] == stock) & data["Strike"].notna()
         ].sort_values("Strike")
 
-        if len(sdf) < 7:
+        if len(sdf) < 9:   # need at least 4+1+4 rows
             continue
 
         # ATM highlight
@@ -157,18 +157,24 @@ def highlight_rows(data):
         styles.loc[sdf[t1_lbl].idxmin()] = "background-color:#8B0000;color:white"
 
         # ---------------------------------
-        # Σ Δ MP (TS1-TS2) 90% INCREASING
-        # (IGNORE TOP 3 & BOTTOM 3 STRIKES)
+        # Σ Δ MP (TS1–TS2) TREND CHECK
+        # IGNORE TOP 4 & BOTTOM 4
         # ---------------------------------
-        mid = sdf.iloc[3:-3]
+        mid = sdf.iloc[4:-4]
         vals = mid[sum_12_col].astype(float).values
         diffs = np.diff(vals)
 
         if len(diffs) > 0:
             inc_ratio = np.sum(diffs > 0) / len(diffs)
+            dec_ratio = np.sum(diffs < 0) / len(diffs)
+
             if inc_ratio >= 0.9:
                 styles.loc[sdf.index, sum_12_col] = (
                     "background-color:#8B0000;color:white"
+                )
+            elif dec_ratio >= 0.9:
+                styles.loc[sdf.index, sum_12_col] = (
+                    "background-color:#004d00;color:white"
                 )
 
     return styles
