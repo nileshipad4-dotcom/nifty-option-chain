@@ -118,7 +118,10 @@ df = df[
 rows = []
 for stock, sdf in df.sort_values(["Stock", "Strike"]).groupby("Stock"):
     rows.append(sdf)
-    rows.append(pd.DataFrame([{col: np.nan for col in df.columns}]))
+    blank = {col: np.nan for col in df.columns}
+    blank["Stock"] = ""   # force empty string instead of None
+    rows.append(pd.DataFrame([blank]))
+
 
 final_df = pd.concat(rows, ignore_index=True)
 
