@@ -27,8 +27,8 @@ def load_csv_files():
 
 csv_files = load_csv_files()
 
-if len(csv_files) < 2:
-    st.error("Need at least 2 CSV files to compare.")
+if len(csv_files) < 3:
+    st.error("Need at least 3 CSV files to compare.")
     st.stop()
 
 timestamps = [ts for ts, _ in csv_files]
@@ -37,42 +37,63 @@ file_map = {ts: path for ts, path in csv_files}
 # =====================================
 # DROPDOWNS
 # =====================================
-col1, col2 = st.columns(2)
+c1, c2, c3 = st.columns(3)
 
-with col1:
-    t1 = st.selectbox("Select Timestamp 1 (Latest)", timestamps, index=0)
+with c1:
+    t1 = st.selectbox("Timestamp 1 (Latest)", timestamps, index=0)
 
-with col2:
-    t2 = st.selectbox("Select Timestamp 2 (Older)", timestamps, index=1)
+with c2:
+    t2 = st.selectbox("Timestamp 2", timestamps, index=1)
+
+with c3:
+    t3 = st.selectbox("Timestamp 3", timestamps, index=2)
 
 # =====================================
 # LOAD DATA
 # =====================================
 df1 = pd.read_csv(file_map[t1])
 df2 = pd.read_csv(file_map[t2])
+df3 = pd.read_csv(file_map[t3])
 
 required_cols = {"Stock", "Strike", "Max_Pain", "Stock_LTP"}
-if not required_cols.issubset(df1.columns) or not required_cols.issubset(df2.columns):
+if not (
+    required_cols.issubset(df1.columns)
+    and required_cols.issubset(df2.columns)
+    and required_cols.issubset(df3.columns)
+):
     st.error("CSV format mismatch.")
     st.stop()
 
 # =====================================
 # PREPARE COMPARISON DATA
 # =====================================
-df1 = (
-    df1[["Stock", "Strike", "Max_Pain", "Stock_LTP"]]
-    .rename(columns={"Max_Pain": f"Max_Pain_{t1}"})
+df1 = df1[["Stock", "Strike", "Max_Pain", "Stock_LTP"]].rename(
+    columns={"Max_Pain": f"MP_{t1}"}
 )
 
-df2 = (
-    df2[["Stock", "Strike", "Max_Pain"]]
-    .rename(columns={"Max_Pain": f"Max_Pain_{t2}"})
+df2 = df2[["Stock", "Strike", "Max_Pain"]].rename(
+    columns={"Max_Pain": f"MP_{t2}"}
 )
 
-compare_df = pd.merge(df1, df2, on=["Stock", "Strike"], how="inner")
+df3 = df3[["Stock", "Strike", "Max_Pain"]].rename(
+    columns={"Max_Pain": f"MP_{t3}"}
+)
 
-compare_df["Delta_Max_Pain"] = (
-    compare_df[f"Max_Pain_{t1}"] - compare_df[f"Max_Pain_{t2}"]
+compare_df = (
+    df1
+    .merge(df2, on=["Stock", "Strike"], how="inner")
+    .merge(df3, on=["Stock", "Strike"], how="inner")
+)
+
+# =====================================
+# CALCULATIONS
+# =====================================
+compare_df["Δ MP (TS1-TS2)"] = (
+    compare_df[f"MP_{t1}"] - compare_df[f"MP_{t2}"]
+)
+
+compare_df["Δ MP (TS2-TS3)"] = (
+    compare_df[f"MP_{t2}"] - compare_df[f"MP_{t3}"]
 )
 
 # =====================================
@@ -128,8 +149,8 @@ def highlight_rows(df):
                 above_idx = sdf.index[i + 1]
                 break
 
-        # Max Pain based on latest timestamp
-        max_pain_idx = sdf[f"Max_Pain_{t1}"].idxmin()
+        # 🔴 Max Pain based on Timestamp 1
+        max_pain_idx = sdf[f"MP_{t1}"].idxmin()
 
         if below_idx is not None:
             styles.loc[below_idx] = "background-color: #003366; color: white"
@@ -138,14 +159,13 @@ def highlight_rows(df):
 
         styles.loc[max_pain_idx] = "background-color: #8B0000; color: white"
 
-    # Spacer rows
     styles.loc[df["_spacer"]] = "background-color: white"
     return styles
 
 # =====================================
 # DISPLAY
 # =====================================
-st.subheader(f"Comparison: {t1} (Latest) vs {t2} (Older)")
+st.subheader(f"Comparison: {t1} vs {t2} vs {t3}")
 
 st.markdown(
     """
@@ -169,6 +189,6 @@ st.dataframe(styled_df, use_container_width=True)
 st.download_button(
     "⬇️ Download Comparison CSV",
     final_df.drop(columns=["_spacer"]).to_csv(index=False),
-    f"max_pain_comparison_{t1}_vs_{t2}.csv",
+    f"max_pain_comparison_{t1}_vs_{t2}_vs_{t3}.csv",
     "text/csv",
 )
