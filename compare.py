@@ -11,7 +11,7 @@ st.title("📊 Max Pain Comparison Dashboard")
 DATA_DIR = "data"
 
 # =====================================
-# LOAD CSV FILES (LATEST → OLDEST)
+# LOAD CSV FILES
 # =====================================
 def load_csv_files():
     files = []
@@ -28,7 +28,7 @@ def load_csv_files():
 csv_files = load_csv_files()
 
 if len(csv_files) < 3:
-    st.error("Need at least 3 CSV files to compare.")
+    st.error("Need at least 3 CSV files.")
     st.stop()
 
 timestamps = [ts for ts, _ in csv_files]
@@ -43,17 +43,15 @@ def short_ts(ts):
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    t1 = st.selectbox("Select Timestamp 1 (Latest)", timestamps, index=0)
-
+    t1 = st.selectbox("Timestamp 1 (Latest)", timestamps, 0)
 with col2:
-    t2 = st.selectbox("Select Timestamp 2 (Middle)", timestamps, index=1)
-
+    t2 = st.selectbox("Timestamp 2", timestamps, 1)
 with col3:
-    t3 = st.selectbox("Select Timestamp 3 (Older)", timestamps, index=2)
+    t3 = st.selectbox("Timestamp 3", timestamps, 2)
 
-t1_label = short_ts(t1)
-t2_label = short_ts(t2)
-t3_label = short_ts(t3)
+t1_lbl = short_ts(t1)
+t2_lbl = short_ts(t2)
+t3_lbl = short_ts(t3)
 
 # =====================================
 # LOAD DATA
@@ -62,69 +60,61 @@ df1 = pd.read_csv(file_map[t1])
 df2 = pd.read_csv(file_map[t2])
 df3 = pd.read_csv(file_map[t3])
 
-required_cols = {"Stock", "Strike", "Max_Pain", "Stock_LTP"}
-if not required_cols.issubset(df1.columns):
-    st.error("CSV format mismatch.")
-    st.stop()
-
 # =====================================
-# PREPARE COMPARISON DATA
+# PREPARE DATA
 # =====================================
-df1 = df1[["Stock", "Strike", "Max_Pain", "Stock_LTP"]].rename(
-    columns={"Max_Pain": t1_label}
+df1 = df1[["Stock","Strike","Max_Pain","Stock_LTP"]].rename(
+    columns={"Max_Pain": t1_lbl}
 )
 
-df2 = df2[["Stock", "Strike", "Max_Pain"]].rename(
-    columns={"Max_Pain": t2_label}
+df2 = df2[["Stock","Strike","Max_Pain"]].rename(
+    columns={"Max_Pain": t2_lbl}
 )
 
-df3 = df3[["Stock", "Strike", "Max_Pain"]].rename(
-    columns={"Max_Pain": t3_label}
+df3 = df3[["Stock","Strike","Max_Pain"]].rename(
+    columns={"Max_Pain": t3_lbl}
 )
 
-compare_df = (
+df = (
     df1
-    .merge(df2, on=["Stock", "Strike"], how="inner")
-    .merge(df3, on=["Stock", "Strike"], how="inner")
+    .merge(df2, on=["Stock","Strike"])
+    .merge(df3, on=["Stock","Strike"])
 )
 
-# Delta calculations
-compare_df["Δ MP 1"] = compare_df[t1_label] - compare_df[t2_label]
-compare_df["Δ MP 2"] = compare_df[t2_label] - compare_df[t3_label]
+# Calculations
+df["Δ MP 1"] = df[t1_lbl] - df[t2_lbl]
+df["Δ MP 2"] = df[t2_lbl] - df[t3_lbl]
+
+# Duplicate TS2 column (explicit copy)
+df[f"{t2_lbl} (ref)"] = df[t2_lbl]
 
 # =====================================
-# FORMAT NUMBERS
+# FORMAT
 # =====================================
-compare_df["Strike"] = compare_df["Strike"].astype(int)
-
-compare_df["Stock_LTP"] = (
-    compare_df["Stock_LTP"]
-    .astype(float)
-    .round(1)
-    .map(lambda x: f"{x:.1f}")
-)
+df["Strike"] = df["Strike"].astype(int)
+df["Stock_LTP"] = df["Stock_LTP"].astype(float).round(1)
 
 # =====================================
-# COLUMN ORDER (EXACT AS REQUESTED)
+# FINAL COLUMN ORDER (EXACT)
 # =====================================
-compare_df = compare_df[
+df = df[
     [
         "Stock",
         "Strike",
-        t1_label,
-        t2_label,
+        t1_lbl,
+        t2_lbl,
         "Δ MP 1",
-        t2_label,
-        t3_label,
+        f"{t2_lbl} (ref)",
+        t3_lbl,
         "Δ MP 2",
         "Stock_LTP",
     ]
 ]
 
 # =====================================
-# HIGHLIGHTING LOGIC
+# HIGHLIGHTING
 # =====================================
-def highlight_rows(df):
+def highlight(df):
     styles = pd.DataFrame("", index=df.index, columns=df.columns)
 
     for stock in df["Stock"].unique():
@@ -132,42 +122,32 @@ def highlight_rows(df):
         if sdf.empty:
             continue
 
-        ltp = float(sdf["Stock_LTP"].iloc[0])
+        ltp = sdf["Stock_LTP"].iloc[0]
         strikes = sdf["Strike"].values
 
-        below_idx = above_idx = None
         for i in range(len(strikes) - 1):
             if strikes[i] <= ltp <= strikes[i + 1]:
-                below_idx = sdf.index[i]
-                above_idx = sdf.index[i + 1]
+                styles.loc[sdf.index[i]] = "background-color:#003366;color:white"
+                styles.loc[sdf.index[i+1]] = "background-color:#003366;color:white"
                 break
 
-        max_pain_idx = sdf[t1_label].idxmin()
-
-        if below_idx is not None:
-            styles.loc[below_idx] = "background-color: #003366; color: white"
-        if above_idx is not None:
-            styles.loc[above_idx] = "background-color: #003366; color: white"
-
-        styles.loc[max_pain_idx] = "background-color: #8B0000; color: white"
+        mp_idx = sdf[t1_lbl].idxmin()
+        styles.loc[mp_idx] = "background-color:#8B0000;color:white"
 
     return styles
 
 # =====================================
 # DISPLAY
 # =====================================
-st.subheader(f"Comparison: {t1_label} vs {t2_label} vs {t3_label}")
-
-styled_df = compare_df.style.apply(highlight_rows, axis=None)
-
-st.dataframe(styled_df, use_container_width=True)
+st.subheader(f"Comparison: {t1_lbl} vs {t2_lbl} vs {t3_lbl}")
+st.dataframe(df.style.apply(highlight, axis=None), use_container_width=True)
 
 # =====================================
 # DOWNLOAD
 # =====================================
 st.download_button(
-    "⬇️ Download Comparison CSV",
-    compare_df.to_csv(index=False),
-    f"max_pain_comparison_{t1_label}_vs_{t2_label}_vs_{t3_label}.csv",
+    "⬇️ Download CSV",
+    df.to_csv(index=False),
+    f"max_pain_{t1_lbl}_{t2_lbl}_{t3_lbl}.csv",
     "text/csv"
 )
