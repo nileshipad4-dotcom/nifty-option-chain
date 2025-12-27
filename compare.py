@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import os
+import numpy as np
 
 # =====================================
 # STREAMLIT CONFIG
@@ -68,7 +69,7 @@ if not (
     st.stop()
 
 # =====================================
-# PREPARE DATA (HH:MM HEADERS)
+# PREPARE DATA
 # =====================================
 df1 = df1[["Stock", "Strike", "Max_Pain", "Stock_LTP"]].rename(
     columns={"Max_Pain": t1_lbl}
@@ -87,7 +88,7 @@ df = (
 )
 
 # =====================================
-# DELTA CALCULATIONS (FIXED)
+# DELTA CALCULATIONS
 # =====================================
 delta_12 = f"Δ MP ({t1_lbl}-{t2_lbl})"
 delta_23 = f"Δ MP ({t2_lbl}-{t3_lbl})"
@@ -122,19 +123,14 @@ df = df[
 ]
 
 # =====================================
-# SPACER ROWS
+# INSERT WHITE BLANK ROWS
 # =====================================
 rows = []
 for stock, sdf in df.sort_values(["Stock", "Strike"]).groupby("Stock"):
-    rows.append(sdf.assign(_spacer=False))
-
-    blank = pd.DataFrame([{col: "" for col in df.columns}])
-    blank["Stock"] = stock
-    blank["_spacer"] = True
-    rows.append(blank)
+    rows.append(sdf)
+    rows.append(pd.DataFrame([{col: np.nan for col in df.columns}]))
 
 final_df = pd.concat(rows, ignore_index=True)
-final_df["_spacer"] = final_df["_spacer"].fillna(False)
 
 # =====================================
 # HIGHLIGHTING
@@ -142,8 +138,8 @@ final_df["_spacer"] = final_df["_spacer"].fillna(False)
 def highlight_rows(data):
     styles = pd.DataFrame("", index=data.index, columns=data.columns)
 
-    for stock in data["Stock"].unique():
-        sdf = data[(data["Stock"] == stock) & (~data["_spacer"])].sort_values("Strike")
+    for stock in data["Stock"].dropna().unique():
+        sdf = data[(data["Stock"] == stock) & data["Strike"].notna()].sort_values("Strike")
         if sdf.empty:
             continue
 
@@ -158,7 +154,6 @@ def highlight_rows(data):
 
         styles.loc[sdf[t1_lbl].idxmin()] = "background-color:#8B0000;color:white"
 
-    styles.loc[data["_spacer"]] = "background-color: white"
     return styles
 
 # =====================================
@@ -177,17 +172,17 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-styled = final_df.style.apply(highlight_rows, axis=None)
-styled = styled.hide(axis="columns", subset=["_spacer"])
-
-st.dataframe(styled, use_container_width=True)
+st.dataframe(
+    final_df.style.apply(highlight_rows, axis=None),
+    use_container_width=True,
+)
 
 # =====================================
 # DOWNLOAD
 # =====================================
 st.download_button(
     "⬇️ Download Comparison CSV",
-    final_df.drop(columns=["_spacer"]).to_csv(index=False),
+    final_df.to_csv(index=False),
     f"max_pain_{t1_lbl}_{t2_lbl}_{t3_lbl}.csv",
     "text/csv",
 )
