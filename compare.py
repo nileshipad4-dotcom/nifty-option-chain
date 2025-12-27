@@ -34,7 +34,6 @@ timestamps = [ts for ts, _ in csv_files]
 file_map = dict(csv_files)
 
 def short_ts(ts):
-    # Extract HH:MM
     return ts.split("_")[-1].replace("-", ":")
 
 # =====================================
@@ -69,7 +68,7 @@ if not (
     st.stop()
 
 # =====================================
-# PREPARE DATA
+# PREPARE DATA (HH:MM HEADERS)
 # =====================================
 df1 = df1[["Stock", "Strike", "Max_Pain", "Stock_LTP"]].rename(
     columns={"Max_Pain": t1_lbl}
@@ -88,7 +87,7 @@ df = (
 )
 
 # =====================================
-# DELTAS (TIME-ONLY LABELS)
+# DELTA CALCULATIONS (FIXED)
 # =====================================
 delta_12 = f"Δ MP ({t1_lbl}-{t2_lbl})"
 delta_23 = f"Δ MP ({t2_lbl}-{t3_lbl})"
