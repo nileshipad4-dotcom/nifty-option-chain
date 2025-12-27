@@ -2,9 +2,6 @@ import streamlit as st
 import pandas as pd
 import os
 
-# =====================================
-# STREAMLIT CONFIG
-# =====================================
 st.set_page_config(page_title="Max Pain Comparison", layout="wide")
 st.title("📊 Max Pain Comparison Dashboard")
 
@@ -15,14 +12,10 @@ DATA_DIR = "data"
 # =====================================
 def load_csv_files():
     files = []
-    if not os.path.exists(DATA_DIR):
-        return files
-
     for f in os.listdir(DATA_DIR):
         if f.startswith("option_chain_") and f.endswith(".csv"):
             ts = f.replace("option_chain_", "").replace(".csv", "")
             files.append((ts, os.path.join(DATA_DIR, f)))
-
     return sorted(files, reverse=True)
 
 csv_files = load_csv_files()
@@ -71,17 +64,13 @@ df3 = df3[["Stock","Strike","Max_Pain"]].rename(
 # =====================================
 # MERGE
 # =====================================
-df = (
-    df1
-    .merge(df2, on=["Stock","Strike"])
-    .merge(df3, on=["Stock","Strike"])
-)
+df = df1.merge(df2, on=["Stock","Strike"]).merge(df3, on=["Stock","Strike"])
 
 # =====================================
 # CALCULATIONS
 # =====================================
 df["Δ MP (TS1-TS2)"] = df[t1_lbl] - df[t2_lbl]
-df["MP_TS2_REF"] = df[t2_lbl]
+df[f"{t2_lbl} (ref)"] = df[t2_lbl]
 df["Δ MP (TS2-TS3)"] = df[t2_lbl] - df[t3_lbl]
 
 # =====================================
@@ -91,7 +80,7 @@ df["Strike"] = df["Strike"].astype(int)
 df["Stock_LTP"] = df["Stock_LTP"].astype(float).round(1)
 
 # =====================================
-# COLUMN ORDER (INTERNAL)
+# FINAL COLUMN ORDER
 # =====================================
 df = df[
     [
@@ -100,24 +89,12 @@ df = df[
         t1_lbl,
         t2_lbl,
         "Δ MP (TS1-TS2)",
-        "MP_TS2_REF",
+        f"{t2_lbl} (ref)",
         t3_lbl,
         "Δ MP (TS2-TS3)",
         "Stock_LTP",
     ]
 ]
-
-# =====================================
-# DISPLAY COLUMN NAMES
-# =====================================
-display_columns = {
-    t1_lbl: t1_lbl,
-    t2_lbl: t2_lbl,
-    "MP_TS2_REF": t2_lbl,
-    t3_lbl: t3_lbl,
-}
-
-df_display = df.rename(columns=display_columns)
 
 # =====================================
 # HIGHLIGHTING
@@ -134,9 +111,9 @@ def highlight(data):
         strikes = sdf["Strike"].values
 
         for i in range(len(strikes) - 1):
-            if strikes[i] <= ltp <= strikes[i+1]:
+            if strikes[i] <= ltp <= strikes[i + 1]:
                 styles.loc[sdf.index[i]] = "background-color:#003366;color:white"
-                styles.loc[sdf.index[i+1]] = "background-color:#003366;color:white"
+                styles.loc[sdf.index[i + 1]] = "background-color:#003366;color:white"
                 break
 
         styles.loc[sdf[t1_lbl].idxmin()] = "background-color:#8B0000;color:white"
@@ -149,7 +126,7 @@ def highlight(data):
 st.subheader(f"Comparison: {t1_lbl} vs {t2_lbl} vs {t3_lbl}")
 
 st.dataframe(
-    df_display.style.apply(highlight, axis=None),
+    df.style.apply(highlight, axis=None),
     use_container_width=True
 )
 
@@ -158,7 +135,7 @@ st.dataframe(
 # =====================================
 st.download_button(
     "⬇️ Download CSV",
-    df_display.to_csv(index=False),
+    df.to_csv(index=False),
     f"max_pain_{t1_lbl}_{t2_lbl}_{t3_lbl}.csv",
     "text/csv"
 )
