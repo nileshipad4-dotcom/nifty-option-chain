@@ -52,6 +52,9 @@ t1_lbl = short_ts(t1)
 t2_lbl = short_ts(t2)
 t3_lbl = short_ts(t3)
 
+delta_12 = f"Δ MP ({t1_lbl}-{t2_lbl})"
+delta_23 = f"Δ MP ({t2_lbl}-{t3_lbl})"
+
 # =====================================
 # LOAD DATA
 # =====================================
@@ -59,27 +62,12 @@ df1 = pd.read_csv(file_map[t1])
 df2 = pd.read_csv(file_map[t2])
 df3 = pd.read_csv(file_map[t3])
 
-required_cols = {"Stock", "Strike", "Max_Pain", "Stock_LTP"}
-if not (
-    required_cols.issubset(df1.columns)
-    and required_cols.issubset(df2.columns)
-    and required_cols.issubset(df3.columns)
-):
-    st.error("CSV format mismatch.")
-    st.stop()
-
 # =====================================
 # PREPARE DATA
 # =====================================
-df1 = df1[["Stock", "Strike", "Max_Pain", "Stock_LTP"]].rename(
-    columns={"Max_Pain": t1_lbl}
-)
-df2 = df2[["Stock", "Strike", "Max_Pain"]].rename(
-    columns={"Max_Pain": t2_lbl}
-)
-df3 = df3[["Stock", "Strike", "Max_Pain"]].rename(
-    columns={"Max_Pain": t3_lbl}
-)
+df1 = df1[["Stock", "Strike", "Max_Pain", "Stock_LTP"]].rename(columns={"Max_Pain": t1_lbl})
+df2 = df2[["Stock", "Strike", "Max_Pain"]].rename(columns={"Max_Pain": t2_lbl})
+df3 = df3[["Stock", "Strike", "Max_Pain"]].rename(columns={"Max_Pain": t3_lbl})
 
 df = (
     df1
@@ -87,18 +75,9 @@ df = (
     .merge(df3, on=["Stock", "Strike"])
 )
 
-# =====================================
-# DELTA CALCULATIONS
-# =====================================
-delta_12 = f"Δ MP ({t1_lbl}-{t2_lbl})"
-delta_23 = f"Δ MP ({t2_lbl}-{t3_lbl})"
-
 df[delta_12] = df[t1_lbl] - df[t2_lbl]
 df[delta_23] = df[t2_lbl] - df[t3_lbl]
 
-# =====================================
-# FINAL COLUMN ORDER
-# =====================================
 df = df[
     [
         "Stock",
@@ -113,7 +92,7 @@ df = df[
 ]
 
 # =====================================
-# INSERT WHITE BLANK ROWS
+# INSERT BLANK ROWS
 # =====================================
 rows = []
 for stock, sdf in df.sort_values(["Stock", "Strike"]).groupby("Stock"):
@@ -133,9 +112,10 @@ def highlight_rows(data):
             (data["Stock"] == stock) & data["Strike"].notna()
         ].sort_values("Strike")
 
-        if sdf.empty:
+        if len(sdf) < 3:
             continue
 
+        # ---- ATM + Max Pain highlight (existing)
         ltp = float(sdf["Stock_LTP"].iloc[0])
         strikes = sdf["Strike"].values
 
@@ -147,10 +127,26 @@ def highlight_rows(data):
 
         styles.loc[sdf[t1_lbl].idxmin()] = "background-color:#8B0000;color:white"
 
+        # ---- NEW: Delta MP monotonic coloring
+        for delta_col, asc_color, desc_color in [
+            (delta_12, "#8B0000", "#004d00"),
+            (delta_23, "#8B0000", "#004d00"),
+        ]:
+            vals = sdf[delta_col].astype(float).values
+            diffs = np.diff(vals)
+
+            asc_ratio = np.sum(diffs > 0) / len(diffs)
+            desc_ratio = np.sum(diffs < 0) / len(diffs)
+
+            if asc_ratio >= 0.9:
+                styles.loc[sdf.index, delta_col] = f"background-color:{asc_color};color:white"
+            elif desc_ratio >= 0.9:
+                styles.loc[sdf.index, delta_col] = f"background-color:{desc_color};color:white"
+
     return styles
 
 # =====================================
-# DISPLAY FORMATTERS (SAFE)
+# FORMATTERS
 # =====================================
 formatters = {}
 for col in final_df.columns:
