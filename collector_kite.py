@@ -4,8 +4,14 @@ from datetime import datetime
 import pytz
 import os
 
+# ==================================================
+# TIMEZONE
+# ==================================================
 IST = pytz.timezone("Asia/Kolkata")
 
+# ==================================================
+# CONFIG
+# ==================================================
 API_KEY = "bkgv59vaazn56c42"
 ACCESS_TOKEN = "75hVwfHLJsbOdGw2kUUdONlLtcnu1K7a"
 
@@ -40,7 +46,9 @@ STOCKS = [
     "UNOMINDA","UPL","VEDL","VBL","VOLTAS","WIPRO","YESBANK","ZYDUSLIFE"
 ]
 
-
+# ==================================================
+# DATA DIRECTORY
+# ==================================================
 DATA_DIR = "data"
 os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -49,22 +57,32 @@ if not os.path.exists(PLACEHOLDER_FILE):
     pd.DataFrame(
         columns=[
             "Stock","Expiry","Strike",
-            "CE_LTP","CE_OI","CE_IV",
-            "PE_LTP","PE_OI","PE_IV",
-            "Stock_LTP","timestamp","Max_Pain"
+            "CE_LTP","CE_OI",
+            "PE_LTP","PE_OI",
+            "Stock_LTP","Stock_%_Change",
+            "timestamp","Max_Pain"
         ]
     ).to_csv(PLACEHOLDER_FILE, index=False)
 
+# ==================================================
+# INIT KITE
+# ==================================================
 kite = KiteConnect(api_key=API_KEY)
 kite.set_access_token(ACCESS_TOKEN)
 
 print("[INFO] Loading instruments")
 instruments = pd.DataFrame(kite.instruments("NFO"))
 
+# ==================================================
+# HELPERS
+# ==================================================
 def chunk(lst, size=500):
     for i in range(0, len(lst), size):
         yield lst[i:i + size]
 
+# ==================================================
+# PREPARE OPTION SYMBOLS
+# ==================================================
 print("[INFO] Preparing option chain symbols")
 
 option_map = {}
@@ -86,14 +104,20 @@ for stock in STOCKS:
     option_map[stock] = df
     all_option_symbols.extend("NFO:" + df["tradingsymbol"])
 
+# ==================================================
+# BULK QUOTES
+# ==================================================
 print("[INFO] Fetching option quotes")
 option_quotes = {}
 for batch in chunk(all_option_symbols):
     option_quotes.update(kite.quote(batch))
 
-print("[INFO] Fetching stock LTPs")
+print("[INFO] Fetching stock quotes")
 spot_quotes = kite.quote([f"NSE:{s}" for s in STOCKS])
 
+# ==================================================
+# MAX PAIN
+# ==================================================
 def compute_max_pain(df):
     df = df.fillna(0)
 
@@ -116,6 +140,9 @@ def compute_max_pain(df):
     df["Max_Pain"] = mp
     return df
 
+# ==================================================
+# PROCESS
+# ==================================================
 print("[INFO] Processing stocks")
 
 all_data = []
@@ -123,7 +150,15 @@ now_ts = datetime.now(IST).strftime("%Y-%m-%d %H:%M")
 
 for stock, df in option_map.items():
     rows = []
-    stock_ltp = spot_quotes.get(f"NSE:{stock}", {}).get("last_price")
+
+    spot = spot_quotes.get(f"NSE:{stock}", {})
+    stock_ltp = spot.get("last_price")
+    prev_close = spot.get("ohlc", {}).get("close")
+
+    pct_change = (
+        round(((stock_ltp - prev_close) / prev_close) * 100, 3)
+        if stock_ltp and prev_close else None
+    )
 
     for strike in sorted(df["strike"].unique()):
         ce = df[(df["strike"] == strike) & (df["instrument_type"] == "CE")]
@@ -136,16 +171,12 @@ for stock, df in option_map.items():
             "Stock": stock,
             "Expiry": df["expiry"].iloc[0].date(),
             "Strike": strike,
-
             "CE_LTP": ce_q.get("last_price"),
             "CE_OI": ce_q.get("oi"),
-            "CE_IV": ce_q.get("implied_volatility"),
-
             "PE_LTP": pe_q.get("last_price"),
             "PE_OI": pe_q.get("oi"),
-            "PE_IV": pe_q.get("implied_volatility"),
-
             "Stock_LTP": stock_ltp,
+            "Stock_%_Change": pct_change,
             "timestamp": now_ts,
         })
 
@@ -153,6 +184,9 @@ for stock, df in option_map.items():
     stock_df = compute_max_pain(stock_df)
     all_data.append(stock_df)
 
+# ==================================================
+# SAVE
+# ==================================================
 final_df = pd.concat(all_data, ignore_index=True)
 filename = f"{DATA_DIR}/option_chain_{datetime.now(IST).strftime('%Y-%m-%d_%H-%M')}.csv"
 final_df.to_csv(filename, index=False)
