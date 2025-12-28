@@ -52,7 +52,7 @@ t2_lbl = short_ts(t2)
 t3_lbl = short_ts(t3)
 
 # =====================================
-# COLUMN NAMES
+# COLUMN NAMES (ALL WITH TIME)
 # =====================================
 mp1_col = f"MP ({t1_lbl})"
 mp2_col = f"MP ({t2_lbl})"
@@ -83,8 +83,13 @@ df1 = df1[
     }
 )
 
-df2 = df2[["Stock", "Strike", "Max_Pain"]].rename(columns={"Max_Pain": mp2_col})
-df3 = df3[["Stock", "Strike", "Max_Pain"]].rename(columns={"Max_Pain": mp3_col})
+df2 = df2[
+    ["Stock", "Strike", "Max_Pain"]
+].rename(columns={"Max_Pain": mp2_col})
+
+df3 = df3[
+    ["Stock", "Strike", "Max_Pain"]
+].rename(columns={"Max_Pain": mp3_col})
 
 df = (
     df1.merge(df2, on=["Stock", "Strike"])
@@ -128,7 +133,7 @@ df = df[
         mp3_col,
         delta_12,
         delta_23,
-        sum_12_col,      # hidden later
+        sum_12_col,      # internal only
         delta_above_col,
         pct_col,
         "Stock_LTP",
@@ -146,10 +151,11 @@ for stock, sdf in df.sort_values(["Stock", "Strike"]).groupby("Stock"):
 final_df = pd.concat(rows[:-1], ignore_index=True)
 
 # =====================================
-# COMPUTE STOCK SIGNALS (UNCHANGED)
+# COMPUTE STOCK SIGNALS (Σ Δ MP ONLY)
 # =====================================
 def compute_stock_signals(data):
     signals = {}
+
     for stock in data["Stock"].dropna().unique():
         sdf = data[(data["Stock"] == stock) & data["Strike"].notna()].sort_values("Strike")
         if len(sdf) < 9:
@@ -219,10 +225,11 @@ green_df = build_filtered_df(final_df, [s for s, v in stock_signals.items() if v
 red_df   = build_filtered_df(final_df, [s for s, v in stock_signals.items() if v == "red"])
 
 # =====================================
-# HIGHLIGHTING (UNCHANGED)
+# HIGHLIGHTING
 # =====================================
 def highlight_rows(data):
     styles = pd.DataFrame("", index=data.index, columns=data.columns)
+
     for stock in data["Stock"].dropna().unique():
         sdf = data[(data["Stock"] == stock) & data["Strike"].notna()].sort_values("Strike")
         if sdf.empty:
@@ -242,7 +249,12 @@ def highlight_rows(data):
         if stock not in stock_signals:
             continue
 
-        color = "background-color:#8B0000;color:white" if stock_signals[stock] == "red" else "background-color:#004d00;color:white"
+        color = (
+            "background-color:#8B0000;color:white"
+            if stock_signals[stock] == "red"
+            else "background-color:#004d00;color:white"
+        )
+
         styles.loc[sdf.index, delta_12] = color
         styles.loc[sdf.index, delta_23] = color
 
@@ -259,8 +271,10 @@ def show(title, df_):
         df_[display_cols]
         .style.apply(highlight_rows, axis=None)
         .format(
-            {c: "{:.3f}" if c == pct_col else "{:.2f}" if c == "Stock_LTP" else "{:.0f}"
-             for c in display_cols if c != "Stock"},
+            {
+                c: "{:.3f}" if c == pct_col else "{:.2f}" if c == "Stock_LTP" else "{:.0f}"
+                for c in display_cols if c != "Stock"
+            },
             na_rep=""
         ),
         use_container_width=True,
