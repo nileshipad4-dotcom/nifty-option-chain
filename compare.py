@@ -55,7 +55,6 @@ t3_lbl = short_ts(t3)
 delta_12 = f"Δ MP ({t1_lbl}-{t2_lbl})"
 delta_23 = f"Δ MP ({t2_lbl}-{t3_lbl})"
 sum_12_col = f"Σ {delta_12}"
-sum_23_col = f"Σ {delta_23}"
 
 # =====================================
 # LOAD DATA
@@ -81,13 +80,11 @@ df[delta_12] = df[t1_lbl] - df[t2_lbl]
 df[delta_23] = df[t2_lbl] - df[t3_lbl]
 
 # =====================================
-# ROLLING SUMS (used ONLY for trend check)
+# ROLLING SUM (ONLY FOR TREND CHECK)
 # =====================================
 df[sum_12_col] = np.nan
-
 for stock, sdf in df.sort_values("Strike").groupby("Stock"):
-    idx = sdf.index
-    df.loc[idx, sum_12_col] = (
+    df.loc[sdf.index, sum_12_col] = (
         sdf[delta_12]
         .rolling(window=7, center=True, min_periods=1)
         .sum()
@@ -122,7 +119,15 @@ for stock, sdf in df.sort_values(["Stock", "Strike"]).groupby("Stock"):
 final_df = pd.concat(rows, ignore_index=True)
 
 # =====================================
-# HIGHLIGHTING
+# SIGNAL STORAGE
+# =====================================
+stock_signals = {}
+
+def stock_anchor(stock):
+    return f"stock-{str(stock).replace(' ', '_')}"
+
+# =====================================
+# HIGHLIGHTING LOGIC
 # =====================================
 def highlight_rows(data):
     styles = pd.DataFrame("", index=data.index, columns=data.columns)
@@ -138,27 +143,23 @@ def highlight_rows(data):
         ltp = float(sdf["Stock_LTP"].iloc[0])
         strikes = sdf["Strike"].values
 
-        # ATM highlight
         atm_idx = None
         for i in range(len(strikes) - 1):
             if strikes[i] <= ltp <= strikes[i + 1]:
+                atm_idx = i + 1
                 styles.loc[sdf.index[i]] = "background-color:#003366;color:white"
                 styles.loc[sdf.index[i + 1]] = "background-color:#003366;color:white"
-                atm_idx = i + 1
                 break
 
         if atm_idx is None:
             continue
 
-        # Max Pain (TS1)
+        # TS1 Max Pain mark
         styles.loc[sdf[t1_lbl].idxmin()] = "background-color:#8B0000;color:white"
 
-        # =============================
-        # EXISTING TREND CHECK (UNCHANGED)
-        # =============================
+        # ---- TREND CHECK ----
         mid = sdf.iloc[4:-4]
-        vals = mid[sum_12_col].astype(float).values
-        diffs = np.diff(vals)
+        diffs = np.diff(mid[sum_12_col].astype(float).values)
 
         if len(diffs) == 0:
             continue
@@ -166,19 +167,17 @@ def highlight_rows(data):
         inc_ratio = np.sum(diffs > 0) / len(diffs)
         dec_ratio = np.sum(diffs < 0) / len(diffs)
 
-        trend_color = None
+        trend = None
         if inc_ratio >= 0.9:
-            trend_color = "red"
+            trend = "red"
         elif dec_ratio >= 0.9:
-            trend_color = "green"
+            trend = "green"
         else:
             continue
 
-        # =============================
-        # ATM ±5 STRIKE ΔMP CONDITION
-        # =============================
-        above = sdf.iloc[atm_idx : atm_idx + 5]
-        below = sdf.iloc[max(atm_idx - 5, 0) : atm_idx]
+        # ---- ATM ±5 STRIKE Δ MP CHECK ----
+        above = sdf.iloc[atm_idx:atm_idx+5]
+        below = sdf.iloc[max(atm_idx-5, 0):atm_idx]
 
         if len(above) < 3 or len(below) < 3:
             continue
@@ -194,9 +193,10 @@ def highlight_rows(data):
         elif above_lt >= 3 and below_gt >= 3:
             signal = "green"
 
-        # BOTH CONDITIONS MUST MATCH
-        if signal is None or signal != trend_color:
+        if signal != trend:
             continue
+
+        stock_signals[stock] = signal
 
         color = (
             "background-color:#8B0000;color:white"
@@ -204,7 +204,6 @@ def highlight_rows(data):
             else "background-color:#004d00;color:white"
         )
 
-        # Highlight ONLY Δ MP columns
         styles.loc[sdf.index, delta_12] = color
         styles.loc[sdf.index, delta_23] = color
 
@@ -213,36 +212,81 @@ def highlight_rows(data):
 # =====================================
 # FORMATTERS
 # =====================================
-formatters = {}
-for col in final_df.columns:
-    if col == "Stock_LTP":
-        formatters[col] = "{:.2f}"
-    elif col != "Stock":
-        formatters[col] = "{:.0f}"
+formatters = {
+    col: "{:.2f}" if col == "Stock_LTP" else "{:.0f}"
+    for col in final_df.columns if col != "Stock"
+}
+
+# =====================================
+# SIGNAL SUMMARY (HTML)
+# =====================================
+def get_signal_html():
+    up = sorted([s for s, v in stock_signals.items() if v == "green"])
+    down = sorted([s for s, v in stock_signals.items() if v == "red"])
+
+    max_len = max(len(up), len(down), 1)
+    up += [""] * (max_len - len(up))
+    down += [""] * (max_len - len(down))
+
+    rows = ""
+    for u, d in zip(up, down):
+        u_link = f'<a href="#{stock_anchor(u)}">{u}</a>' if u else ""
+        d_link = f'<a href="#{stock_anchor(d)}">{d}</a>' if d else ""
+        rows += f"<tr><td>{u_link}</td><td>{d_link}</td></tr>"
+
+    return f"""
+    <table style="width:100%; border-collapse:collapse;">
+        <thead>
+            <tr><th>UP</th><th>DOWN</th></tr>
+        </thead>
+        <tbody>{rows}</tbody>
+    </table>
+    """
+
+# =====================================
+# RENDER MAIN TABLE WITH ANCHORS
+# =====================================
+def render_main_table():
+    styled = (
+        final_df
+        .style
+        .apply(highlight_rows, axis=None)
+        .format(formatters, na_rep="")
+    )
+
+    html = styled.to_html()
+
+    for stock in final_df["Stock"].dropna().unique():
+        html = html.replace(
+            f"<td>{stock}</td>",
+            f'<td id="{stock_anchor(stock)}">{stock}</td>',
+            1
+        )
+
+    st.markdown(html, unsafe_allow_html=True)
 
 # =====================================
 # DISPLAY
 # =====================================
 st.subheader(f"Comparison: {t1_lbl} vs {t2_lbl} vs {t3_lbl}")
 
-st.markdown(
-    """
-    <style>
-    tr:has(td:empty) {
-        height: 16px;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+left, right = st.columns([1, 4], gap="large")
 
-st.dataframe(
-    final_df
-        .style
-        .apply(highlight_rows, axis=None)
-        .format(formatters, na_rep=""),
-    use_container_width=True,
-)
+with left:
+    st.markdown("### 📈 Signals")
+    st.markdown(get_signal_html(), unsafe_allow_html=True)
+
+with right:
+    st.markdown(
+        """
+        <style>
+        table { width:100%; }
+        tr:has(td:empty) { height:16px; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    render_main_table()
 
 # =====================================
 # DOWNLOAD
