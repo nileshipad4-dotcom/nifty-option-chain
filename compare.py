@@ -1,3 +1,4 @@
+# stock OC main
 import streamlit as st
 import pandas as pd
 import os
@@ -80,7 +81,7 @@ df[delta_12] = df[t1_lbl] - df[t2_lbl]
 df[delta_23] = df[t2_lbl] - df[t3_lbl]
 
 # =====================================
-# ROLLING SUM (FOR TREND CHECK ONLY)
+# ROLLING SUM (trend check only)
 # =====================================
 df[sum_12_col] = np.nan
 for stock, sdf in df.sort_values("Strike").groupby("Stock"):
@@ -144,7 +145,6 @@ def compute_stock_signals(data):
         if atm_idx is None:
             continue
 
-        # Trend check
         mid = sdf.iloc[4:-4]
         diffs = np.diff(mid[sum_12_col].astype(float).values)
 
@@ -162,7 +162,6 @@ def compute_stock_signals(data):
         else:
             continue
 
-        # ATM ±5 strike Δ MP check
         above = sdf.iloc[atm_idx:atm_idx + 5]
         below = sdf.iloc[max(atm_idx - 5, 0):atm_idx]
 
@@ -188,7 +187,16 @@ def compute_stock_signals(data):
 stock_signals = compute_stock_signals(final_df)
 
 # =====================================
-# HIGHLIGHTING (RESTORED)
+# FILTERED DATAFRAMES
+# =====================================
+green_stocks = [s for s, v in stock_signals.items() if v == "green"]
+red_stocks   = [s for s, v in stock_signals.items() if v == "red"]
+
+green_df = final_df[final_df["Stock"].isin(green_stocks) | final_df["Stock"].isna()]
+red_df   = final_df[final_df["Stock"].isin(red_stocks) | final_df["Stock"].isna()]
+
+# =====================================
+# HIGHLIGHTING
 # =====================================
 def highlight_rows(data):
     styles = pd.DataFrame("", index=data.index, columns=data.columns)
@@ -204,17 +212,16 @@ def highlight_rows(data):
         ltp = float(sdf["Stock_LTP"].iloc[0])
         strikes = sdf["Strike"].values
 
-        # 🔵 ATM STRIKE PAIR HIGHLIGHT
+        # ATM highlight
         for i in range(len(strikes) - 1):
             if strikes[i] <= ltp <= strikes[i + 1]:
                 styles.loc[sdf.index[i]] = "background-color:#003366;color:white"
                 styles.loc[sdf.index[i + 1]] = "background-color:#003366;color:white"
                 break
 
-        # 🔴 MAX PAIN (TS1) STRIKE
+        # Max Pain (TS1)
         styles.loc[sdf[t1_lbl].idxmin()] = "background-color:#8B0000;color:white"
 
-        # Δ MP SIGNAL HIGHLIGHT
         if stock not in stock_signals:
             continue
 
@@ -238,37 +245,25 @@ formatters = {
 }
 
 # =====================================
-# SIGNAL SUMMARY
-# =====================================
-def get_signal_df():
-    up = sorted([s for s, v in stock_signals.items() if v == "green"])
-    down = sorted([s for s, v in stock_signals.items() if v == "red"])
-
-    max_len = max(len(up), len(down), 1)
-    up += [""] * (max_len - len(up))
-    down += [""] * (max_len - len(down))
-
-    return pd.DataFrame({"UP": up, "DOWN": down})
-
-# =====================================
 # DISPLAY
 # =====================================
-st.subheader(f"Comparison: {t1_lbl} vs {t2_lbl} vs {t3_lbl}")
+st.subheader("🟢 GREEN SIGNAL STOCKS")
+st.dataframe(
+    green_df.style.apply(highlight_rows, axis=None).format(formatters, na_rep=""),
+    use_container_width=True,
+)
 
-left, right = st.columns([1, 4], gap="large")
+st.subheader("🔴 RED SIGNAL STOCKS")
+st.dataframe(
+    red_df.style.apply(highlight_rows, axis=None).format(formatters, na_rep=""),
+    use_container_width=True,
+)
 
-with left:
-    st.markdown("### 📈 Signals")
-    st.dataframe(get_signal_df(), use_container_width=True, hide_index=True)
-
-with right:
-    st.dataframe(
-        final_df
-        .style
-        .apply(highlight_rows, axis=None)
-        .format(formatters, na_rep=""),
-        use_container_width=True,
-    )
+st.subheader(f"📊 ALL STOCKS: {t1_lbl} vs {t2_lbl} vs {t3_lbl}")
+st.dataframe(
+    final_df.style.apply(highlight_rows, axis=None).format(formatters, na_rep=""),
+    use_container_width=True,
+)
 
 # =====================================
 # DOWNLOAD
