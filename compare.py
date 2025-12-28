@@ -52,17 +52,18 @@ t2_lbl = short_ts(t2)
 t3_lbl = short_ts(t3)
 
 # =====================================
-# COLUMN NAMES (ALL WITH TIME)
+# COLUMN NAMES
 # =====================================
 mp1_col = f"MP ({t1_lbl})"
 mp2_col = f"MP ({t2_lbl})"
 mp3_col = f"MP ({t3_lbl})"
 
+pct_col = f"% Ch ({t1_lbl})"
+
 delta_12 = f"Δ MP ({t1_lbl}-{t2_lbl})"
 delta_23 = f"Δ MP ({t2_lbl}-{t3_lbl})"
 sum_12_col = f"Σ {delta_12}"
 delta_above_col = f"ΔΔ MP ({t1_lbl}-{t2_lbl})"
-pct_col = f"% Ch ({t1_lbl})"
 
 # =====================================
 # LOAD DATA
@@ -72,8 +73,11 @@ df2 = pd.read_csv(file_map[t2])
 df3 = pd.read_csv(file_map[t3])
 
 # =====================================
-# PREPARE DATA
+# PREPARE DATA (SAFE FOR OLD CSVs)
 # =====================================
+if "Stock_%_Change" not in df1.columns:
+    df1["Stock_%_Change"] = np.nan
+
 df1 = df1[
     ["Stock", "Strike", "Max_Pain", "Stock_LTP", "Stock_%_Change"]
 ].rename(
@@ -100,7 +104,7 @@ df[delta_12] = df[mp1_col] - df[mp2_col]
 df[delta_23] = df[mp2_col] - df[mp3_col]
 
 # =====================================
-# Σ Δ MP (trend logic only)
+# Σ Δ MP (TREND LOGIC ONLY)
 # =====================================
 df[sum_12_col] = np.nan
 for stock, sdf in df.sort_values("Strike").groupby("Stock"):
@@ -112,7 +116,7 @@ for stock, sdf in df.sort_values("Strike").groupby("Stock"):
     )
 
 # =====================================
-# ΔΔ MP (current − strike above)
+# ΔΔ MP (CURRENT − STRIKE ABOVE)
 # =====================================
 df[delta_above_col] = np.nan
 for stock, sdf in df.sort_values("Strike").groupby("Stock"):
@@ -133,7 +137,7 @@ df = df[
         mp3_col,
         delta_12,
         delta_23,
-        sum_12_col,      # internal only
+        sum_12_col,      # hidden later
         delta_above_col,
         pct_col,
         "Stock_LTP",
@@ -151,11 +155,10 @@ for stock, sdf in df.sort_values(["Stock", "Strike"]).groupby("Stock"):
 final_df = pd.concat(rows[:-1], ignore_index=True)
 
 # =====================================
-# COMPUTE STOCK SIGNALS (Σ Δ MP ONLY)
+# COMPUTE STOCK SIGNALS
 # =====================================
 def compute_stock_signals(data):
     signals = {}
-
     for stock in data["Stock"].dropna().unique():
         sdf = data[(data["Stock"] == stock) & data["Strike"].notna()].sort_values("Strike")
         if len(sdf) < 9:
@@ -229,7 +232,6 @@ red_df   = build_filtered_df(final_df, [s for s, v in stock_signals.items() if v
 # =====================================
 def highlight_rows(data):
     styles = pd.DataFrame("", index=data.index, columns=data.columns)
-
     for stock in data["Stock"].dropna().unique():
         sdf = data[(data["Stock"] == stock) & data["Strike"].notna()].sort_values("Strike")
         if sdf.empty:
@@ -249,19 +251,14 @@ def highlight_rows(data):
         if stock not in stock_signals:
             continue
 
-        color = (
-            "background-color:#8B0000;color:white"
-            if stock_signals[stock] == "red"
-            else "background-color:#004d00;color:white"
-        )
-
+        color = "background-color:#8B0000;color:white" if stock_signals[stock] == "red" else "background-color:#004d00;color:white"
         styles.loc[sdf.index, delta_12] = color
         styles.loc[sdf.index, delta_23] = color
 
     return styles
 
 # =====================================
-# DISPLAY (hide Σ Δ MP)
+# DISPLAY (HIDE Σ Δ MP)
 # =====================================
 display_cols = [c for c in final_df.columns if c != sum_12_col]
 
