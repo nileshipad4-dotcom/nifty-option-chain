@@ -55,7 +55,7 @@ t3_lbl = short_ts(t3)
 
 delta_12 = f"Δ MP ({t1_lbl}-{t2_lbl})"
 delta_23 = f"Δ MP ({t2_lbl}-{t3_lbl})"
-sum_12_col = f"Σ {delta_12}"
+delta_delta_col = "ΔΔ MP 1"
 
 # =====================================
 # LOAD DATA
@@ -81,16 +81,18 @@ df[delta_12] = df[t1_lbl] - df[t2_lbl]
 df[delta_23] = df[t2_lbl] - df[t3_lbl]
 
 # =====================================
-# ROLLING SUM (trend check only)
+# ΔΔ MP 1 (Δ MP difference with strike above)
 # =====================================
-df[sum_12_col] = np.nan
+df[delta_delta_col] = np.nan
+
 for stock, sdf in df.sort_values("Strike").groupby("Stock"):
-    df.loc[sdf.index, sum_12_col] = (
-        sdf[delta_12]
-        .rolling(window=7, center=True, min_periods=1)
-        .sum()
-        .values
-    )
+    idx = sdf.index
+    vals = sdf[delta_12].values
+
+    diff_above = vals - np.roll(vals, -1)
+    diff_above[-1] = np.nan  # no strike above last
+
+    df.loc[idx, delta_delta_col] = diff_above
 
 # =====================================
 # FINAL COLUMN ORDER
@@ -102,15 +104,15 @@ df = df[
         t1_lbl,
         t2_lbl,
         delta_12,
+        delta_delta_col,
         t3_lbl,
         delta_23,
-        sum_12_col,
         "Stock_LTP",
     ]
 ]
 
 # =====================================
-# INSERT BLANK ROWS (MAIN TABLE)
+# INSERT BLANK ROWS
 # =====================================
 rows = []
 for stock, sdf in df.sort_values(["Stock", "Strike"]).groupby("Stock"):
@@ -146,7 +148,7 @@ def compute_stock_signals(data):
             continue
 
         mid = sdf.iloc[4:-4]
-        diffs = np.diff(mid[sum_12_col].astype(float).values)
+        diffs = np.diff(mid[delta_delta_col].astype(float).values)
 
         if len(diffs) == 0:
             continue
@@ -225,17 +227,14 @@ def highlight_rows(data):
         ltp = float(sdf["Stock_LTP"].iloc[0])
         strikes = sdf["Strike"].values
 
-        # ATM strike highlight
         for i in range(len(strikes) - 1):
             if strikes[i] <= ltp <= strikes[i + 1]:
                 styles.loc[sdf.index[i]] = "background-color:#003366;color:white"
                 styles.loc[sdf.index[i + 1]] = "background-color:#003366;color:white"
                 break
 
-        # Max Pain (TS1)
         styles.loc[sdf[t1_lbl].idxmin()] = "background-color:#8B0000;color:white"
 
-        # Δ MP signal highlight
         if stock not in stock_signals:
             continue
 
