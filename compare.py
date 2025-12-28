@@ -93,25 +93,15 @@ df[delta_23] = df[t2_lbl] - df[t3_lbl]
 # =====================================
 # ROLLING SUM (trend check only)
 # =====================================
-# =====================================
-# Δ MP DIFFERENCE WITH STRIKE ABOVE
-# =====================================
 df[sum_12_col] = np.nan
 
 for stock, sdf in df.sort_values("Strike").groupby("Stock"):
-    idx = sdf.index
-
-    # Δ MP (t1 - t2) values
-    vals = sdf[delta_12].astype(float).values
-
-    # current strike Δ MP minus next higher strike Δ MP
-    diff_above = vals - np.roll(vals, -1)
-
-    # last strike has no strike above
-    diff_above[-1] = np.nan
-
-    df.loc[idx, sum_12_col] = diff_above
-
+    df.loc[sdf.index, sum_12_col] = (
+        sdf[delta_12]
+        .rolling(window=7, center=True, min_periods=1)
+        .sum()
+        .values
+    )
 
 # =====================================
 # FINAL COLUMN ORDER
