@@ -129,10 +129,9 @@ df = df[
         "Strike",
         t1_lbl,
         t2_lbl,
-        t3_lbl,
         delta_12,
+        t3_lbl,
         delta_23,
-        # sum_12_col,
         delta_above_col,
         "Stock_LTP",
     ]
