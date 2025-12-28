@@ -119,7 +119,7 @@ for stock, sdf in df.sort_values(["Stock", "Strike"]).groupby("Stock"):
 final_df = pd.concat(rows, ignore_index=True)
 
 # =====================================
-# COMPUTE STOCK SIGNALS (FIXED)
+# COMPUTE STOCK SIGNALS
 # =====================================
 def compute_stock_signals(data):
     signals = {}
@@ -188,19 +188,39 @@ def compute_stock_signals(data):
 stock_signals = compute_stock_signals(final_df)
 
 # =====================================
-# HIGHLIGHTING
+# HIGHLIGHTING (RESTORED)
 # =====================================
 def highlight_rows(data):
     styles = pd.DataFrame("", index=data.index, columns=data.columns)
 
-    for stock, signal in stock_signals.items():
+    for stock in data["Stock"].dropna().unique():
         sdf = data[
             (data["Stock"] == stock) & data["Strike"].notna()
         ].sort_values("Strike")
 
+        if len(sdf) < 2:
+            continue
+
+        ltp = float(sdf["Stock_LTP"].iloc[0])
+        strikes = sdf["Strike"].values
+
+        # 🔵 ATM STRIKE PAIR HIGHLIGHT
+        for i in range(len(strikes) - 1):
+            if strikes[i] <= ltp <= strikes[i + 1]:
+                styles.loc[sdf.index[i]] = "background-color:#003366;color:white"
+                styles.loc[sdf.index[i + 1]] = "background-color:#003366;color:white"
+                break
+
+        # 🔴 MAX PAIN (TS1) STRIKE
+        styles.loc[sdf[t1_lbl].idxmin()] = "background-color:#8B0000;color:white"
+
+        # Δ MP SIGNAL HIGHLIGHT
+        if stock not in stock_signals:
+            continue
+
         color = (
             "background-color:#8B0000;color:white"
-            if signal == "red"
+            if stock_signals[stock] == "red"
             else "background-color:#004d00;color:white"
         )
 
