@@ -130,6 +130,40 @@ for stock, sdf in df.sort_values(["Stock", "Strike"]).groupby("Stock"):
 final_df = pd.concat(rows, ignore_index=True)
 
 # =====================================
+# ATM DIRECTION SIGNAL FUNCTION
+# =====================================
+def atm_direction_signal(sdf, ltp, ts1_col, ts2_col):
+    strikes = sdf["Strike"].values
+
+    atm_idx = None
+    for i in range(len(strikes) - 1):
+        if strikes[i] <= ltp <= strikes[i + 1]:
+            atm_idx = i + 1
+            break
+
+    if atm_idx is None:
+        return None
+
+    above = sdf.iloc[atm_idx : atm_idx + 5]
+    below = sdf.iloc[max(atm_idx - 5, 0) : atm_idx]
+
+    if len(above) < 3 or len(below) < 3:
+        return None
+
+    above_gt = (above[ts1_col] > above[ts2_col]).sum()
+    above_lt = (above[ts1_col] < above[ts2_col]).sum()
+    below_gt = (below[ts1_col] > below[ts2_col]).sum()
+    below_lt = (below[ts1_col] < below[ts2_col]).sum()
+
+    if above_gt >= 3 and below_lt >= 3:
+        return "red"
+
+    if above_lt >= 3 and below_gt >= 3:
+        return "green"
+
+    return None
+
+# =====================================
 # HIGHLIGHTING
 # =====================================
 def highlight_rows(data):
@@ -143,10 +177,10 @@ def highlight_rows(data):
         if len(sdf) < 9:
             continue
 
-        # ATM highlight
         ltp = float(sdf["Stock_LTP"].iloc[0])
         strikes = sdf["Strike"].values
 
+        # ATM highlight
         for i in range(len(strikes) - 1):
             if strikes[i] <= ltp <= strikes[i + 1]:
                 styles.loc[sdf.index[i]] = "background-color:#003366;color:white"
@@ -156,9 +190,22 @@ def highlight_rows(data):
         # Max Pain (TS1)
         styles.loc[sdf[t1_lbl].idxmin()] = "background-color:#8B0000;color:white"
 
+        # ATM-based directional highlight
+        signal = atm_direction_signal(sdf, ltp, t1_lbl, t2_lbl)
+
+        if signal == "red":
+            color = "background-color:#8B0000;color:white"
+        elif signal == "green":
+            color = "background-color:#004d00;color:white"
+        else:
+            color = None
+
+        if color:
+            styles.loc[sdf.index, t1_lbl] = color
+            styles.loc[sdf.index, t2_lbl] = color
+
         # =============================
-        # TREND CHECK SOURCE
-        # ignore top 4 & bottom 4
+        # TREND CHECK SOURCE (existing)
         # =============================
         mid = sdf.iloc[4:-4]
         vals = mid[sum_12_col].astype(float).values
@@ -177,10 +224,7 @@ def highlight_rows(data):
         else:
             continue
 
-        # Σ Δ MP → all rows
         styles.loc[sdf.index, sum_12_col] = color
-
-        # Δ MP columns → exclude only top & bottom row
         inner_idx = sdf.index[1:-1]
         styles.loc[inner_idx, delta_12] = color
         styles.loc[inner_idx, delta_23] = color
