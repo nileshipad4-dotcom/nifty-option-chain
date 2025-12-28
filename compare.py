@@ -87,10 +87,10 @@ df[delta_delta_col] = np.nan
 
 for stock, sdf in df.sort_values("Strike").groupby("Stock"):
     idx = sdf.index
-    vals = sdf[delta_12].values
+    vals = sdf[delta_12].astype(float).values  # FIXED dtype
 
     diff_above = vals - np.roll(vals, -1)
-    diff_above[-1] = np.nan  # no strike above last
+    diff_above[-1] = np.nan  # last strike has no above
 
     df.loc[idx, delta_delta_col] = diff_above
 
