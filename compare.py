@@ -60,6 +60,8 @@ t3_lbl = short_ts(t3)
 delta_12 = f"Δ MP ({t1_lbl}-{t2_lbl})"
 delta_23 = f"Δ MP ({t2_lbl}-{t3_lbl})"
 sum_12_col = f"Σ {delta_12}"
+delta_above_col = f"Δ MP diff (cur - above)"
+
 
 # =====================================
 # LOAD DATA
@@ -104,6 +106,20 @@ for stock, sdf in df.sort_values("Strike").groupby("Stock"):
     )
 
 # =====================================
+# Δ MP DIFFERENCE WITH STRIKE ABOVE
+# =====================================
+df[delta_above_col] = np.nan
+
+for stock, sdf in df.sort_values("Strike").groupby("Stock"):
+    idx = sdf.index
+    vals = sdf[delta_12].astype(float).values
+
+    diff_above = vals - np.roll(vals, -1)
+    diff_above[-1] = np.nan  # no strike above last row
+
+    df.loc[idx, delta_above_col] = diff_above
+
+# =====================================
 # FINAL COLUMN ORDER
 # =====================================
 df = df[
@@ -116,6 +132,7 @@ df = df[
         t3_lbl,
         delta_23,
         sum_12_col,
+        delta_above_col,
         "Stock_LTP",
     ]
 ]
