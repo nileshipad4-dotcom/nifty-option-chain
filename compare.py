@@ -51,6 +51,13 @@ t1_lbl = short_ts(t1)
 t2_lbl = short_ts(t2)
 t3_lbl = short_ts(t3)
 
+# =====================================
+# COLUMN NAMES (ALL WITH TIME)
+# =====================================
+mp1_col = f"MP ({t1_lbl})"
+mp2_col = f"MP ({t2_lbl})"
+mp3_col = f"MP ({t3_lbl})"
+
 delta_12 = f"Δ MP ({t1_lbl}-{t2_lbl})"
 delta_23 = f"Δ MP ({t2_lbl}-{t3_lbl})"
 sum_12_col = f"Σ {delta_12}"
@@ -66,20 +73,20 @@ df3 = pd.read_csv(file_map[t3])
 # =====================================
 # PREPARE DATA
 # =====================================
-df1 = df1[["Stock", "Strike", "Max_Pain", "Stock_LTP"]].rename(columns={"Max_Pain": t1_lbl})
-df2 = df2[["Stock", "Strike", "Max_Pain"]].rename(columns={"Max_Pain": t2_lbl})
-df3 = df3[["Stock", "Strike", "Max_Pain"]].rename(columns={"Max_Pain": t3_lbl})
+df1 = df1[["Stock", "Strike", "Max_Pain", "Stock_LTP"]].rename(columns={"Max_Pain": mp1_col})
+df2 = df2[["Stock", "Strike", "Max_Pain"]].rename(columns={"Max_Pain": mp2_col})
+df3 = df3[["Stock", "Strike", "Max_Pain"]].rename(columns={"Max_Pain": mp3_col})
 
 df = (
     df1.merge(df2, on=["Stock", "Strike"])
        .merge(df3, on=["Stock", "Strike"])
 )
 
-df[delta_12] = df[t1_lbl] - df[t2_lbl]
-df[delta_23] = df[t2_lbl] - df[t3_lbl]
+df[delta_12] = df[mp1_col] - df[mp2_col]
+df[delta_23] = df[mp2_col] - df[mp3_col]
 
 # =====================================
-# Σ Δ MP (USED ONLY FOR TREND LOGIC)
+# Σ Δ MP (trend logic only)
 # =====================================
 df[sum_12_col] = np.nan
 for stock, sdf in df.sort_values("Strike").groupby("Stock"):
@@ -91,29 +98,28 @@ for stock, sdf in df.sort_values("Strike").groupby("Stock"):
     )
 
 # =====================================
-# ΔΔ MP (INDEPENDENT COLUMN)
+# ΔΔ MP (current − strike above)
 # =====================================
 df[delta_above_col] = np.nan
 for stock, sdf in df.sort_values("Strike").groupby("Stock"):
-    idx = sdf.index
     vals = sdf[delta_12].astype(float).values
-    diff_above = vals - np.roll(vals, -1)
-    diff_above[-1] = np.nan
-    df.loc[idx, delta_above_col] = diff_above
+    diff = vals - np.roll(vals, -1)
+    diff[-1] = np.nan
+    df.loc[sdf.index, delta_above_col] = diff
 
 # =====================================
-# FINAL COLUMN ORDER (KEEP Σ Δ MP HERE)
+# FINAL COLUMN ORDER
 # =====================================
 df = df[
     [
         "Stock",
         "Strike",
-        t1_lbl,
-        t2_lbl,
-        t3_lbl,
+        mp1_col,
+        mp2_col,
+        mp3_col,
         delta_12,
         delta_23,
-        sum_12_col,
+        sum_12_col,      # hidden later
         delta_above_col,
         "Stock_LTP",
     ]
@@ -130,7 +136,7 @@ for stock, sdf in df.sort_values(["Stock", "Strike"]).groupby("Stock"):
 final_df = pd.concat(rows[:-1], ignore_index=True)
 
 # =====================================
-# SIGNAL COMPUTATION (USES Σ Δ MP)
+# COMPUTE STOCK SIGNALS (uses Σ Δ MP)
 # =====================================
 def compute_stock_signals(data):
     signals = {}
@@ -190,20 +196,17 @@ stock_signals = compute_stock_signals(final_df)
 # =====================================
 # FILTERED TABLES
 # =====================================
-def build_filtered_df(base_df, stock_list):
+def build_filtered_df(base_df, stocks):
     blocks = []
-    for stock in stock_list:
-        sdf = base_df[base_df["Stock"] == stock]
+    for s in stocks:
+        sdf = base_df[base_df["Stock"] == s]
         if not sdf.empty:
             blocks.append(sdf)
             blocks.append(pd.DataFrame([{col: np.nan for col in base_df.columns}]))
     return pd.concat(blocks[:-1], ignore_index=True) if blocks else base_df.iloc[0:0]
 
-green_stocks = [s for s, v in stock_signals.items() if v == "green"]
-red_stocks = [s for s, v in stock_signals.items() if v == "red"]
-
-green_df = build_filtered_df(final_df, green_stocks)
-red_df = build_filtered_df(final_df, red_stocks)
+green_df = build_filtered_df(final_df, [s for s, v in stock_signals.items() if v == "green"])
+red_df   = build_filtered_df(final_df, [s for s, v in stock_signals.items() if v == "red"])
 
 # =====================================
 # HIGHLIGHTING
@@ -224,7 +227,7 @@ def highlight_rows(data):
                 styles.loc[sdf.index[i + 1]] = "background-color:#003366;color:white"
                 break
 
-        styles.loc[sdf[t1_lbl].idxmin()] = "background-color:#8B0000;color:white"
+        styles.loc[sdf[mp1_col].idxmin()] = "background-color:#8B0000;color:white"
 
         if stock not in stock_signals:
             continue
@@ -236,22 +239,22 @@ def highlight_rows(data):
     return styles
 
 # =====================================
-# DISPLAY (HIDE Σ Δ MP)
+# DISPLAY (hide Σ Δ MP)
 # =====================================
 display_cols = [c for c in final_df.columns if c != sum_12_col]
 
-def show_table(title, df_show):
+def show(title, df_):
     st.subheader(title)
     st.dataframe(
-        df_show[display_cols]
+        df_[display_cols]
         .style.apply(highlight_rows, axis=None)
         .format({c: "{:.2f}" if c == "Stock_LTP" else "{:.0f}" for c in display_cols if c != "Stock"}, na_rep=""),
         use_container_width=True,
     )
 
-show_table(f"🟢 UPTREND ({len(green_stocks)})", green_df)
-show_table(f"🔴 DOWNTREND ({len(red_stocks)})", red_df)
-show_table(f"📊 ALL STOCKS: {t1_lbl} vs {t2_lbl} vs {t3_lbl}", final_df)
+show(f"🟢 UPTREND ({len(green_df['Stock'].dropna().unique())})", green_df)
+show(f"🔴 DOWNTREND ({len(red_df['Stock'].dropna().unique())})", red_df)
+show(f"📊 ALL STOCKS: {t1_lbl} vs {t2_lbl} vs {t3_lbl}", final_df)
 
 # =====================================
 # DOWNLOAD
