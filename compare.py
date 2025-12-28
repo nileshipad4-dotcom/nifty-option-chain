@@ -80,7 +80,7 @@ df[delta_12] = df[t1_lbl] - df[t2_lbl]
 df[delta_23] = df[t2_lbl] - df[t3_lbl]
 
 # =====================================
-# ROLLING SUM (ONLY FOR TREND CHECK)
+# ROLLING SUM (FOR TREND CHECK ONLY)
 # =====================================
 df[sum_12_col] = np.nan
 for stock, sdf in df.sort_values("Strike").groupby("Stock"):
@@ -119,15 +119,10 @@ for stock, sdf in df.sort_values(["Stock", "Strike"]).groupby("Stock"):
 final_df = pd.concat(rows, ignore_index=True)
 
 # =====================================
-# SIGNAL STORAGE
+# COMPUTE STOCK SIGNALS (FIXED)
 # =====================================
-stock_signals = {}
-
-# =====================================
-# HIGHLIGHTING LOGIC
-# =====================================
-def highlight_rows(data):
-    styles = pd.DataFrame("", index=data.index, columns=data.columns)
+def compute_stock_signals(data):
+    signals = {}
 
     for stock in data["Stock"].dropna().unique():
         sdf = data[
@@ -144,14 +139,10 @@ def highlight_rows(data):
         for i in range(len(strikes) - 1):
             if strikes[i] <= ltp <= strikes[i + 1]:
                 atm_idx = i + 1
-                styles.loc[sdf.index[i]] = "background-color:#003366;color:white"
-                styles.loc[sdf.index[i + 1]] = "background-color:#003366;color:white"
                 break
 
         if atm_idx is None:
             continue
-
-        styles.loc[sdf[t1_lbl].idxmin()] = "background-color:#8B0000;color:white"
 
         # Trend check
         mid = sdf.iloc[4:-4]
@@ -172,8 +163,8 @@ def highlight_rows(data):
             continue
 
         # ATM ±5 strike Δ MP check
-        above = sdf.iloc[atm_idx:atm_idx+5]
-        below = sdf.iloc[max(atm_idx-5, 0):atm_idx]
+        above = sdf.iloc[atm_idx:atm_idx + 5]
+        below = sdf.iloc[max(atm_idx - 5, 0):atm_idx]
 
         if len(above) < 3 or len(below) < 3:
             continue
@@ -189,10 +180,23 @@ def highlight_rows(data):
         elif above_lt >= 3 and below_gt >= 3:
             signal = "green"
 
-        if signal != trend:
-            continue
+        if signal == trend:
+            signals[stock] = signal
 
-        stock_signals[stock] = signal
+    return signals
+
+stock_signals = compute_stock_signals(final_df)
+
+# =====================================
+# HIGHLIGHTING
+# =====================================
+def highlight_rows(data):
+    styles = pd.DataFrame("", index=data.index, columns=data.columns)
+
+    for stock, signal in stock_signals.items():
+        sdf = data[
+            (data["Stock"] == stock) & data["Strike"].notna()
+        ].sort_values("Strike")
 
         color = (
             "background-color:#8B0000;color:white"
@@ -214,7 +218,7 @@ formatters = {
 }
 
 # =====================================
-# SIGNAL SUMMARY TABLE
+# SIGNAL SUMMARY
 # =====================================
 def get_signal_df():
     up = sorted([s for s, v in stock_signals.items() if v == "green"])
@@ -235,29 +239,14 @@ left, right = st.columns([1, 4], gap="large")
 
 with left:
     st.markdown("### 📈 Signals")
-    st.dataframe(
-        get_signal_df(),
-        use_container_width=True,
-        hide_index=True
-    )
+    st.dataframe(get_signal_df(), use_container_width=True, hide_index=True)
 
 with right:
-    st.markdown(
-        """
-        <style>
-        tr:has(td:empty) {
-            height: 16px;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
     st.dataframe(
         final_df
-            .style
-            .apply(highlight_rows, axis=None)
-            .format(formatters, na_rep=""),
+        .style
+        .apply(highlight_rows, axis=None)
+        .format(formatters, na_rep=""),
         use_container_width=True,
     )
 
