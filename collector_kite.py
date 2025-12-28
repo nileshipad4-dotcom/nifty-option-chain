@@ -4,51 +4,13 @@ from datetime import datetime
 import pytz
 import os
 
-# ==================================================
-# TIMEZONE
-# ==================================================
 IST = pytz.timezone("Asia/Kolkata")
 
-# ==================================================
-# CONFIG
-# ==================================================
 API_KEY = "bkgv59vaazn56c42"
 ACCESS_TOKEN = "75hVwfHLJsbOdGw2kUUdONlLtcnu1K7a"
 
-STOCKS = [
-    "360ONE","ABB","ABCAPITAL","ADANIENT","ADANIGREEN","ADANIENSOL","ADANIPORTS",
-    "ALKEM","AMBER","AMBUJACEM","ANGELONE","APLAPOLLO","APOLLOHOSP","ASHOKLEY",
-    "ASIANPAINT","ASTRAL","AUROPHARMA","AUBANK","AXISBANK","BAJAJ-AUTO",
-    "BAJAJFINSV","BAJFINANCE","BANDHANBNK","BANKBARODA","BANKINDIA","BDL","BEL",
-    "BHARATFORG","BHARTIARTL","BHEL","BIOCON","BPCL","BRITANNIA","BSE","CAMS",
-    "CANBK","CDSL","CGPOWER","CHOLAFIN","CIPLA","COALINDIA","COFORGE","COLPAL",
-    "CONCOR","CROMPTON","CUMMINSIND","CYIENT","DABUR","DALBHARAT","DELHIVERY",
-    "DIVISLAB","DLF","DMART","DRREDDY","EICHERMOT","ETERNAL","EXIDEIND",
-    "FEDERALBNK","FORTIS","GAIL","GMRAIRPORT","GODREJCP","GODREJPROP","GRASIM",
-    "HAL","HAVELLS","HCLTECH","HDFCAMC","HDFCBANK","HDFCLIFE","HEROMOTOCO",
-    "HFCL","HINDALCO","HINDPETRO","HINDUNILVR","HINDZINC","HUDCO","IEX",
-    "ICICIBANK","ICICIGI","ICICIPRULI","IDFCFIRSTB","IIFL","INDHOTEL",
-    "INDIANB","INDIGO","INDUSTOWER","INFY","INOXWIND","IOC","IRCTC","IRFC",
-    "IREDA","ITC","JINDALSTEL","JIOFIN","JSWENERGY","JSWSTEEL","JUBLFOOD",
-    "KALYANKJIL","KAYNES","KEI","KFINTECH","KPITTECH","KOTAKBANK",
-    "LAURUSLABS","LICHSGFIN","LICI","LODHA","LT","LTIM","LTF","LUPIN","M&M",
-    "MANAPPURAM","MARICO","MARUTI","MAXHEALTH","MAZDOCK","MCX","MFSL",
-    "MPHASIS","MOTHERSON","MUTHOOTFIN","NAUKRI","NATIONALUM","NBCC","NCC",
-    "NESTLEIND","NHPC","NMDC","NTPC","NUVAMA","NYKAA","OBEROIRLTY","OFSS",
-    "OIL","ONGC","PAGEIND","PATANJALI","PAYTM","PERSISTENT","PETRONET",
-    "PFC","PGEL","PHOENIXLTD","PIDILITIND","PIIND","PNB","PNBHOUSING",
-    "POLICYBZR","POLYCAB","POWERGRID","PRESTIGE","RBLBANK","RECLTD",
-    "RELIANCE","RVNL","SAIL","SAMMAANCAP","SBICARD","SBILIFE","SBIN",
-    "SHREECEM","SHRIRAMFIN","SIEMENS","SOLARINDS","SONACOMS","SRF",
-    "SUNPHARMA","SUZLON","SYNGENE","TATACONSUM","TATAELXSI","TATAPOWER",
-    "TATASTEEL","TATATECH","TCS","TECHM","TITAGARH","TITAN","TORNTPHARM",
-    "TORNTPOWER","TRENT","TVSMOTOR","ULTRACEMCO","UNITDSPR","UNIONBANK",
-    "UNOMINDA","UPL","VEDL","VBL","VOLTAS","WIPRO","YESBANK","ZYDUSLIFE"
-]
+STOCKS = [ ... SAME LIST ... ]
 
-# ==================================================
-# DATA DIRECTORY BOOTSTRAP (NEW)
-# ==================================================
 DATA_DIR = "data"
 os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -57,33 +19,22 @@ if not os.path.exists(PLACEHOLDER_FILE):
     pd.DataFrame(
         columns=[
             "Stock","Expiry","Strike",
-            "CE_LTP","CE_OI","PE_LTP","PE_OI",
+            "CE_LTP","CE_OI","CE_IV",
+            "PE_LTP","PE_OI","PE_IV",
             "Stock_LTP","timestamp","Max_Pain"
         ]
     ).to_csv(PLACEHOLDER_FILE, index=False)
 
-# ==================================================
-# INIT KITE
-# ==================================================
 kite = KiteConnect(api_key=API_KEY)
 kite.set_access_token(ACCESS_TOKEN)
 
-# ==================================================
-# LOAD INSTRUMENTS
-# ==================================================
 print("[INFO] Loading instruments")
 instruments = pd.DataFrame(kite.instruments("NFO"))
 
-# ==================================================
-# HELPERS
-# ==================================================
 def chunk(lst, size=500):
     for i in range(0, len(lst), size):
         yield lst[i:i + size]
 
-# ==================================================
-# PREPARE OPTION SYMBOLS
-# ==================================================
 print("[INFO] Preparing option chain symbols")
 
 option_map = {}
@@ -105,9 +56,6 @@ for stock in STOCKS:
     option_map[stock] = df
     all_option_symbols.extend("NFO:" + df["tradingsymbol"])
 
-# ==================================================
-# BULK QUOTES
-# ==================================================
 print("[INFO] Fetching option quotes")
 option_quotes = {}
 for batch in chunk(all_option_symbols):
@@ -116,9 +64,6 @@ for batch in chunk(all_option_symbols):
 print("[INFO] Fetching stock LTPs")
 spot_quotes = kite.quote([f"NSE:{s}" for s in STOCKS])
 
-# ==================================================
-# MAX PAIN
-# ==================================================
 def compute_max_pain(df):
     df = df.fillna(0)
 
@@ -141,9 +86,6 @@ def compute_max_pain(df):
     df["Max_Pain"] = mp
     return df
 
-# ==================================================
-# PROCESS
-# ==================================================
 print("[INFO] Processing stocks")
 
 all_data = []
@@ -164,10 +106,15 @@ for stock, df in option_map.items():
             "Stock": stock,
             "Expiry": df["expiry"].iloc[0].date(),
             "Strike": strike,
+
             "CE_LTP": ce_q.get("last_price"),
             "CE_OI": ce_q.get("oi"),
+            "CE_IV": ce_q.get("implied_volatility"),
+
             "PE_LTP": pe_q.get("last_price"),
             "PE_OI": pe_q.get("oi"),
+            "PE_IV": pe_q.get("implied_volatility"),
+
             "Stock_LTP": stock_ltp,
             "timestamp": now_ts,
         })
@@ -176,9 +123,6 @@ for stock, df in option_map.items():
     stock_df = compute_max_pain(stock_df)
     all_data.append(stock_df)
 
-# ==================================================
-# SAVE
-# ==================================================
 final_df = pd.concat(all_data, ignore_index=True)
 filename = f"{DATA_DIR}/option_chain_{datetime.now(IST).strftime('%Y-%m-%d_%H-%M')}.csv"
 final_df.to_csv(filename, index=False)
