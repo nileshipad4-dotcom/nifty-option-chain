@@ -117,7 +117,7 @@ for stock, sdf in df.sort_values(["Stock", "Strike"]).groupby("Stock"):
     rows.append(sdf)
     rows.append(pd.DataFrame([{col: np.nan for col in df.columns}]))
 
-final_df = pd.concat(rows[:-1], ignore_index=True)  # remove last blank row
+final_df = pd.concat(rows[:-1], ignore_index=True)
 
 # =====================================
 # COMPUTE STOCK SIGNALS
@@ -187,7 +187,7 @@ def compute_stock_signals(data):
 stock_signals = compute_stock_signals(final_df)
 
 # =====================================
-# BUILD FILTERED TABLES (NO NONE ROWS)
+# BUILD FILTERED TABLES
 # =====================================
 def build_filtered_df(base_df, stock_list):
     blocks = []
@@ -225,14 +225,17 @@ def highlight_rows(data):
         ltp = float(sdf["Stock_LTP"].iloc[0])
         strikes = sdf["Strike"].values
 
+        # ATM strike highlight
         for i in range(len(strikes) - 1):
             if strikes[i] <= ltp <= strikes[i + 1]:
                 styles.loc[sdf.index[i]] = "background-color:#003366;color:white"
                 styles.loc[sdf.index[i + 1]] = "background-color:#003366;color:white"
                 break
 
+        # Max Pain (TS1)
         styles.loc[sdf[t1_lbl].idxmin()] = "background-color:#8B0000;color:white"
 
+        # Δ MP signal highlight
         if stock not in stock_signals:
             continue
 
@@ -258,13 +261,13 @@ formatters = {
 # =====================================
 # DISPLAY
 # =====================================
-st.subheader("🟢 GREEN SIGNAL STOCKS")
+st.subheader(f"🟢 UPTREND ({len(green_stocks)})")
 st.dataframe(
     green_df.style.apply(highlight_rows, axis=None).format(formatters, na_rep=""),
     use_container_width=True,
 )
 
-st.subheader("🔴 RED SIGNAL STOCKS")
+st.subheader(f"🔴 DOWNTREND ({len(red_stocks)})")
 st.dataframe(
     red_df.style.apply(highlight_rows, axis=None).format(formatters, na_rep=""),
     use_container_width=True,
