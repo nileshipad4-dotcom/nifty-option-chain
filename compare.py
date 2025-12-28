@@ -81,21 +81,14 @@ df[delta_12] = df[t1_lbl] - df[t2_lbl]
 df[delta_23] = df[t2_lbl] - df[t3_lbl]
 
 # =====================================
-# ROLLING SUMS (±3 STRIKES)
+# ROLLING SUMS (used ONLY for trend check)
 # =====================================
 df[sum_12_col] = np.nan
-df[sum_23_col] = np.nan
 
 for stock, sdf in df.sort_values("Strike").groupby("Stock"):
     idx = sdf.index
     df.loc[idx, sum_12_col] = (
         sdf[delta_12]
-        .rolling(window=7, center=True, min_periods=1)
-        .sum()
-        .values
-    )
-    df.loc[idx, sum_23_col] = (
-        sdf[delta_23]
         .rolling(window=7, center=True, min_periods=1)
         .sum()
         .values
@@ -114,7 +107,6 @@ df = df[
         t3_lbl,
         delta_23,
         sum_12_col,
-        sum_23_col,
         "Stock_LTP",
     ]
 ]
@@ -128,40 +120,6 @@ for stock, sdf in df.sort_values(["Stock", "Strike"]).groupby("Stock"):
     rows.append(pd.DataFrame([{col: np.nan for col in df.columns}]))
 
 final_df = pd.concat(rows, ignore_index=True)
-
-# =====================================
-# ATM DIRECTION SIGNAL FUNCTION
-# =====================================
-def atm_direction_signal(sdf, ltp, ts1_col, ts2_col):
-    strikes = sdf["Strike"].values
-
-    atm_idx = None
-    for i in range(len(strikes) - 1):
-        if strikes[i] <= ltp <= strikes[i + 1]:
-            atm_idx = i + 1
-            break
-
-    if atm_idx is None:
-        return None
-
-    above = sdf.iloc[atm_idx : atm_idx + 5]
-    below = sdf.iloc[max(atm_idx - 5, 0) : atm_idx]
-
-    if len(above) < 3 or len(below) < 3:
-        return None
-
-    above_gt = (above[ts1_col] > above[ts2_col]).sum()
-    above_lt = (above[ts1_col] < above[ts2_col]).sum()
-    below_gt = (below[ts1_col] > below[ts2_col]).sum()
-    below_lt = (below[ts1_col] < below[ts2_col]).sum()
-
-    if above_gt >= 3 and below_lt >= 3:
-        return "red"
-
-    if above_lt >= 3 and below_gt >= 3:
-        return "green"
-
-    return None
 
 # =====================================
 # HIGHLIGHTING
@@ -181,31 +139,22 @@ def highlight_rows(data):
         strikes = sdf["Strike"].values
 
         # ATM highlight
+        atm_idx = None
         for i in range(len(strikes) - 1):
             if strikes[i] <= ltp <= strikes[i + 1]:
                 styles.loc[sdf.index[i]] = "background-color:#003366;color:white"
                 styles.loc[sdf.index[i + 1]] = "background-color:#003366;color:white"
+                atm_idx = i + 1
                 break
+
+        if atm_idx is None:
+            continue
 
         # Max Pain (TS1)
         styles.loc[sdf[t1_lbl].idxmin()] = "background-color:#8B0000;color:white"
 
-        # ATM-based directional highlight
-        signal = atm_direction_signal(sdf, ltp, t1_lbl, t2_lbl)
-
-        if signal == "red":
-            color = "background-color:#8B0000;color:white"
-        elif signal == "green":
-            color = "background-color:#004d00;color:white"
-        else:
-            color = None
-
-        if color:
-            styles.loc[sdf.index, t1_lbl] = color
-            styles.loc[sdf.index, t2_lbl] = color
-
         # =============================
-        # TREND CHECK SOURCE (existing)
+        # EXISTING TREND CHECK (UNCHANGED)
         # =============================
         mid = sdf.iloc[4:-4]
         vals = mid[sum_12_col].astype(float).values
@@ -217,17 +166,47 @@ def highlight_rows(data):
         inc_ratio = np.sum(diffs > 0) / len(diffs)
         dec_ratio = np.sum(diffs < 0) / len(diffs)
 
+        trend_color = None
         if inc_ratio >= 0.9:
-            color = "background-color:#8B0000;color:white"
+            trend_color = "red"
         elif dec_ratio >= 0.9:
-            color = "background-color:#004d00;color:white"
+            trend_color = "green"
         else:
             continue
 
-        styles.loc[sdf.index, sum_12_col] = color
-        inner_idx = sdf.index[1:-1]
-        styles.loc[inner_idx, delta_12] = color
-        styles.loc[inner_idx, delta_23] = color
+        # =============================
+        # ATM ±5 STRIKE ΔMP CONDITION
+        # =============================
+        above = sdf.iloc[atm_idx : atm_idx + 5]
+        below = sdf.iloc[max(atm_idx - 5, 0) : atm_idx]
+
+        if len(above) < 3 or len(below) < 3:
+            continue
+
+        above_gt = (above[delta_12] > above[delta_23]).sum()
+        above_lt = (above[delta_12] < above[delta_23]).sum()
+        below_gt = (below[delta_12] > below[delta_23]).sum()
+        below_lt = (below[delta_12] < below[delta_23]).sum()
+
+        signal = None
+        if above_gt >= 3 and below_lt >= 3:
+            signal = "red"
+        elif above_lt >= 3 and below_gt >= 3:
+            signal = "green"
+
+        # BOTH CONDITIONS MUST MATCH
+        if signal is None or signal != trend_color:
+            continue
+
+        color = (
+            "background-color:#8B0000;color:white"
+            if signal == "red"
+            else "background-color:#004d00;color:white"
+        )
+
+        # Highlight ONLY Δ MP columns
+        styles.loc[sdf.index, delta_12] = color
+        styles.loc[sdf.index, delta_23] = color
 
     return styles
 
