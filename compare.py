@@ -60,7 +60,8 @@ t3_lbl = short_ts(t3)
 delta_12 = f"Δ MP ({t1_lbl}-{t2_lbl})"
 delta_23 = f"Δ MP ({t2_lbl}-{t3_lbl})"
 sum_12_col = f"Σ {delta_12}"
-delta_above_col = f"Δ MP diff (cur - above)"
+delta_above_col = f"ΔΔ MP ({t1_lbl}-{t2_lbl})"
+
 
 
 # =====================================
