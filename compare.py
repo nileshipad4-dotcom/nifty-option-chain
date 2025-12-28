@@ -27,7 +27,6 @@ def load_csv_files():
 
     return sorted(files, reverse=True)
 
-
 csv_files = load_csv_files()
 if len(csv_files) < 3:
     st.error("Need at least 3 CSV files to compare.")
@@ -36,16 +35,13 @@ if len(csv_files) < 3:
 timestamps = [ts for ts, _ in csv_files]
 file_map = dict(csv_files)
 
-
 def short_ts(ts):
     return ts.split("_")[-1].replace("-", ":")
-
 
 # =====================================
 # DROPDOWNS
 # =====================================
 c1, c2, c3 = st.columns(3)
-
 with c1:
     t1 = st.selectbox("Timestamp 1 (Latest)", timestamps, 0)
 with c2:
@@ -91,17 +87,18 @@ df[delta_12] = df[t1_lbl] - df[t2_lbl]
 df[delta_23] = df[t2_lbl] - df[t3_lbl]
 
 # =====================================
-# ROLLING SUM (trend check only)
+# Δ MP DIFFERENCE WITH STRIKE ABOVE
 # =====================================
 df[sum_12_col] = np.nan
 
 for stock, sdf in df.sort_values("Strike").groupby("Stock"):
-    df.loc[sdf.index, sum_12_col] = (
-        sdf[delta_12]
-        .rolling(window=7, center=True, min_periods=1)
-        .sum()
-        .values
-    )
+    idx = sdf.index
+    vals = sdf[delta_12].astype(float).values
+
+    diff_above = vals - np.roll(vals, -1)
+    diff_above[-1] = np.nan  # no strike above last
+
+    df.loc[idx, sum_12_col] = diff_above
 
 # =====================================
 # FINAL COLUMN ORDER
@@ -195,7 +192,6 @@ def compute_stock_signals(data):
 
     return signals
 
-
 stock_signals = compute_stock_signals(final_df)
 
 # =====================================
@@ -203,7 +199,6 @@ stock_signals = compute_stock_signals(final_df)
 # =====================================
 def build_filtered_df(base_df, stock_list):
     blocks = []
-
     for stock in stock_list:
         sdf = base_df[base_df["Stock"] == stock]
         if not sdf.empty:
@@ -215,12 +210,11 @@ def build_filtered_df(base_df, stock_list):
 
     return pd.concat(blocks[:-1], ignore_index=True)
 
-
 green_stocks = [s for s, v in stock_signals.items() if v == "green"]
-red_stocks = [s for s, v in stock_signals.items() if v == "red"]
+red_stocks   = [s for s, v in stock_signals.items() if v == "red"]
 
 green_df = build_filtered_df(final_df, green_stocks)
-red_df = build_filtered_df(final_df, red_stocks)
+red_df   = build_filtered_df(final_df, red_stocks)
 
 # =====================================
 # HIGHLIGHTING
@@ -239,17 +233,14 @@ def highlight_rows(data):
         ltp = float(sdf["Stock_LTP"].iloc[0])
         strikes = sdf["Strike"].values
 
-        # ATM strike highlight
         for i in range(len(strikes) - 1):
             if strikes[i] <= ltp <= strikes[i + 1]:
                 styles.loc[sdf.index[i]] = "background-color:#003366;color:white"
                 styles.loc[sdf.index[i + 1]] = "background-color:#003366;color:white"
                 break
 
-        # Max Pain (TS1)
         styles.loc[sdf[t1_lbl].idxmin()] = "background-color:#8B0000;color:white"
 
-        # Δ MP signal highlight
         if stock not in stock_signals:
             continue
 
@@ -264,14 +255,12 @@ def highlight_rows(data):
 
     return styles
 
-
 # =====================================
 # FORMATTERS
 # =====================================
 formatters = {
     col: "{:.2f}" if col == "Stock_LTP" else "{:.0f}"
-    for col in final_df.columns
-    if col != "Stock"
+    for col in final_df.columns if col != "Stock"
 }
 
 # =====================================
