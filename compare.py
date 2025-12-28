@@ -123,9 +123,6 @@ final_df = pd.concat(rows, ignore_index=True)
 # =====================================
 stock_signals = {}
 
-def stock_anchor(stock):
-    return f"stock-{str(stock).replace(' ', '_')}"
-
 # =====================================
 # HIGHLIGHTING LOGIC
 # =====================================
@@ -154,10 +151,9 @@ def highlight_rows(data):
         if atm_idx is None:
             continue
 
-        # TS1 Max Pain mark
         styles.loc[sdf[t1_lbl].idxmin()] = "background-color:#8B0000;color:white"
 
-        # ---- TREND CHECK ----
+        # Trend check
         mid = sdf.iloc[4:-4]
         diffs = np.diff(mid[sum_12_col].astype(float).values)
 
@@ -175,7 +171,7 @@ def highlight_rows(data):
         else:
             continue
 
-        # ---- ATM ±5 STRIKE Δ MP CHECK ----
+        # ATM ±5 strike Δ MP check
         above = sdf.iloc[atm_idx:atm_idx+5]
         below = sdf.iloc[max(atm_idx-5, 0):atm_idx]
 
@@ -218,9 +214,9 @@ formatters = {
 }
 
 # =====================================
-# SIGNAL SUMMARY (HTML)
+# SIGNAL SUMMARY TABLE
 # =====================================
-def get_signal_html():
+def get_signal_df():
     up = sorted([s for s, v in stock_signals.items() if v == "green"])
     down = sorted([s for s, v in stock_signals.items() if v == "red"])
 
@@ -228,42 +224,7 @@ def get_signal_html():
     up += [""] * (max_len - len(up))
     down += [""] * (max_len - len(down))
 
-    rows = ""
-    for u, d in zip(up, down):
-        u_link = f'<a href="#{stock_anchor(u)}">{u}</a>' if u else ""
-        d_link = f'<a href="#{stock_anchor(d)}">{d}</a>' if d else ""
-        rows += f"<tr><td>{u_link}</td><td>{d_link}</td></tr>"
-
-    return f"""
-    <table style="width:100%; border-collapse:collapse;">
-        <thead>
-            <tr><th>UP</th><th>DOWN</th></tr>
-        </thead>
-        <tbody>{rows}</tbody>
-    </table>
-    """
-
-# =====================================
-# RENDER MAIN TABLE WITH ANCHORS
-# =====================================
-def render_main_table():
-    styled = (
-        final_df
-        .style
-        .apply(highlight_rows, axis=None)
-        .format(formatters, na_rep="")
-    )
-
-    html = styled.to_html()
-
-    for stock in final_df["Stock"].dropna().unique():
-        html = html.replace(
-            f"<td>{stock}</td>",
-            f'<td id="{stock_anchor(stock)}">{stock}</td>',
-            1
-        )
-
-    st.markdown(html, unsafe_allow_html=True)
+    return pd.DataFrame({"UP": up, "DOWN": down})
 
 # =====================================
 # DISPLAY
@@ -274,19 +235,31 @@ left, right = st.columns([1, 4], gap="large")
 
 with left:
     st.markdown("### 📈 Signals")
-    st.markdown(get_signal_html(), unsafe_allow_html=True)
+    st.dataframe(
+        get_signal_df(),
+        use_container_width=True,
+        hide_index=True
+    )
 
 with right:
     st.markdown(
         """
         <style>
-        table { width:100%; }
-        tr:has(td:empty) { height:16px; }
+        tr:has(td:empty) {
+            height: 16px;
+        }
         </style>
         """,
         unsafe_allow_html=True,
     )
-    render_main_table()
+
+    st.dataframe(
+        final_df
+            .style
+            .apply(highlight_rows, axis=None)
+            .format(formatters, na_rep=""),
+        use_container_width=True,
+    )
 
 # =====================================
 # DOWNLOAD
