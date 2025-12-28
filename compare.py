@@ -52,7 +52,7 @@ t2_lbl = short_ts(t2)
 t3_lbl = short_ts(t3)
 
 # =====================================
-# COLUMN NAMES (ALL WITH TIME)
+# COLUMN NAMES
 # =====================================
 mp1_col = f"MP ({t1_lbl})"
 mp2_col = f"MP ({t2_lbl})"
@@ -62,6 +62,7 @@ delta_12 = f"Δ MP ({t1_lbl}-{t2_lbl})"
 delta_23 = f"Δ MP ({t2_lbl}-{t3_lbl})"
 sum_12_col = f"Σ {delta_12}"
 delta_above_col = f"ΔΔ MP ({t1_lbl}-{t2_lbl})"
+pct_col = f"% Ch ({t1_lbl})"
 
 # =====================================
 # LOAD DATA
@@ -73,7 +74,15 @@ df3 = pd.read_csv(file_map[t3])
 # =====================================
 # PREPARE DATA
 # =====================================
-df1 = df1[["Stock", "Strike", "Max_Pain", "Stock_LTP"]].rename(columns={"Max_Pain": mp1_col})
+df1 = df1[
+    ["Stock", "Strike", "Max_Pain", "Stock_LTP", "Stock_%_Change"]
+].rename(
+    columns={
+        "Max_Pain": mp1_col,
+        "Stock_%_Change": pct_col
+    }
+)
+
 df2 = df2[["Stock", "Strike", "Max_Pain"]].rename(columns={"Max_Pain": mp2_col})
 df3 = df3[["Stock", "Strike", "Max_Pain"]].rename(columns={"Max_Pain": mp3_col})
 
@@ -121,6 +130,7 @@ df = df[
         delta_23,
         sum_12_col,      # hidden later
         delta_above_col,
+        pct_col,
         "Stock_LTP",
     ]
 ]
@@ -136,7 +146,7 @@ for stock, sdf in df.sort_values(["Stock", "Strike"]).groupby("Stock"):
 final_df = pd.concat(rows[:-1], ignore_index=True)
 
 # =====================================
-# COMPUTE STOCK SIGNALS (uses Σ Δ MP)
+# COMPUTE STOCK SIGNALS (UNCHANGED)
 # =====================================
 def compute_stock_signals(data):
     signals = {}
@@ -209,7 +219,7 @@ green_df = build_filtered_df(final_df, [s for s, v in stock_signals.items() if v
 red_df   = build_filtered_df(final_df, [s for s, v in stock_signals.items() if v == "red"])
 
 # =====================================
-# HIGHLIGHTING
+# HIGHLIGHTING (UNCHANGED)
 # =====================================
 def highlight_rows(data):
     styles = pd.DataFrame("", index=data.index, columns=data.columns)
@@ -248,7 +258,11 @@ def show(title, df_):
     st.dataframe(
         df_[display_cols]
         .style.apply(highlight_rows, axis=None)
-        .format({c: "{:.2f}" if c == "Stock_LTP" else "{:.0f}" for c in display_cols if c != "Stock"}, na_rep=""),
+        .format(
+            {c: "{:.3f}" if c == pct_col else "{:.2f}" if c == "Stock_LTP" else "{:.0f}"
+             for c in display_cols if c != "Stock"},
+            na_rep=""
+        ),
         use_container_width=True,
     )
 
