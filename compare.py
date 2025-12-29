@@ -6,7 +6,7 @@ import numpy as np
 from streamlit_autorefresh import st_autorefresh
 
 st_autorefresh(
-    interval=300_000,  # 5 minutes (in milliseconds)
+    interval=30_000,  # 5 minutes (in milliseconds)
     key="auto_refresh"
 )
 
