@@ -36,6 +36,17 @@ if len(csv_files) < 3:
     st.error("Need at least 3 CSV files to compare.")
     st.stop()
 
+# 👇 ADD THIS BLOCK HERE
+latest_file = csv_files[0][0]
+
+if "last_ts" not in st.session_state:
+    st.session_state.last_ts = latest_file
+
+if latest_file != st.session_state.last_ts:
+    st.session_state.last_ts = latest_file
+    st.experimental_rerun()
+
+
 timestamps = [ts for ts, _ in csv_files]
 file_map = dict(csv_files)
 
