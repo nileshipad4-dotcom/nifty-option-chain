@@ -146,21 +146,45 @@ for stock, sdf in df.sort_values("Strike").groupby("Stock"):
 
 
 # =====================================
-# Σ |ΔΔ MP| (2 ABOVE + CURRENT + 2 BELOW)
+# Σ |ΔΔ MP| (ATM based: -1, 0, +1, +2)
 # =====================================
 df[sum_2_above_below_col] = np.nan
 
 for stock, sdf in df.sort_values("Strike").groupby("Stock"):
-    vals = sdf[delta_above_col].astype(float)
+    sdf = sdf.reset_index()
+    ltp = float(sdf["Stock_LTP"].iloc[0])
+    strikes = sdf["Strike"].values
 
-    rolling_sum = (
-        vals
-        .rolling(window=5, center=True, min_periods=1)
+    atm_idx = None
+    for i in range(len(strikes) - 1):
+        if strikes[i] <= ltp <= strikes[i + 1]:
+            atm_idx = i + 1
+            break
+
+    if atm_idx is None:
+        continue
+
+    idxs = [
+        atm_idx - 1,
+        atm_idx,
+        atm_idx + 1,
+        atm_idx + 2,
+    ]
+
+    idxs = [i for i in idxs if 0 <= i < len(sdf)]
+
+    value = (
+        sdf.loc[idxs, delta_above_col]
+        .astype(float)
         .sum()
-        .abs()
     )
 
-    df.loc[sdf.index, sum_2_above_below_col] = rolling_sum.values
+    value = abs(value)
+
+    df.loc[df["Stock"] == stock, sum_2_above_below_col] = value
+
+
+
 
 # =====================================
 # FINAL COLUMN ORDER
