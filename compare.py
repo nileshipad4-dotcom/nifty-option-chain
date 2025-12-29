@@ -3,6 +3,12 @@ import streamlit as st
 import pandas as pd
 import os
 import numpy as np
+from streamlit_autorefresh import st_autorefresh
+
+st_autorefresh(
+    interval=300_000,  # 5 minutes (in milliseconds)
+    key="auto_refresh"
+)
 
 # =====================================
 # STREAMLIT CONFIG
