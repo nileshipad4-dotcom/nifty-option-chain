@@ -13,7 +13,14 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-request_token = st.text_input("Enter Request Token", type="password")
+raw_input = st.text_input("Enter Request Token", type="password")
+
+request_token = (
+    raw_input.rsplit("=", 1)[-1].strip()
+    if raw_input
+    else ""
+)
+
 
 if st.button("Generate Access Token"):
     if request_token:
