@@ -81,6 +81,8 @@ delta_12 = f"Δ MP ({t1_lbl}-{t2_lbl})"
 delta_23 = f"Δ MP ({t2_lbl}-{t3_lbl})"
 sum_12_col = f"Σ {delta_12}"
 delta_above_col = f"ΔΔ MP ({t1_lbl}-{t2_lbl})"
+sum_2_above_below_col = f"Σ |ΔΔ MP| (±2)"
+
 
 # =====================================
 # LOAD DATA
@@ -142,6 +144,24 @@ for stock, sdf in df.sort_values("Strike").groupby("Stock"):
     diff[-1] = np.nan
     df.loc[sdf.index, delta_above_col] = diff
 
+
+# =====================================
+# Σ |ΔΔ MP| (2 ABOVE + CURRENT + 2 BELOW)
+# =====================================
+df[sum_2_above_below_col] = np.nan
+
+for stock, sdf in df.sort_values("Strike").groupby("Stock"):
+    vals = sdf[delta_above_col].astype(float)
+
+    rolling_sum = (
+        vals
+        .rolling(window=5, center=True, min_periods=1)
+        .sum()
+        .abs()
+    )
+
+    df.loc[sdf.index, sum_2_above_below_col] = rolling_sum.values
+
 # =====================================
 # FINAL COLUMN ORDER
 # =====================================
@@ -156,6 +176,7 @@ df = df[
         delta_23,
         sum_12_col,      # hidden later
         delta_above_col,
+        sum_2_above_below_col, 
         pct_col,
         "Stock_LTP",
     ]
