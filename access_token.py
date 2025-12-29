@@ -8,6 +8,11 @@ st.title("Zerodha Kite Access Token Generator")
 api_key = "bkgv59vaazn56c42"
 api_secret = "sb1sxe6s2p9qbmajwnlfe8bxmxfzbzbf"
 
+st.markdown(
+    '<a href="https://kite.zerodha.com/connect/login?api_key=bkgv59vaazn56c42&v=3" target="_blank">Hi</a>',
+    unsafe_allow_html=True
+)
+
 request_token = st.text_input("Enter Request Token", type="password")
 
 if st.button("Generate Access Token"):
