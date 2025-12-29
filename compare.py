@@ -14,7 +14,7 @@ st_autorefresh(
 # STREAMLIT CONFIG
 # =====================================
 st.set_page_config(page_title="Max Pain Comparison", layout="wide")
-st.title("📊 Max Pain Comparison Dashboard")
+st.title("📊 FnO STOCKS")
 
 DATA_DIR = "data"
 
