@@ -97,6 +97,7 @@ mp2_col = f"MP ({t2_lbl})"
 mp3_col = f"MP ({t3_lbl})"
 pct_col = f"% Ch ({t1_lbl})"
 
+live_delta_col = f"Δ Live MP (Live - {t1_lbl})"
 delta_12 = f"Δ MP ({t1_lbl}-{t2_lbl})"
 delta_23 = f"Δ MP ({t2_lbl}-{t3_lbl})"
 sum_12_col = f"Σ {delta_12}"
@@ -120,46 +121,6 @@ df2 = df2[["Stock","Strike","Max_Pain"]].rename(columns={"Max_Pain": mp2_col})
 df3 = df3[["Stock","Strike","Max_Pain"]].rename(columns={"Max_Pain": mp3_col})
 
 df = df1.merge(df2, on=["Stock","Strike"]).merge(df3, on=["Stock","Strike"])
-
-df[delta_12] = df[mp1_col] - df[mp2_col]
-df[delta_23] = df[mp2_col] - df[mp3_col]
-
-# =====================================
-# Σ Δ MP (TREND)
-# =====================================
-df[sum_12_col] = np.nan
-for stock, sdf in df.sort_values("Strike").groupby("Stock"):
-    df.loc[sdf.index, sum_12_col] = (
-        sdf[delta_12].rolling(7, center=True, min_periods=1).sum().values
-    )
-
-# =====================================
-# ΔΔ MP
-# =====================================
-df[delta_above_col] = np.nan
-for stock, sdf in df.sort_values("Strike").groupby("Stock"):
-    vals = sdf[delta_12].astype(float).values
-    diff = vals - np.roll(vals, -1)
-    diff[-1] = np.nan
-    df.loc[sdf.index, delta_above_col] = diff
-
-df[sum_2_above_below_col] = np.nan
-
-for stock, sdf in df.sort_values("Strike").groupby("Stock"):
-    sdf = sdf.reset_index(drop=True)
-    ltp = float(sdf["Stock_LTP"].iloc[0])
-    strikes = sdf["Strike"].values
-
-    atm_idx = next((i for i in range(len(strikes)-1)
-                   if strikes[i] <= ltp <= strikes[i+1]), None)
-    if atm_idx is None:
-        continue
-
-    idxs = [atm_idx, atm_idx+1]
-    idxs = [i for i in idxs if i < len(sdf)]
-
-    df.loc[df["Stock"]==stock, sum_2_above_below_col] = \
-        abs(sdf.loc[idxs, delta_above_col].sum())
 
 # =====================================
 # LIVE MAX PAIN LOGIC
@@ -239,15 +200,30 @@ live_df = fetch_live_mp_and_ltp(final_df["Stock"].dropna().unique().tolist())
 final_df = final_df.merge(live_df, on=["Stock","Strike"], how="left")
 
 # =====================================
+# DELTAS
+# =====================================
+final_df[live_delta_col] = final_df["Live_Max_Pain"] - final_df[mp1_col]
+final_df[delta_12] = final_df[mp1_col] - final_df[mp2_col]
+final_df[delta_23] = final_df[mp2_col] - final_df[mp3_col]
+
+# =====================================
 # DISPLAY
 # =====================================
 display_cols = [
-    "Stock","Strike",
-    mp1_col,mp2_col,mp3_col,
+    "Stock",
+    "Strike",
     "Live_Max_Pain",
-    delta_12,delta_23,
-    delta_above_col,sum_2_above_below_col,
-    pct_col,"Live_Stock_LTP","Stock_LTP"
+    live_delta_col,
+    mp1_col,
+    mp2_col,
+    mp3_col,
+    delta_12,
+    delta_23,
+    delta_above_col,
+    sum_2_above_below_col,
+    pct_col,
+    "Live_Stock_LTP",
+    "Stock_LTP"
 ]
 
 st.dataframe(
@@ -264,4 +240,3 @@ st.download_button(
     f"max_pain_with_live_{t1_lbl}_{t2_lbl}_{t3_lbl}.csv",
     "text/csv",
 )
-
