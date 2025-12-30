@@ -238,17 +238,16 @@ display_cols = [
     "Stock",
     "Strike",
     "Live_Max_Pain",
-    live_delta_col,
     mp1_col,
     mp2_col,
     mp3_col,
+    live_delta_col,
     delta_12,
     delta_23,
     delta_above_col,
     sum_2_above_below_col,
     pct_col,
-    "Live_Stock_LTP",
-    "Stock_LTP"
+    "Live_Stock_LTP"
 ]
 
 # Safety guard
