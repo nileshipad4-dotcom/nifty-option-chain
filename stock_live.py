@@ -9,6 +9,7 @@ import os
 from streamlit_autorefresh import st_autorefresh
 from kiteconnect import KiteConnect
 import pytz
+from datetime import datetime
 
 # =====================================
 # AUTO REFRESH (5 MIN)
@@ -87,6 +88,9 @@ mp1_col = f"MP ({t1_lbl})"
 mp2_col = f"MP ({t2_lbl})"
 mp3_col = f"MP ({t3_lbl})"
 
+live_time_lbl = datetime.now(IST).strftime("%H:%M")
+live_mp_col = f"MP ({live_time_lbl})"
+
 live_delta_col = f"Δ Live MP (Live - {t1_lbl})"
 delta_12 = f"Δ MP ({t1_lbl}-{t2_lbl})"
 delta_23 = f"Δ MP ({t2_lbl}-{t3_lbl})"
@@ -129,7 +133,7 @@ def compute_live_max_pain(df):
             + sum(G[i:] * L[i:]) - G.iloc[i] * sum(L[i:])
         )
         mp.append(int(val/10000))
-    df["Live_Max_Pain"] = mp
+    df[live_mp_col] = mp
     return df
 
 @st.cache_data(ttl=300)
@@ -179,9 +183,9 @@ def fetch_live_mp_and_ltp(stocks):
             rows.append({
                 "Stock":stock,
                 "Strike":r["Strike"],
-                "Live_Max_Pain":r["Live_Max_Pain"],
-                "Live_Stock_LTP":ltp,
-                pct_col: live_pct
+                live_mp_col:r[live_mp_col],
+                "Live_Stock_LTP":round(ltp,2) if ltp else np.nan,
+                pct_col:live_pct
             })
 
     return pd.DataFrame(rows)
@@ -206,13 +210,16 @@ final_df[pct_col] = final_df.groupby("Stock")[pct_col].transform("first")
 # =====================================
 # DELTAS
 # =====================================
-final_df[live_delta_col] = final_df["Live_Max_Pain"] - final_df[mp1_col]
+final_df[live_delta_col] = final_df[live_mp_col] - final_df[mp1_col]
 final_df[delta_12] = final_df[mp1_col] - final_df[mp2_col]
 final_df[delta_23] = final_df[mp2_col] - final_df[mp3_col]
 
 # =====================================
-# ΔΔ LIVE MP
+# ΔΔ LIVE MP & Σ
 # =====================================
+delta_live_above_col = "ΔΔ Live MP"
+sum_live_2_above_below_col = "Σ |ΔΔ Live MP| (±2)"
+
 final_df[delta_live_above_col] = np.nan
 final_df[sum_live_2_above_below_col] = np.nan
 
@@ -229,110 +236,106 @@ for stock, sdf in final_df.sort_values("Strike").groupby("Stock"):
     ltp = sdf["Live_Stock_LTP"].iloc[0]
     strikes = sdf["Strike"].values
 
-    atm_idx = None
+    atm_idx=None
     for i in range(len(strikes)-1):
-        if strikes[i] <= ltp <= strikes[i+1]:
-            atm_idx = i if abs(strikes[i]-ltp) <= abs(strikes[i+1]-ltp) else i+1
+        if strikes[i]<=ltp<=strikes[i+1]:
+            atm_idx=i if abs(strikes[i]-ltp)<=abs(strikes[i+1]-ltp) else i+1
             break
 
     if atm_idx is None:
         continue
 
-    idxs = [atm_idx, atm_idx+1]
-    idxs = [i for i in idxs if i < len(sdf)]
+    idxs=[atm_idx,atm_idx+1]
+    idxs=[i for i in idxs if i<len(sdf)]
 
-    val = sdf.loc[idxs, delta_live_above_col].astype(float).sum()
-    final_df.loc[final_df["Stock"]==stock, sum_live_2_above_below_col] = abs(val)
+    val=sdf.loc[idxs,delta_live_above_col].sum()
+    final_df.loc[final_df["Stock"]==stock,sum_live_2_above_below_col]=abs(int(val))
 
 # =====================================
-# ΔΔ MP AND Σ |ΔΔ MP|
+# ΔΔ MP & Σ
 # =====================================
-final_df[delta_above_col] = np.nan
-final_df[sum_2_above_below_col] = np.nan
+final_df[delta_above_col]=np.nan
+final_df[sum_2_above_below_col]=np.nan
 
-for stock, sdf in final_df.sort_values("Strike").groupby("Stock"):
-    sdf = sdf[sdf["Strike"].notna()].reset_index()
+for stock,sdf in final_df.sort_values("Strike").groupby("Stock"):
+    sdf=sdf[sdf["Strike"].notna()].reset_index()
     if sdf.empty:
         continue
 
-    vals = sdf[delta_12].astype(float).values
-    diff = vals - np.roll(vals, -1)
-    diff[-1] = np.nan
-    final_df.loc[sdf["index"], delta_above_col] = diff
+    vals=sdf[delta_12].astype(float).values
+    diff=vals-np.roll(vals,-1)
+    diff[-1]=np.nan
+    final_df.loc[sdf["index"],delta_above_col]=diff
 
-    ltp = sdf["Live_Stock_LTP"].iloc[0]
-    strikes = sdf["Strike"].values
+    ltp=sdf["Live_Stock_LTP"].iloc[0]
+    strikes=sdf["Strike"].values
 
-    atm_idx = None
+    atm_idx=None
     for i in range(len(strikes)-1):
-        if strikes[i] <= ltp <= strikes[i+1]:
-            atm_idx = i if abs(strikes[i]-ltp) <= abs(strikes[i+1]-ltp) else i+1
+        if strikes[i]<=ltp<=strikes[i+1]:
+            atm_idx=i if abs(strikes[i]-ltp)<=abs(strikes[i+1]-ltp) else i+1
             break
 
     if atm_idx is None:
         continue
 
-    idxs = [atm_idx, atm_idx+1]
-    idxs = [i for i in idxs if i < len(sdf)]
+    idxs=[atm_idx,atm_idx+1]
+    idxs=[i for i in idxs if i<len(sdf)]
 
-    val = sdf.loc[idxs, delta_above_col].astype(float).sum()
-    final_df.loc[final_df["Stock"]==stock, sum_2_above_below_col] = abs(val)
+    val=sdf.loc[idxs,delta_above_col].sum()
+    final_df.loc[final_df["Stock"]==stock,sum_2_above_below_col]=abs(int(val))
 
 # =====================================
 # HIGHLIGHTING
 # =====================================
 def highlight_rows(df):
-    styles = pd.DataFrame("", index=df.index, columns=df.columns)
+    styles=pd.DataFrame("",index=df.index,columns=df.columns)
 
     for stock in df["Stock"].dropna().unique():
-        sdf = df[(df["Stock"]==stock)&(df["Strike"].notna())]
+        sdf=df[(df["Stock"]==stock)&(df["Strike"].notna())]
         if sdf.empty:
             continue
 
-        ltp = sdf["Live_Stock_LTP"].iloc[0]
-        strikes = sdf["Strike"].values
+        ltp=sdf["Live_Stock_LTP"].iloc[0]
+        strikes=sdf["Strike"].values
 
-        # ATM strike pair (dark blue)
         for i in range(len(strikes)-1):
-            if strikes[i] <= ltp <= strikes[i+1]:
-                styles.loc[sdf.index[i], :] = "background-color:#003366;color:white"
-                styles.loc[sdf.index[i+1], :] = "background-color:#003366;color:white"
+            if strikes[i]<=ltp<=strikes[i+1]:
+                styles.loc[sdf.index[i],:]="background-color:#003366;color:white"
+                styles.loc[sdf.index[i+1],:]="background-color:#003366;color:white"
                 break
 
-        # Live Max Pain minimum (red)
-        min_idx = sdf["Live_Max_Pain"].idxmin()
-        styles.loc[min_idx, :] = "background-color:#8B0000;color:white"
+        min_idx=sdf[live_mp_col].idxmin()
+        styles.loc[min_idx,:]="background-color:#8B0000;color:white"
 
     return styles
 
 # =====================================
 # DISPLAY
 # =====================================
-display_cols = [
-    "Stock",
-    "Strike",
-    mp1_col,
-    mp2_col,
-    mp3_col,
-    "Live_Max_Pain",
+display_cols=[
+    "Stock","Strike",
+    mp1_col,mp2_col,mp3_col,
+    live_mp_col,
     live_delta_col,
-    delta_12,
-    delta_23,
-    delta_live_above_col,
-    sum_live_2_above_below_col,
-    delta_above_col,
-    sum_2_above_below_col,
-    pct_col,
-    "Live_Stock_LTP"
+    delta_12,delta_23,
+    delta_live_above_col,sum_live_2_above_below_col,
+    delta_above_col,sum_2_above_below_col,
+    pct_col,"Live_Stock_LTP"
 ]
 
 for c in display_cols:
     if c not in final_df.columns:
-        final_df[c] = np.nan
+        final_df[c]=np.nan
+
+format_dict={c:"{:.0f}" for c in display_cols}
+format_dict[pct_col]="{:.2f}"
+format_dict["Live_Stock_LTP"]="{:.2f}"
 
 st.dataframe(
     final_df[display_cols]
-    .style.apply(highlight_rows, axis=None),
+    .style.apply(highlight_rows,axis=None)
+    .format(format_dict,na_rep=""),
     use_container_width=True
 )
 
