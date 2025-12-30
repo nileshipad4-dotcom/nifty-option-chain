@@ -12,13 +12,10 @@ import pytz
 from datetime import datetime
 
 # =====================================
-# AUTO REFRESH (5 MIN)
+# AUTO REFRESH
 # =====================================
 st_autorefresh(interval=360_000, key="auto_refresh")
 
-# =====================================
-# STREAMLIT CONFIG
-# =====================================
 st.set_page_config(page_title="Max Pain Comparison", layout="wide")
 st.title("📊 FnO STOCKS – Historical + Live Max Pain")
 
@@ -74,7 +71,7 @@ def short_ts(ts):
     return ts.split("_")[-1].replace("-", ":")
 
 # =====================================
-# TIMESTAMP SELECTORS
+# TIMESTAMPS
 # =====================================
 c1, c2, c3 = st.columns(3)
 with c1:
@@ -97,110 +94,87 @@ live_delta_col = f"Δ Live MP (Live - {t1_lbl})"
 delta_12 = f"Δ MP ({t1_lbl}-{t2_lbl})"
 delta_23 = f"Δ MP ({t2_lbl}-{t3_lbl})"
 
-delta_live_above_col = "ΔΔ Live MP"
-sum_live_2_above_below_col = "Σ |ΔΔ Live MP| (±2)"
-
-delta_above_col = "ΔΔ MP"
-sum_2_above_below_col = "Σ |ΔΔ MP| (±2)"
-
 pct_col = "Live % Change"
 
 # =====================================
 # LOAD CSV DATA
 # =====================================
-df1 = pd.read_csv(file_map[t1])[["Stock", "Strike", "Max_Pain"]].rename(
-    columns={"Max_Pain": mp1_col}
-)
-df2 = pd.read_csv(file_map[t2])[["Stock", "Strike", "Max_Pain"]].rename(
-    columns={"Max_Pain": mp2_col}
-)
-df3 = pd.read_csv(file_map[t3])[["Stock", "Strike", "Max_Pain"]].rename(
-    columns={"Max_Pain": mp3_col}
-)
+df1 = pd.read_csv(file_map[t1])[["Stock","Strike","Max_Pain"]].rename(columns={"Max_Pain": mp1_col})
+df2 = pd.read_csv(file_map[t2])[["Stock","Strike","Max_Pain"]].rename(columns={"Max_Pain": mp2_col})
+df3 = pd.read_csv(file_map[t3])[["Stock","Strike","Max_Pain"]].rename(columns={"Max_Pain": mp3_col})
 
-df = df1.merge(df2, on=["Stock", "Strike"]).merge(df3, on=["Stock", "Strike"])
+df = df1.merge(df2, on=["Stock","Strike"]).merge(df3, on=["Stock","Strike"])
 
 # =====================================
 # LIVE MAX PAIN
 # =====================================
-def compute_live_max_pain(df):
+def compute_live_mp(df):
     df = df.fillna(0)
-    A, B, G, M, L = df["CE_LTP"], df["CE_OI"], df["Strike"], df["PE_LTP"], df["PE_OI"]
-    df[live_mp_col] = [
-        int((
+    A,B,G,M,L = df["CE_LTP"],df["CE_OI"],df["Strike"],df["PE_LTP"],df["PE_OI"]
+    mp=[]
+    for i in range(len(df)):
+        val = (
             -sum(A[i:] * B[i:])
             + G.iloc[i] * sum(B[:i]) - sum(G[:i] * B[:i])
             - sum(M[:i] * L[:i])
             + sum(G[i:] * L[i:]) - G.iloc[i] * sum(L[i:])
-        ) / 10000)
-        for i in range(len(df))
-    ]
+        )
+        mp.append(int(val/10000))
+    df[live_mp_col] = mp
     return df
 
 @st.cache_data(ttl=300)
 def fetch_live_data(stocks):
-    rows = []
+    rows=[]
     spot_quotes = kite.quote([f"NSE:{s}" for s in stocks])
 
     for stock in stocks:
         opt_df = instruments[
-            (instruments["name"] == stock) &
-            (instruments["segment"] == "NFO-OPT")
+            (instruments["name"]==stock)&
+            (instruments["segment"]=="NFO-OPT")
         ]
         if opt_df.empty:
             continue
 
         expiry = opt_df["expiry"].min()
-        opt_df = opt_df[opt_df["expiry"] == expiry]
+        opt_df = opt_df[opt_df["expiry"]==expiry]
+        quotes = kite.quote(["NFO:"+s for s in opt_df["tradingsymbol"]])
 
-        quotes = kite.quote(["NFO:" + s for s in opt_df["tradingsymbol"]])
-
-        chain = []
+        chain=[]
         for strike in sorted(opt_df["strike"].unique()):
-            ce = opt_df[(opt_df["strike"] == strike) & (opt_df["instrument_type"] == "CE")]
-            pe = opt_df[(opt_df["strike"] == strike) & (opt_df["instrument_type"] == "PE")]
-
-            ce_q = quotes.get("NFO:" + ce.iloc[0]["tradingsymbol"], {}) if not ce.empty else {}
-            pe_q = quotes.get("NFO:" + pe.iloc[0]["tradingsymbol"], {}) if not pe.empty else {}
-
+            ce = opt_df[(opt_df["strike"]==strike)&(opt_df["instrument_type"]=="CE")]
+            pe = opt_df[(opt_df["strike"]==strike)&(opt_df["instrument_type"]=="PE")]
             chain.append({
-                "Strike": strike,
-                "CE_LTP": ce_q.get("last_price"),
-                "CE_OI": ce_q.get("oi"),
-                "PE_LTP": pe_q.get("last_price"),
-                "PE_OI": pe_q.get("oi"),
+                "Strike":strike,
+                "CE_LTP":quotes.get("NFO:"+ce.iloc[0]["tradingsymbol"],{}).get("last_price"),
+                "CE_OI":quotes.get("NFO:"+ce.iloc[0]["tradingsymbol"],{}).get("oi"),
+                "PE_LTP":quotes.get("NFO:"+pe.iloc[0]["tradingsymbol"],{}).get("last_price"),
+                "PE_OI":quotes.get("NFO:"+pe.iloc[0]["tradingsymbol"],{}).get("oi"),
             })
 
-        mp_df = compute_live_max_pain(pd.DataFrame(chain))
+        mp_df = compute_live_mp(pd.DataFrame(chain))
 
-        spot = spot_quotes.get(f"NSE:{stock}", {})
+        spot = spot_quotes.get(f"NSE:{stock}",{})
         ltp = spot.get("last_price")
-        prev = spot.get("ohlc", {}).get("close")
+        prev = spot.get("ohlc",{}).get("close")
+        pct = round(((ltp-prev)/prev)*100,2) if ltp and prev else np.nan
 
-        pct = round(((ltp - prev) / prev) * 100, 2) if ltp and prev else np.nan
-
-        for _, r in mp_df.iterrows():
+        for _,r in mp_df.iterrows():
             rows.append({
-                "Stock": stock,
-                "Strike": r["Strike"],
-                live_mp_col: r[live_mp_col],
-                "Live_Stock_LTP": round(ltp, 2) if ltp else np.nan,
-                pct_col: pct
+                "Stock":stock,
+                "Strike":r["Strike"],
+                live_mp_col:r[live_mp_col],
+                "Live_Stock_LTP":round(ltp,2) if ltp else np.nan,
+                pct_col:pct
             })
 
     return pd.DataFrame(rows)
 
 # =====================================
-# MERGE LIVE DATA
+# MERGE
 # =====================================
 live_df = fetch_live_data(df["Stock"].unique().tolist())
-final_df = df.merge(live_df, on=["Stock", "Strike"], how="left")
-
-# Ensure column exists (CRITICAL FIX)
-if live_mp_col not in final_df.columns:
-    final_df[live_mp_col] = np.nan
-
-final_df[pct_col] = final_df.groupby("Stock")[pct_col].transform("first")
+final_df = df.merge(live_df, on=["Stock","Strike"], how="left")
 
 # =====================================
 # DELTAS
@@ -210,23 +184,30 @@ final_df[delta_12] = final_df[mp1_col] - final_df[mp2_col]
 final_df[delta_23] = final_df[mp2_col] - final_df[mp3_col]
 
 # =====================================
-# DISPLAY (THIS WAS MISSING)
+# DISPLAY (SAFE)
 # =====================================
 display_cols = [
-    "Stock", "Strike",
-    mp1_col, mp2_col, mp3_col,
+    "Stock","Strike",
+    mp1_col,mp2_col,mp3_col,
     live_mp_col,
     live_delta_col,
-    delta_12, delta_23,
-    pct_col, "Live_Stock_LTP"
+    delta_12,delta_23,
+    pct_col,"Live_Stock_LTP"
 ]
 
-fmt = {c: "{:.0f}" for c in display_cols}
-fmt[pct_col] = "{:.2f}"
-fmt["Live_Stock_LTP"] = "{:.2f}"
+# 🔐 Ensure numeric columns are numeric
+for c in display_cols:
+    if c not in ["Stock"]:
+        final_df[c] = pd.to_numeric(final_df[c], errors="coerce")
+
+format_dict = {
+    c: "{:.0f}" for c in display_cols
+}
+format_dict[pct_col] = "{:.2f}"
+format_dict["Live_Stock_LTP"] = "{:.2f}"
 
 st.dataframe(
-    final_df[display_cols].style.format(fmt, na_rep=""),
+    final_df[display_cols].style.format(format_dict, na_rep=""),
     use_container_width=True,
     height=900
 )
