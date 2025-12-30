@@ -1,5 +1,5 @@
 # =====================================
-# STOCK OC MAIN – WITH LIVE MAX PAIN
+# STOCK OC MAIN – HISTORICAL + LIVE MP
 # =====================================
 
 import streamlit as st
@@ -25,7 +25,7 @@ DATA_DIR = "data"
 IST = pytz.timezone("Asia/Kolkata")
 
 # =====================================
-# KITE CONFIG (LIVE)
+# KITE CONFIG
 # =====================================
 API_KEY = "bkgv59vaazn56c42"
 ACCESS_TOKEN = "HwNfTAk4E3mk2B11MPBFC87FxrVBnvqp"
@@ -64,15 +64,6 @@ if len(csv_files) < 3:
     st.error("Need at least 3 CSV files.")
     st.stop()
 
-latest_file = csv_files[0][0]
-
-if "last_ts" not in st.session_state:
-    st.session_state.last_ts = latest_file
-
-if latest_file != st.session_state.last_ts:
-    st.session_state.last_ts = latest_file
-    st.experimental_rerun()
-
 timestamps = [ts for ts, _ in csv_files]
 file_map = dict(csv_files)
 
@@ -100,9 +91,8 @@ pct_col = f"% Ch ({t1_lbl})"
 live_delta_col = f"Δ Live MP (Live - {t1_lbl})"
 delta_12 = f"Δ MP ({t1_lbl}-{t2_lbl})"
 delta_23 = f"Δ MP ({t2_lbl}-{t3_lbl})"
-sum_12_col = f"Σ {delta_12}"
-delta_above_col = f"ΔΔ MP"
-sum_2_above_below_col = f"Σ |ΔΔ MP| (±2)"
+delta_above_col = "ΔΔ MP"
+sum_2_above_below_col = "Σ |ΔΔ MP| (±2)"
 
 # =====================================
 # LOAD CSV DATA
@@ -207,6 +197,41 @@ final_df[delta_12] = final_df[mp1_col] - final_df[mp2_col]
 final_df[delta_23] = final_df[mp2_col] - final_df[mp3_col]
 
 # =====================================
+# RECOMPUTE ΔΔ MP AND Σ |ΔΔ MP|
+# =====================================
+final_df[delta_above_col] = np.nan
+final_df[sum_2_above_below_col] = np.nan
+
+for stock, sdf in final_df.sort_values("Strike").groupby("Stock"):
+    sdf = sdf[sdf["Strike"].notna()].reset_index()
+
+    if sdf.empty:
+        continue
+
+    vals = sdf[delta_12].astype(float).values
+    diff = vals - np.roll(vals, -1)
+    diff[-1] = np.nan
+    final_df.loc[sdf["index"], delta_above_col] = diff
+
+    ltp = sdf["Live_Stock_LTP"].iloc[0]
+    strikes = sdf["Strike"].values
+
+    atm_idx = None
+    for i in range(len(strikes) - 1):
+        if strikes[i] <= ltp <= strikes[i + 1]:
+            atm_idx = i if abs(strikes[i] - ltp) <= abs(strikes[i + 1] - ltp) else i + 1
+            break
+
+    if atm_idx is None:
+        continue
+
+    idxs = [atm_idx, atm_idx + 1]
+    idxs = [i for i in idxs if i < len(sdf)]
+
+    val = sdf.loc[idxs, delta_above_col].astype(float).sum()
+    final_df.loc[final_df["Stock"] == stock, sum_2_above_below_col] = abs(val)
+
+# =====================================
 # DISPLAY
 # =====================================
 display_cols = [
@@ -226,10 +251,12 @@ display_cols = [
     "Stock_LTP"
 ]
 
-st.dataframe(
-    final_df[display_cols],
-    use_container_width=True,
-)
+# Safety guard
+for c in display_cols:
+    if c not in final_df.columns:
+        final_df[c] = np.nan
+
+st.dataframe(final_df[display_cols], use_container_width=True)
 
 # =====================================
 # DOWNLOAD
