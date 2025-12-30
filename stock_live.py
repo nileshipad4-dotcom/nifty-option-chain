@@ -217,7 +217,19 @@ final_df = pd.concat(rows[:-1], ignore_index=True)
 # =====================================
 # MERGE LIVE DATA
 # =====================================
-live_df = fetch_live_mp_and_ltp(final_df["Stock"].dropna().unique().tolist())
+stocks = (
+    final_df["Stock"]
+    .dropna()
+    .astype(str)
+    .str.strip()
+    .loc[lambda x: x != ""]
+    .unique()
+    .tolist()
+)
+
+live_df = fetch_live_mp_and_ltp(stocks)
+
+
 final_df = final_df.merge(live_df, on=["Stock", "Strike"], how="left")
 final_df[pct_col] = final_df.groupby("Stock")[pct_col].transform("first")
 
