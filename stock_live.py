@@ -330,13 +330,33 @@ fmt = {c: "{:.0f}" for c in display_cols}
 fmt[pct_col] = "{:.2f}"
 fmt["Live_Stock_LTP"] = "{:.2f}"
 
+# =====================================
+# SAFE FORMATTING (NO STYLER FORMAT)
+# =====================================
+
+display_df = final_df[display_cols].copy()
+
+# Integer columns (everything except these)
+float_cols = {pct_col, "Live_Stock_LTP"}
+
+for col in display_df.columns:
+    if col == "Stock":
+        continue
+    if col in float_cols:
+        display_df[col] = pd.to_numeric(display_df[col], errors="coerce").round(2)
+    else:
+        display_df[col] = (
+            pd.to_numeric(display_df[col], errors="coerce")
+            .round(0)
+            .astype("Int64")
+        )
+
 st.dataframe(
-    final_df[display_cols]
-    .style.apply(highlight_rows, axis=None)
-    .format(fmt, na_rep=""),
+    display_df.style.apply(highlight_rows, axis=None),
     use_container_width=True,
     height=900
 )
+
 
 # =====================================
 # DOWNLOAD
