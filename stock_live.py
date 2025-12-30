@@ -90,17 +90,17 @@ mp1_col = f"MP ({t1_lbl})"
 mp2_col = f"MP ({t2_lbl})"
 mp3_col = f"MP ({t3_lbl})"
 
-live_delta_col = f"Δ Live MP (Live - {t1_lbl})"
+live_delta_col = f"Δ MP (Live - {t1_lbl})"
 delta_12 = f"Δ MP ({t1_lbl}-{t2_lbl})"
 delta_23 = f"Δ MP ({t2_lbl}-{t3_lbl})"
 
-delta_live_above_col = "ΔΔ Live MP"
-sum_live_2_above_below_col = "Σ |ΔΔ Live MP| (±2)"
+delta_live_above_col = "ΔΔ MP"
+sum_live_2_above_below_col = "Σ |ΔΔ MP| (±2)"
 
-delta_above_col = "ΔΔ MP"
-sum_2_above_below_col = "Σ |ΔΔ MP| (±2)"
+delta_above_col = "ΔΔ MP 1"
+sum_2_above_below_col = "Σ |ΔΔ MP-old| (±2)"
 
-pct_col = "Live % Change"
+pct_col = "% Ch"
 
 # =====================================
 # LOAD CSV DATA
@@ -328,19 +328,21 @@ def highlight_rows(df):
     return styles
 
 # =====================================
-# DISPLAY
+# DISPLAY (HIDE SELECTED COLUMNS)
 # =====================================
+
 display_cols = [
-    "Stock", "Strike",
-    mp1_col, mp2_col, mp3_col,
-    "Live_Max_Pain",
+    "Stock", "Strike", "Live_Max_Pain",
+    mp1_col,
+    mp2_col,
+    # mp3_col → HIDDEN
     live_delta_col,
-    delta_12,
-    delta_23,
+    # delta_12,
+    # delta_23 → HIDDEN
     delta_live_above_col,
     sum_live_2_above_below_col,
     delta_above_col,
-    sum_2_above_below_col,
+    # sum_2_above_below_col → HIDDEN
     pct_col,
     "Live_Stock_LTP"
 ]
@@ -355,7 +357,11 @@ for col in display_df.columns:
     if col in float_cols:
         display_df[col] = pd.to_numeric(display_df[col], errors="coerce").round(2)
     else:
-        display_df[col] = pd.to_numeric(display_df[col], errors="coerce").round(0).astype("Int64")
+        display_df[col] = (
+            pd.to_numeric(display_df[col], errors="coerce")
+            .round(0)
+            .astype("Int64")
+        )
 
 st.dataframe(
     display_df.style.apply(highlight_rows, axis=None),
