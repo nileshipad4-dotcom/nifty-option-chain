@@ -18,11 +18,10 @@ st.markdown(
 )
 
 # ==================================================
-# 🔑 KITE API (UPDATE HERE)
+# 🔑 KITE API
 # ==================================================
 API_KEY = "bkgv59vaazn56c42"
 ACCESS_TOKEN = "HwNfTAk4E3mk2B11MPBFC87FxrVBnvqp"
-
 
 # ==================================================
 # STOCKS
@@ -81,7 +80,7 @@ def load_instruments():
 instruments = load_instruments()
 
 # ==================================================
-# MAX PAIN (SAME AS YOUR SCRIPT)
+# MAX PAIN LOGIC (UNCHANGED)
 # ==================================================
 def compute_max_pain(df):
     df = df.fillna(0)
@@ -110,7 +109,7 @@ def compute_max_pain(df):
 # ==================================================
 @st.cache_data(ttl=55)
 def fetch_data():
-    all_data = []
+    final_rows = []
 
     spot_quotes = kite.quote([f"NSE:{s}" for s in STOCKS])
 
@@ -132,9 +131,6 @@ def fetch_data():
         rows = []
         spot = spot_quotes.get(f"NSE:{stock}", {})
         stock_ltp = spot.get("last_price")
-        prev = spot.get("ohlc", {}).get("close")
-
-        pct = round(((stock_ltp - prev) / prev) * 100, 2) if stock_ltp and prev else None
 
         for strike in sorted(opt_df["strike"].unique()):
             ce = opt_df[(opt_df["strike"] == strike) & (opt_df["instrument_type"] == "CE")]
@@ -144,45 +140,46 @@ def fetch_data():
             pe_q = quotes.get("NFO:" + pe.iloc[0]["tradingsymbol"], {}) if not pe.empty else {}
 
             rows.append({
-                "Stock": stock,
                 "Strike": strike,
                 "CE_LTP": ce_q.get("last_price"),
                 "CE_OI": ce_q.get("oi"),
                 "PE_LTP": pe_q.get("last_price"),
                 "PE_OI": pe_q.get("oi"),
-                "Stock_LTP": stock_ltp,
-                "Stock_%_Change": pct
             })
 
-        df = pd.DataFrame(rows).sort_values("Strike")
+        df = pd.DataFrame(rows)
         df = compute_max_pain(df)
-        all_data.append(df)
 
-    return pd.concat(all_data, ignore_index=True)
+        for _, r in df.iterrows():
+            final_rows.append({
+                "Stock": stock,
+                "Stock_LTP": stock_ltp,
+                "Strike": r["Strike"],
+                "Max_Pain": r["Max_Pain"]
+            })
+
+        # blank row after each stock
+        final_rows.append({
+            "Stock": "",
+            "Stock_LTP": "",
+            "Strike": "",
+            "Max_Pain": ""
+        })
+
+    return pd.DataFrame(final_rows)
 
 # ==================================================
 # UI
 # ==================================================
-st.title("📊 Live Strike-wise Max Pain Dashboard")
+st.title("📊 Live Max Pain – Full Table View")
 st.caption("Auto refresh every 60 seconds")
 
 df = fetch_data()
 
-stock_selected = st.selectbox("Select Stock", sorted(df["Stock"].unique()))
-
-stock_df = df[df["Stock"] == stock_selected]
-
-st.write(
-    f"**{stock_selected} | LTP:** {stock_df['Stock_LTP'].iloc[0]} | "
-    f"**% Change:** {stock_df['Stock_%_Change'].iloc[0]}"
-)
-
 st.dataframe(
-    stock_df[
-        ["Strike", "CE_LTP", "CE_OI", "PE_LTP", "PE_OI", "Max_Pain"]
-    ],
+    df,
     use_container_width=True,
-    height=700
+    height=900
 )
 
 st.success(f"Last updated: {datetime.now(IST).strftime('%Y-%m-%d %H:%M:%S')} IST")
