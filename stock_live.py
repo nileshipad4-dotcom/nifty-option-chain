@@ -86,7 +86,6 @@ t1_lbl, t2_lbl, t3_lbl = short_ts(t1), short_ts(t2), short_ts(t3)
 mp1_col = f"MP ({t1_lbl})"
 mp2_col = f"MP ({t2_lbl})"
 mp3_col = f"MP ({t3_lbl})"
-pct_col = f"% Ch ({t1_lbl})"
 
 live_delta_col = f"Δ Live MP (Live - {t1_lbl})"
 delta_12 = f"Δ MP ({t1_lbl}-{t2_lbl})"
@@ -94,6 +93,7 @@ delta_23 = f"Δ MP ({t2_lbl}-{t3_lbl})"
 delta_live_above_col = "ΔΔ Live MP"
 delta_above_col = "ΔΔ MP"
 sum_2_above_below_col = "Σ |ΔΔ MP| (±2)"
+pct_col = "Live % Change"
 
 # =====================================
 # LOAD CSV DATA
@@ -102,12 +102,9 @@ df1 = pd.read_csv(file_map[t1])
 df2 = pd.read_csv(file_map[t2])
 df3 = pd.read_csv(file_map[t3])
 
-if "Stock_%_Change" not in df1.columns:
-    df1["Stock_%_Change"] = np.nan
-
-df1 = df1[["Stock","Strike","Max_Pain","Stock_LTP","Stock_%_Change"]]\
-        .rename(columns={"Max_Pain": mp1_col, "Stock_%_Change": pct_col})
-
+df1 = df1[["Stock","Strike","Max_Pain","Stock_LTP"]].rename(
+    columns={"Max_Pain": mp1_col}
+)
 df2 = df2[["Stock","Strike","Max_Pain"]].rename(columns={"Max_Pain": mp2_col})
 df3 = df3[["Stock","Strike","Max_Pain"]].rename(columns={"Max_Pain": mp3_col})
 
@@ -137,8 +134,10 @@ def fetch_live_mp_and_ltp(stocks):
     spot_quotes = kite.quote([f"NSE:{s}" for s in stocks])
 
     for stock in stocks:
-        opt_df = instruments[(instruments["name"]==stock)&
-                              (instruments["segment"]=="NFO-OPT")]
+        opt_df = instruments[
+            (instruments["name"]==stock) &
+            (instruments["segment"]=="NFO-OPT")
+        ]
         if opt_df.empty:
             continue
 
@@ -162,14 +161,23 @@ def fetch_live_mp_and_ltp(stocks):
             })
 
         df_mp = compute_live_max_pain(pd.DataFrame(chain))
-        ltp = spot_quotes.get(f"NSE:{stock}",{}).get("last_price")
+
+        spot = spot_quotes.get(f"NSE:{stock}", {})
+        ltp = spot.get("last_price")
+        prev_close = spot.get("ohlc", {}).get("close")
+
+        live_pct = (
+            round(((ltp - prev_close) / prev_close) * 100, 2)
+            if ltp and prev_close else np.nan
+        )
 
         for _,r in df_mp.iterrows():
             rows.append({
                 "Stock":stock,
                 "Strike":r["Strike"],
                 "Live_Max_Pain":r["Live_Max_Pain"],
-                "Live_Stock_LTP":ltp
+                "Live_Stock_LTP":ltp,
+                pct_col: live_pct
             })
 
     return pd.DataFrame(rows)
@@ -190,6 +198,9 @@ final_df = pd.concat(rows[:-1], ignore_index=True)
 live_df = fetch_live_mp_and_ltp(final_df["Stock"].dropna().unique().tolist())
 final_df = final_df.merge(live_df, on=["Stock","Strike"], how="left")
 
+# propagate live pct to blank rows
+final_df[pct_col] = final_df.groupby("Stock")[pct_col].transform("first")
+
 # =====================================
 # DELTAS
 # =====================================
@@ -198,33 +209,26 @@ final_df[delta_12] = final_df[mp1_col] - final_df[mp2_col]
 final_df[delta_23] = final_df[mp2_col] - final_df[mp3_col]
 
 # =====================================
-# RECOMPUTE ΔΔ LIVE MP (STRIKE-WISE)
+# ΔΔ LIVE MP
 # =====================================
 final_df[delta_live_above_col] = np.nan
-
 for stock, sdf in final_df.sort_values("Strike").groupby("Stock"):
     sdf = sdf[sdf["Strike"].notna()].reset_index()
-
     if sdf.empty:
         continue
-
     vals = sdf[live_delta_col].astype(float).values
     diff = vals - np.roll(vals, -1)
     diff[-1] = np.nan
-
     final_df.loc[sdf["index"], delta_live_above_col] = diff
 
-
-
 # =====================================
-# RECOMPUTE ΔΔ MP AND Σ |ΔΔ MP|
+# ΔΔ MP AND Σ |ΔΔ MP|
 # =====================================
 final_df[delta_above_col] = np.nan
 final_df[sum_2_above_below_col] = np.nan
 
 for stock, sdf in final_df.sort_values("Strike").groupby("Stock"):
     sdf = sdf[sdf["Strike"].notna()].reset_index()
-
     if sdf.empty:
         continue
 
@@ -237,19 +241,19 @@ for stock, sdf in final_df.sort_values("Strike").groupby("Stock"):
     strikes = sdf["Strike"].values
 
     atm_idx = None
-    for i in range(len(strikes) - 1):
-        if strikes[i] <= ltp <= strikes[i + 1]:
-            atm_idx = i if abs(strikes[i] - ltp) <= abs(strikes[i + 1] - ltp) else i + 1
+    for i in range(len(strikes)-1):
+        if strikes[i] <= ltp <= strikes[i+1]:
+            atm_idx = i if abs(strikes[i]-ltp) <= abs(strikes[i+1]-ltp) else i+1
             break
 
     if atm_idx is None:
         continue
 
-    idxs = [atm_idx, atm_idx + 1]
+    idxs = [atm_idx, atm_idx+1]
     idxs = [i for i in idxs if i < len(sdf)]
 
     val = sdf.loc[idxs, delta_above_col].astype(float).sum()
-    final_df.loc[final_df["Stock"] == stock, sum_2_above_below_col] = abs(val)
+    final_df.loc[final_df["Stock"]==stock, sum_2_above_below_col] = abs(val)
 
 # =====================================
 # DISPLAY
@@ -257,21 +261,20 @@ for stock, sdf in final_df.sort_values("Strike").groupby("Stock"):
 display_cols = [
     "Stock",
     "Strike",
-    "Live_Max_Pain",
     mp1_col,
     mp2_col,
     mp3_col,
+    "Live_Max_Pain",
     live_delta_col,
     delta_12,
     delta_23,
-    delta_live_above_col, 
+    delta_live_above_col,
     delta_above_col,
     sum_2_above_below_col,
     pct_col,
     "Live_Stock_LTP"
 ]
 
-# Safety guard
 for c in display_cols:
     if c not in final_df.columns:
         final_df[c] = np.nan
