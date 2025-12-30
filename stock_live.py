@@ -241,11 +241,11 @@ for stock, sdf in final_df.sort_values("Strike").groupby("Stock"):
     idxs = [atm_idx, atm_idx+1]
     idxs = [i for i in idxs if i < len(sdf)]
 
-    val = sdf.loc[idxs, delta_live_above_col].astype(float).sum()
+    val = sdf.loc[idxs, delta_live_above_col].sum()
     final_df.loc[final_df["Stock"]==stock, sum_live_2_above_below_col] = abs(val)
 
 # =====================================
-# ΔΔ MP AND Σ |ΔΔ MP|
+# ΔΔ MP
 # =====================================
 final_df[delta_above_col] = np.nan
 final_df[sum_2_above_below_col] = np.nan
@@ -275,7 +275,7 @@ for stock, sdf in final_df.sort_values("Strike").groupby("Stock"):
     idxs = [atm_idx, atm_idx+1]
     idxs = [i for i in idxs if i < len(sdf)]
 
-    val = sdf.loc[idxs, delta_above_col].astype(float).sum()
+    val = sdf.loc[idxs, delta_above_col].sum()
     final_df.loc[final_df["Stock"]==stock, sum_2_above_below_col] = abs(val)
 
 # =====================================
@@ -292,28 +292,23 @@ def highlight_rows(df):
         ltp = sdf["Live_Stock_LTP"].iloc[0]
         strikes = sdf["Strike"].values
 
-        # ATM strike pair (dark blue)
         for i in range(len(strikes)-1):
             if strikes[i] <= ltp <= strikes[i+1]:
                 styles.loc[sdf.index[i], :] = "background-color:#003366;color:white"
                 styles.loc[sdf.index[i+1], :] = "background-color:#003366;color:white"
                 break
 
-        # Live Max Pain minimum (red)
         min_idx = sdf["Live_Max_Pain"].idxmin()
         styles.loc[min_idx, :] = "background-color:#8B0000;color:white"
 
     return styles
 
 # =====================================
-# DISPLAY
+# DISPLAY (FORMATTED)
 # =====================================
 display_cols = [
-    "Stock",
-    "Strike",
-    mp1_col,
-    mp2_col,
-    mp3_col,
+    "Stock","Strike",
+    mp1_col,mp2_col,mp3_col,
     "Live_Max_Pain",
     live_delta_col,
     delta_12,
@@ -326,14 +321,21 @@ display_cols = [
     "Live_Stock_LTP"
 ]
 
+# ensure numeric
 for c in display_cols:
-    if c not in final_df.columns:
-        final_df[c] = np.nan
+    if c != "Stock":
+        final_df[c] = pd.to_numeric(final_df[c], errors="coerce")
+
+fmt = {c: "{:.0f}" for c in display_cols}
+fmt[pct_col] = "{:.2f}"
+fmt["Live_Stock_LTP"] = "{:.2f}"
 
 st.dataframe(
     final_df[display_cols]
-    .style.apply(highlight_rows, axis=None),
-    use_container_width=True
+    .style.apply(highlight_rows, axis=None)
+    .format(fmt, na_rep=""),
+    use_container_width=True,
+    height=900
 )
 
 # =====================================
