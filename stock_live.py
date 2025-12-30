@@ -11,7 +11,6 @@ from streamlit_autorefresh import st_autorefresh
 from kiteconnect import KiteConnect
 import pytz
 
-
 # =====================================
 # AUTO REFRESH (5 MIN)
 # =====================================
@@ -51,7 +50,7 @@ instruments = load_instruments()
 # =====================================
 # HELPERS
 # =====================================
-def chunk_list(lst, size=200):
+def chunk_list(lst, size=100):
     for i in range(0, len(lst), size):
         yield lst[i:i + size]
 
@@ -116,16 +115,23 @@ def compute_live_max_pain(df):
 def fetch_live_data(stocks):
     rows = []
 
-    # ---- Spot quotes (chunked) ----
+    # ---------- SPOT QUOTES (SAFE) ----------
     spot_quotes = {}
-    for batch in chunk_list(stocks, 200):
-        spot_quotes.update(kite.quote([f"NSE:{s}" for s in batch]))
+    for batch in chunk_list(stocks, 100):
+        try:
+            spot_quotes.update(
+                kite.quote([f"NSE:{s}" for s in batch])
+            )
+        except Exception:
+            continue
 
+    # ---------- OPTION CHAINS ----------
     for stock in stocks:
         opt_df = instruments[
             (instruments["name"] == stock) &
             (instruments["segment"] == "NFO-OPT")
         ]
+
         if opt_df.empty:
             continue
 
@@ -134,8 +140,12 @@ def fetch_live_data(stocks):
 
         option_quotes = {}
         symbols = ["NFO:" + s for s in opt_df["tradingsymbol"].tolist()]
-        for batch in chunk_list(symbols, 200):
-            option_quotes.update(kite.quote(batch))
+
+        for batch in chunk_list(symbols, 100):
+            try:
+                option_quotes.update(kite.quote(batch))
+            except Exception:
+                continue
 
         chain = []
         for strike in sorted(opt_df["strike"].unique()):
@@ -152,6 +162,9 @@ def fetch_live_data(stocks):
                 "PE_LTP": pe_q.get("last_price"),
                 "PE_OI": pe_q.get("oi"),
             })
+
+        if not chain:
+            continue
 
         df_mp = compute_live_max_pain(pd.DataFrame(chain))
 
@@ -180,7 +193,6 @@ def fetch_live_data(stocks):
 # =====================================
 live_df = fetch_live_data(df_hist["Stock"].unique().tolist())
 df = df_hist.merge(live_df, on=["Stock", "Strike"], how="left")
-
 df[pct_col] = df.groupby("Stock")[pct_col].transform("first")
 
 # =====================================
@@ -196,22 +208,17 @@ for stock, sdf in df.sort_values("Strike").groupby("Stock"):
     vals = sdf[live_delta_col].values
     diff = vals - np.roll(vals, -1)
     diff[-1] = np.nan
-
     df.loc[sdf["index"], delta_live_above_col] = diff
 
     ltp = sdf["Live_Stock_LTP"].iloc[0]
     strikes = sdf["Strike"].values
 
-    atm = next(
-        (i for i in range(len(strikes)-1)
-         if strikes[i] <= ltp <= strikes[i+1]),
-        None
-    )
-
-    if atm is not None:
-        df.loc[df["Stock"] == stock, sum_live_col] = abs(
-            sdf.loc[[atm, atm+1], delta_live_above_col].sum()
-        )
+    for i in range(len(strikes) - 1):
+        if strikes[i] <= ltp <= strikes[i + 1]:
+            df.loc[df["Stock"] == stock, sum_live_col] = abs(
+                sdf.loc[[i, i + 1], delta_live_above_col].sum()
+            )
+            break
 
 # =====================================
 # HIGHLIGHTING
@@ -221,13 +228,16 @@ def highlight(df):
 
     for stock in df["Stock"].unique():
         sdf = df[df["Stock"] == stock]
+        if sdf.empty:
+            continue
+
         ltp = sdf["Live_Stock_LTP"].iloc[0]
         strikes = sdf["Strike"].values
 
-        for i in range(len(strikes)-1):
-            if strikes[i] <= ltp <= strikes[i+1]:
+        for i in range(len(strikes) - 1):
+            if strikes[i] <= ltp <= strikes[i + 1]:
                 styles.loc[sdf.index[i]] = "background-color:#003366;color:white"
-                styles.loc[sdf.index[i+1]] = "background-color:#003366;color:white"
+                styles.loc[sdf.index[i + 1]] = "background-color:#003366;color:white"
                 break
 
         styles.loc[sdf[live_mp_col].idxmin()] = "background-color:#8B0000;color:white"
