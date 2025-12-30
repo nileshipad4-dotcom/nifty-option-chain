@@ -9,7 +9,7 @@ import pytz
 # ==================================================
 st.set_page_config(page_title="Max Pain Dashboard", layout="wide")
 
-REFRESH_SECONDS = 60
+REFRESH_SECONDS = 600
 IST = pytz.timezone("Asia/Kolkata")
 
 st.markdown(
