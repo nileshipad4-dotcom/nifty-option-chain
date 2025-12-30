@@ -3,33 +3,29 @@ import pandas as pd
 from kiteconnect import KiteConnect
 from datetime import datetime
 import pytz
-import time
 
 # ==================================================
-# STREAMLIT CONFIG
+# CONFIG
 # ==================================================
-st.set_page_config(
-    page_title="Live Max Pain Dashboard",
-    layout="wide"
-)
+st.set_page_config(page_title="Max Pain Dashboard", layout="wide")
 
 REFRESH_SECONDS = 60
 IST = pytz.timezone("Asia/Kolkata")
 
-# Auto refresh
 st.markdown(
     f"<meta http-equiv='refresh' content='{REFRESH_SECONDS}'>",
     unsafe_allow_html=True
 )
 
 # ==================================================
-# 🔑 KITE CONFIG (UPDATE HERE)
+# 🔑 KITE API (UPDATE HERE)
 # ==================================================
 API_KEY = "bkgv59vaazn56c42"
 ACCESS_TOKEN = "HwNfTAk4E3mk2B11MPBFC87FxrVBnvqp"
 
+
 # ==================================================
-# STOCK LIST
+# STOCKS
 # ==================================================
 STOCKS = [
     "360ONE","ABB","ABCAPITAL","ADANIENT","ADANIGREEN","ADANIENSOL","ADANIPORTS",
@@ -67,9 +63,9 @@ STOCKS = [
 # ==================================================
 @st.cache_resource
 def init_kite():
-    kite = KiteConnect(api_key=API_KEY)
-    kite.set_access_token(ACCESS_TOKEN)
-    return kite
+    k = KiteConnect(api_key=API_KEY)
+    k.set_access_token(ACCESS_TOKEN)
+    return k
 
 kite = init_kite()
 
@@ -85,32 +81,36 @@ def load_instruments():
 instruments = load_instruments()
 
 # ==================================================
-# MAX PAIN FUNCTION
+# MAX PAIN (SAME AS YOUR SCRIPT)
 # ==================================================
-def calculate_max_pain(df):
-    df = df.sort_values("Strike").reset_index(drop=True)
+def compute_max_pain(df):
+    df = df.fillna(0)
 
-    ce_oi = df["CE_OI"].fillna(0)
-    pe_oi = df["PE_OI"].fillna(0)
-    strikes = df["Strike"]
+    A = df["CE_LTP"]
+    B = df["CE_OI"]
+    G = df["Strike"]
+    M = df["PE_LTP"]
+    L = df["PE_OI"]
 
-    pain = []
-    for i, strike in enumerate(strikes):
-        pain_val = (
-            (ce_oi[i:] * (strikes[i:] - strike)).sum() +
-            (pe_oi[:i] * (strike - strikes[:i])).sum()
+    mp = []
+    for i in range(len(df)):
+        val = (
+            -sum(A[i:] * B[i:])
+            + G.iloc[i] * sum(B[:i]) - sum(G[:i] * B[:i])
+            - sum(M[:i] * L[:i])
+            + sum(G[i:] * L[i:]) - G.iloc[i] * sum(L[i:])
         )
-        pain.append(pain_val)
+        mp.append(int(val / 10000))
 
-    df["Pain"] = pain
-    return df.loc[df["Pain"].idxmin(), "Strike"]
+    df["Max_Pain"] = mp
+    return df
 
 # ==================================================
 # FETCH DATA
 # ==================================================
 @st.cache_data(ttl=55)
 def fetch_data():
-    result = []
+    all_data = []
 
     spot_quotes = kite.quote([f"NSE:{s}" for s in STOCKS])
 
@@ -126,59 +126,63 @@ def fetch_data():
         expiry = opt_df["expiry"].min()
         opt_df = opt_df[opt_df["expiry"] == expiry]
 
-        symbols = ["NFO:" + s for s in opt_df["tradingsymbol"].tolist()]
+        symbols = ["NFO:" + s for s in opt_df["tradingsymbol"]]
         quotes = kite.quote(symbols)
 
         rows = []
-        for _, r in opt_df.iterrows():
-            q = quotes.get("NFO:" + r["tradingsymbol"], {})
-            rows.append({
-                "Strike": r["strike"],
-                "Type": r["instrument_type"],
-                "OI": q.get("oi")
-            })
-
-        chain = pd.DataFrame(rows)
-        pivot = chain.pivot_table(
-            index="Strike",
-            columns="Type",
-            values="OI",
-            aggfunc="sum"
-        ).reset_index()
-
-        pivot.columns.name = None
-        pivot.rename(columns={"CE": "CE_OI", "PE": "PE_OI"}, inplace=True)
-
-        max_pain = calculate_max_pain(pivot)
-
         spot = spot_quotes.get(f"NSE:{stock}", {})
-        ltp = spot.get("last_price")
+        stock_ltp = spot.get("last_price")
         prev = spot.get("ohlc", {}).get("close")
 
-        pct = round(((ltp - prev) / prev) * 100, 2) if ltp and prev else None
+        pct = round(((stock_ltp - prev) / prev) * 100, 2) if stock_ltp and prev else None
 
-        result.append({
-            "Stock": stock,
-            "LTP": ltp,
-            "% Change": pct,
-            "Max Pain": max_pain,
-            "Expiry": expiry.date()
-        })
+        for strike in sorted(opt_df["strike"].unique()):
+            ce = opt_df[(opt_df["strike"] == strike) & (opt_df["instrument_type"] == "CE")]
+            pe = opt_df[(opt_df["strike"] == strike) & (opt_df["instrument_type"] == "PE")]
 
-    return pd.DataFrame(result)
+            ce_q = quotes.get("NFO:" + ce.iloc[0]["tradingsymbol"], {}) if not ce.empty else {}
+            pe_q = quotes.get("NFO:" + pe.iloc[0]["tradingsymbol"], {}) if not pe.empty else {}
+
+            rows.append({
+                "Stock": stock,
+                "Strike": strike,
+                "CE_LTP": ce_q.get("last_price"),
+                "CE_OI": ce_q.get("oi"),
+                "PE_LTP": pe_q.get("last_price"),
+                "PE_OI": pe_q.get("oi"),
+                "Stock_LTP": stock_ltp,
+                "Stock_%_Change": pct
+            })
+
+        df = pd.DataFrame(rows).sort_values("Strike")
+        df = compute_max_pain(df)
+        all_data.append(df)
+
+    return pd.concat(all_data, ignore_index=True)
 
 # ==================================================
 # UI
 # ==================================================
-st.title("📈 Live Options Max Pain Dashboard")
-st.caption("Auto refresh every 60 seconds | Zerodha Kite API")
+st.title("📊 Live Strike-wise Max Pain Dashboard")
+st.caption("Auto refresh every 60 seconds")
 
 df = fetch_data()
 
+stock_selected = st.selectbox("Select Stock", sorted(df["Stock"].unique()))
+
+stock_df = df[df["Stock"] == stock_selected]
+
+st.write(
+    f"**{stock_selected} | LTP:** {stock_df['Stock_LTP'].iloc[0]} | "
+    f"**% Change:** {stock_df['Stock_%_Change'].iloc[0]}"
+)
+
 st.dataframe(
-    df.sort_values("% Change", ascending=False),
+    stock_df[
+        ["Strike", "CE_LTP", "CE_OI", "PE_LTP", "PE_OI", "Max_Pain"]
+    ],
     use_container_width=True,
-    height=800
+    height=700
 )
 
 st.success(f"Last updated: {datetime.now(IST).strftime('%Y-%m-%d %H:%M:%S')} IST")
