@@ -146,7 +146,7 @@ for stock, sdf in df.sort_values("Strike").groupby("Stock"):
 
 
 # =====================================
-# Σ |ΔΔ MP| (ATM based: -1, 0, +1, +2)
+# Σ ΔΔ MP (ATM based: -1, 0, +1, +2)
 # =====================================
 df[sum_2_above_below_col] = np.nan
 
@@ -179,10 +179,8 @@ for stock, sdf in df.sort_values("Strike").groupby("Stock"):
         .sum()
     )
 
-    value = abs(value)
-
+    # 🔴 NO absolute value applied
     df.loc[df["Stock"] == stock, sum_2_above_below_col] = value
-
 
 
 
