@@ -91,6 +91,7 @@ pct_col = f"% Ch ({t1_lbl})"
 live_delta_col = f"Δ Live MP (Live - {t1_lbl})"
 delta_12 = f"Δ MP ({t1_lbl}-{t2_lbl})"
 delta_23 = f"Δ MP ({t2_lbl}-{t3_lbl})"
+delta_live_above_col = "ΔΔ Live MP"
 delta_above_col = "ΔΔ MP"
 sum_2_above_below_col = "Σ |ΔΔ MP| (±2)"
 
@@ -197,6 +198,25 @@ final_df[delta_12] = final_df[mp1_col] - final_df[mp2_col]
 final_df[delta_23] = final_df[mp2_col] - final_df[mp3_col]
 
 # =====================================
+# RECOMPUTE ΔΔ LIVE MP (STRIKE-WISE)
+# =====================================
+final_df[delta_live_above_col] = np.nan
+
+for stock, sdf in final_df.sort_values("Strike").groupby("Stock"):
+    sdf = sdf[sdf["Strike"].notna()].reset_index()
+
+    if sdf.empty:
+        continue
+
+    vals = sdf[live_delta_col].astype(float).values
+    diff = vals - np.roll(vals, -1)
+    diff[-1] = np.nan
+
+    final_df.loc[sdf["index"], delta_live_above_col] = diff
+
+
+
+# =====================================
 # RECOMPUTE ΔΔ MP AND Σ |ΔΔ MP|
 # =====================================
 final_df[delta_above_col] = np.nan
@@ -244,6 +264,7 @@ display_cols = [
     live_delta_col,
     delta_12,
     delta_23,
+    delta_live_above_col, 
     delta_above_col,
     sum_2_above_below_col,
     pct_col,
