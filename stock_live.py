@@ -6,10 +6,10 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import os
+from datetime import datetime
 from streamlit_autorefresh import st_autorefresh
 from kiteconnect import KiteConnect
 import pytz
-from datetime import datetime
 
 
 # =====================================
