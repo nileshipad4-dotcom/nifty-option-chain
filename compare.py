@@ -145,33 +145,26 @@ for stock, sdf in df.sort_values("Strike").groupby("Stock"):
     df.loc[sdf.index, delta_above_col] = diff
 
 
-# =====================================
-# Σ |ΔΔ MP| (ATM based: -1, 0, +1, +2)
-# =====================================
 df[sum_2_above_below_col] = np.nan
 
 for stock, sdf in df.sort_values("Strike").groupby("Stock"):
-    sdf = sdf.reset_index()
+    sdf = sdf.reset_index(drop=True)
+
     ltp = float(sdf["Stock_LTP"].iloc[0])
     strikes = sdf["Strike"].values
 
     atm_idx = None
     for i in range(len(strikes) - 1):
         if strikes[i] <= ltp <= strikes[i + 1]:
-            atm_idx = i + 1
+            atm_idx = i if abs(strikes[i] - ltp) <= abs(strikes[i + 1] - ltp) else i + 1
             break
 
     if atm_idx is None:
         continue
 
-    idxs = [
-        atm_idx - 1,
-        atm_idx,
-        atm_idx + 1,
-        atm_idx + 2,
-    ]
-
-    idxs = [i for i in idxs if 0 <= i < len(sdf)]
+    # Use only ATM and ATM+1
+    idxs = [atm_idx, atm_idx + 1]
+    idxs = [i for i in idxs if i < len(sdf)]
 
     value = (
         sdf.loc[idxs, delta_above_col]
@@ -179,10 +172,7 @@ for stock, sdf in df.sort_values("Strike").groupby("Stock"):
         .sum()
     )
 
-    value = abs(value)
-
-    df.loc[df["Stock"] == stock, sum_2_above_below_col] = value
-
+    df.loc[df["Stock"] == stock, sum_2_above_below_col] = abs(value)
 
 
 # =====================================
