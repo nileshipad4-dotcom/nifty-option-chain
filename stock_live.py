@@ -60,59 +60,28 @@ def load_csv_files():
     return sorted(files, reverse=True)
 
 csv_files = load_csv_files()
-if len(csv_files) < 3:
-    st.error("Need at least 3 CSV files.")
+if not csv_files:
+    st.error("No CSV files found.")
     st.stop()
 
-timestamps = [ts for ts, _ in csv_files]
-file_map = dict(csv_files)
-
-def short_ts(ts):
-    return ts.split("_")[-1].replace("-", ":")
-
-# =====================================
-# DROPDOWNS
-# =====================================
-c1, c2, c3 = st.columns(3)
-with c1:
-    t1 = st.selectbox("Timestamp 1 (Latest)", timestamps, 0)
-with c2:
-    t2 = st.selectbox("Timestamp 2", timestamps, 1)
-with c3:
-    t3 = st.selectbox("Timestamp 3", timestamps, 2)
-
-t1_lbl, t2_lbl, t3_lbl = short_ts(t1), short_ts(t2), short_ts(t3)
+# Use ONLY latest timestamp
+t1, file_path = csv_files[0]
+t1_lbl = t1.split("_")[-1].replace("-", ":")
 
 mp1_col = f"MP ({t1_lbl})"
-mp2_col = f"MP ({t2_lbl})"
-mp3_col = f"MP ({t3_lbl})"
-
 live_delta_col = f"Δ Live MP (Live - {t1_lbl})"
-delta_12 = f"Δ MP ({t1_lbl}-{t2_lbl})"
-delta_23 = f"Δ MP ({t2_lbl}-{t3_lbl})"
-
 delta_live_above_col = "ΔΔ Live MP"
 sum_live_2_above_below_col = "Σ |ΔΔ Live MP| (±2)"
-
-delta_above_col = "ΔΔ MP"
-sum_2_above_below_col = "Σ |ΔΔ MP| (±2)"
-
 pct_col = "Live % Change"
 
 # =====================================
-# LOAD CSV DATA
+# LOAD CSV DATA (T1 ONLY)
 # =====================================
-df1 = pd.read_csv(file_map[t1])
-df2 = pd.read_csv(file_map[t2])
-df3 = pd.read_csv(file_map[t3])
+df1 = pd.read_csv(file_path)
 
-df1 = df1[["Stock","Strike","Max_Pain","Stock_LTP"]].rename(
+df = df1[["Stock","Strike","Max_Pain","Stock_LTP"]].rename(
     columns={"Max_Pain": mp1_col}
 )
-df2 = df2[["Stock","Strike","Max_Pain"]].rename(columns={"Max_Pain": mp2_col})
-df3 = df3[["Stock","Strike","Max_Pain"]].rename(columns={"Max_Pain": mp3_col})
-
-df = df1.merge(df2, on=["Stock","Strike"]).merge(df3, on=["Stock","Strike"])
 
 # =====================================
 # LIVE MAX PAIN LOGIC
@@ -207,11 +176,9 @@ final_df[pct_col] = final_df.groupby("Stock")[pct_col].transform("first")
 # DELTAS
 # =====================================
 final_df[live_delta_col] = final_df["Live_Max_Pain"] - final_df[mp1_col]
-final_df[delta_12] = final_df[mp1_col] - final_df[mp2_col]
-final_df[delta_23] = final_df[mp2_col] - final_df[mp3_col]
 
 # =====================================
-# ΔΔ LIVE MP
+# ΔΔ LIVE MP + Σ
 # =====================================
 final_df[delta_live_above_col] = np.nan
 final_df[sum_live_2_above_below_col] = np.nan
@@ -239,44 +206,8 @@ for stock, sdf in final_df.sort_values("Strike").groupby("Stock"):
         continue
 
     idxs = [atm_idx, atm_idx+1]
-    idxs = [i for i in idxs if i < len(sdf)]
-
     val = sdf.loc[idxs, delta_live_above_col].sum()
     final_df.loc[final_df["Stock"]==stock, sum_live_2_above_below_col] = abs(val)
-
-# =====================================
-# ΔΔ MP
-# =====================================
-final_df[delta_above_col] = np.nan
-final_df[sum_2_above_below_col] = np.nan
-
-for stock, sdf in final_df.sort_values("Strike").groupby("Stock"):
-    sdf = sdf[sdf["Strike"].notna()].reset_index()
-    if sdf.empty:
-        continue
-
-    vals = sdf[delta_12].astype(float).values
-    diff = vals - np.roll(vals, -1)
-    diff[-1] = np.nan
-    final_df.loc[sdf["index"], delta_above_col] = diff
-
-    ltp = sdf["Live_Stock_LTP"].iloc[0]
-    strikes = sdf["Strike"].values
-
-    atm_idx = None
-    for i in range(len(strikes)-1):
-        if strikes[i] <= ltp <= strikes[i+1]:
-            atm_idx = i if abs(strikes[i]-ltp) <= abs(strikes[i+1]-ltp) else i+1
-            break
-
-    if atm_idx is None:
-        continue
-
-    idxs = [atm_idx, atm_idx+1]
-    idxs = [i for i in idxs if i < len(sdf)]
-
-    val = sdf.loc[idxs, delta_above_col].sum()
-    final_df.loc[final_df["Stock"]==stock, sum_2_above_below_col] = abs(val)
 
 # =====================================
 # HIGHLIGHTING
@@ -304,39 +235,21 @@ def highlight_rows(df):
     return styles
 
 # =====================================
-# DISPLAY (FORMATTED)
+# DISPLAY (SAFE)
 # =====================================
 display_cols = [
     "Stock","Strike",
-    mp1_col,mp2_col,mp3_col,
+    mp1_col,
     "Live_Max_Pain",
     live_delta_col,
-    delta_12,
-    delta_23,
     delta_live_above_col,
     sum_live_2_above_below_col,
-    delta_above_col,
-    sum_2_above_below_col,
     pct_col,
     "Live_Stock_LTP"
 ]
 
-# ensure numeric
-for c in display_cols:
-    if c != "Stock":
-        final_df[c] = pd.to_numeric(final_df[c], errors="coerce")
-
-fmt = {c: "{:.0f}" for c in display_cols}
-fmt[pct_col] = "{:.2f}"
-fmt["Live_Stock_LTP"] = "{:.2f}"
-
-# =====================================
-# SAFE FORMATTING (NO STYLER FORMAT)
-# =====================================
-
 display_df = final_df[display_cols].copy()
 
-# Integer columns (everything except these)
 float_cols = {pct_col, "Live_Stock_LTP"}
 
 for col in display_df.columns:
@@ -357,13 +270,12 @@ st.dataframe(
     height=900
 )
 
-
 # =====================================
 # DOWNLOAD
 # =====================================
 st.download_button(
     "⬇️ Download CSV",
     final_df.to_csv(index=False),
-    f"max_pain_with_live_{t1_lbl}_{t2_lbl}_{t3_lbl}.csv",
+    f"max_pain_with_live_{t1_lbl}.csv",
     "text/csv",
 )
