@@ -270,7 +270,8 @@ for stock, sdf in final_df.sort_values("Strike").groupby("Stock"):
     idxs = [i for i in idxs if i < len(sdf)]
 
     val = sdf.loc[idxs, delta_live_above_col].sum()
-    final_df.loc[final_df["Stock"] == stock, sum_live_2_above_below_col] = abs(val)
+    final_df.loc[final_df["Stock"] == stock, sum_live_2_above_below_col] = val
+
 
 # =====================================
 # ΔΔ MP
