@@ -60,8 +60,8 @@ def load_csv_files():
     return sorted(files, reverse=True)
 
 csv_files = load_csv_files()
-if len(csv_files) < 3:
-    st.error("Need at least 3 CSV files.")
+if len(csv_files) < 2:
+    st.error("Need at least 2 CSV files.")
     st.stop()
 
 timestamps = [ts for ts, _ in csv_files]
@@ -73,19 +73,16 @@ def short_ts(ts):
 # =====================================
 # DROPDOWNS
 # =====================================
-c1, c2, c3 = st.columns(3)
+c1, c2 = st.columns(2)
 with c1:
     t1 = st.selectbox("Timestamp 1 (Latest)", timestamps, 0)
 with c2:
     t2 = st.selectbox("Timestamp 2", timestamps, 1)
-with c3:
-    t3 = st.selectbox("Timestamp 3", timestamps, 2)
 
-t1_lbl, t2_lbl, t3_lbl = short_ts(t1), short_ts(t2), short_ts(t3)
+t1_lbl, t2_lbl = short_ts(t1), short_ts(t2)
 
 mp1_col = f"MP ({t1_lbl})"
 mp2_col = f"MP ({t2_lbl})"
-mp3_col = f"MP ({t3_lbl})"
 
 live_delta_col = f"Δ MP (Live - {t1_lbl})"
 delta_live_above_col = "ΔΔ MP"
@@ -97,13 +94,11 @@ pct_col = "% Ch"
 # =====================================
 df1 = pd.read_csv(file_map[t1])
 df2 = pd.read_csv(file_map[t2])
-df3 = pd.read_csv(file_map[t3])
 
 df1 = df1[["Stock", "Strike", "Max_Pain", "Stock_LTP"]].rename(columns={"Max_Pain": mp1_col})
 df2 = df2[["Stock", "Strike", "Max_Pain"]].rename(columns={"Max_Pain": mp2_col})
-df3 = df3[["Stock", "Strike", "Max_Pain"]].rename(columns={"Max_Pain": mp3_col})
 
-df = df1.merge(df2, on=["Stock", "Strike"]).merge(df3, on=["Stock", "Strike"])
+df = df1.merge(df2, on=["Stock", "Strike"])
 
 # =====================================
 # LIVE MAX PAIN LOGIC
@@ -191,21 +186,12 @@ def fetch_live_mp_and_ltp(stocks):
     return pd.DataFrame(rows)
 
 # =====================================
-# INSERT BLANK ROWS
-# =====================================
-rows = []
-for stock, sdf in df.sort_values(["Stock", "Strike"]).groupby("Stock"):
-    rows.append(sdf)
-    rows.append(pd.DataFrame([{c: np.nan for c in df.columns}]))
-
-final_df = pd.concat(rows[:-1], ignore_index=True)
-
-# =====================================
 # MERGE LIVE DATA
 # =====================================
-stocks = final_df["Stock"].dropna().unique().tolist()
+stocks = df["Stock"].unique().tolist()
 live_df = fetch_live_mp_and_ltp(stocks)
-final_df = final_df.merge(live_df, on=["Stock", "Strike"], how="left")
+
+final_df = df.merge(live_df, on=["Stock", "Strike"], how="left")
 final_df[pct_col] = final_df.groupby("Stock")[pct_col].transform("first")
 
 # =====================================
@@ -219,39 +205,30 @@ final_df[delta_live_above_col] = (
 )
 
 # =====================================
-# Σ ΔΔ MP (Below + Above LTP) – CORRECT
+# Σ ΔΔ MP (Below + Above LTP)
 # =====================================
 final_df[sum_live_exact_atm_col] = np.nan
 
 for stock, sdf in final_df.sort_values("Strike").groupby("Stock"):
-    sdf = sdf[sdf["Strike"].notna()].reset_index()
-    if sdf.empty:
-        continue
-
+    sdf = sdf.reset_index()
     ltp = sdf["Live_Stock_LTP"].iloc[0]
     strikes = sdf["Strike"].values
+
     if ltp is None or np.isnan(ltp):
         continue
 
     for i in range(len(strikes) - 1):
         if strikes[i] <= ltp <= strikes[i + 1]:
-            pair_sum = (
+            final_df.loc[final_df["Stock"] == stock, sum_live_exact_atm_col] = (
                 sdf.loc[i, delta_live_above_col] +
                 sdf.loc[i + 1, delta_live_above_col]
             )
-            final_df.loc[final_df["Stock"] == stock, sum_live_exact_atm_col] = pair_sum
             break
 
-# =====================================
-# RENAME COLUMN
-# =====================================
-final_df = final_df.rename(
-    columns={sum_live_exact_atm_col: "Σ ΔΔ MP"}
-)
-
+final_df = final_df.rename(columns={sum_live_exact_atm_col: "Σ ΔΔ MP"})
 
 # =====================================
-# HIGHLIGHTING (ATM + MIN MP)
+# HIGHLIGHTING
 # =====================================
 def highlight_rows(df):
     styles = pd.DataFrame("", index=df.index, columns=df.columns)
@@ -261,7 +238,6 @@ def highlight_rows(df):
         if sdf.empty:
             continue
 
-        # Highlight ATM strikes
         ltp = sdf["Live_Stock_LTP"].iloc[0]
         strikes = sdf["Strike"].values
 
@@ -272,13 +248,11 @@ def highlight_rows(df):
                     styles.loc[sdf.index[i + 1], :] = "background-color:#003366;color:white"
                     break
 
-        # Highlight minimum Live Max Pain
         mp_vals = sdf["Live_Max_Pain"].dropna()
         if not mp_vals.empty:
             styles.loc[mp_vals.idxmin(), :] = "background-color:#8B0000;color:white"
 
     return styles
-
 
 # =====================================
 # DISPLAY
@@ -298,10 +272,14 @@ display_cols = [
 
 display_df = final_df[display_cols].copy()
 
+# ✅ ROUNDING RULE (AS REQUESTED)
 for c in display_df.columns:
     if c == "Stock":
         continue
-    display_df[c] = pd.to_numeric(display_df[c], errors="coerce").round(2)
+    if c in {pct_col, "Live_Stock_LTP"}:
+        display_df[c] = pd.to_numeric(display_df[c], errors="coerce").round(2)
+    else:
+        display_df[c] = pd.to_numeric(display_df[c], errors="coerce").round(0).astype("Int64")
 
 st.dataframe(
     display_df.style.apply(highlight_rows, axis=None),
@@ -309,13 +287,12 @@ st.dataframe(
     height=900
 )
 
-
 # =====================================
 # DOWNLOAD
 # =====================================
 st.download_button(
     "⬇️ Download CSV",
     final_df.to_csv(index=False),
-    f"max_pain_with_live_{t1_lbl}_{t2_lbl}_{t3_lbl}.csv",
+    f"max_pain_with_live_{t1_lbl}_{t2_lbl}.csv",
     "text/csv",
 )
