@@ -262,7 +262,7 @@ def compute_stock_signals(data):
 
     return signals
 
-
+stock_signals = compute_stock_signals(final_df)
 
 
 # =====================================
