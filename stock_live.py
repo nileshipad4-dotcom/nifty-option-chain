@@ -90,7 +90,6 @@ mp3_col = f"MP ({t3_lbl})"
 
 live_delta_col = f"Δ MP (Live - {t1_lbl})"
 delta_live_above_col = "ΔΔ MP"
-sum_live_2_above_below_col = "Σ ΔΔ MP (±2)"
 sum_live_exact_atm_col = "Σ ΔΔ MP (Below + Above LTP)"
 pct_col = "% Ch"
 
@@ -158,20 +157,19 @@ def fetch_live_mp_and_ltp(stocks):
             except Exception:
                 continue
 
-            chain = []
+            chain=[]
             for strike in sorted(opt_df["strike"].unique()):
-                ce = opt_df[(opt_df["strike"] == strike) & (opt_df["instrument_type"] == "CE")]
-                pe = opt_df[(opt_df["strike"] == strike) & (opt_df["instrument_type"] == "PE")]
-
-                ce_q = quotes.get("NFO:" + ce.iloc[0]["tradingsymbol"], {}) if not ce.empty else {}
-                pe_q = quotes.get("NFO:" + pe.iloc[0]["tradingsymbol"], {}) if not pe.empty else {}
+                ce = opt_df[(opt_df["strike"]==strike)&(opt_df["instrument_type"]=="CE")]
+                pe = opt_df[(opt_df["strike"]==strike)&(opt_df["instrument_type"]=="PE")]
+                ce_q = quotes.get("NFO:"+ce.iloc[0]["tradingsymbol"],{}) if not ce.empty else {}
+                pe_q = quotes.get("NFO:"+pe.iloc[0]["tradingsymbol"],{}) if not pe.empty else {}
 
                 chain.append({
-                    "Strike": strike,
-                    "CE_LTP": ce_q.get("last_price"),
-                    "CE_OI": ce_q.get("oi"),
-                    "PE_LTP": pe_q.get("last_price"),
-                    "PE_OI": pe_q.get("oi"),
+                    "Strike":strike,
+                    "CE_LTP":ce_q.get("last_price"),
+                    "CE_OI":ce_q.get("oi"),
+                    "PE_LTP":pe_q.get("last_price"),
+                    "PE_OI":pe_q.get("oi"),
                 })
 
             df_mp = compute_live_max_pain(pd.DataFrame(chain))
@@ -179,22 +177,25 @@ def fetch_live_mp_and_ltp(stocks):
             spot = spot_quotes.get(f"NSE:{stock}", {})
             ltp = spot.get("last_price")
             prev = spot.get("ohlc", {}).get("close")
+            live_pct = round(((ltp-prev)/prev)*100,2) if ltp and prev else np.nan
 
-            live_pct = (
-                round(((ltp - prev) / prev) * 100, 2)
-                if ltp is not None and prev else np.nan
-            )
-
-            for _, r in df_mp.iterrows():
+            for _,r in df_mp.iterrows():
                 rows.append({
-                    "Stock": stock,
-                    "Strike": r["Strike"],
-                    "Live_Max_Pain": r["Live_Max_Pain"],
-                    "Live_Stock_LTP": ltp,
+                    "Stock":stock,
+                    "Strike":r["Strike"],
+                    "Live_Max_Pain":r["Live_Max_Pain"],
+                    "Live_Stock_LTP":ltp,
                     pct_col: live_pct
                 })
 
-    return pd.DataFrame(rows)
+    df_out = pd.DataFrame(rows)
+
+    # guarantee columns
+    for c in ["Stock","Strike","Live_Max_Pain","Live_Stock_LTP",pct_col]:
+        if c not in df_out.columns:
+            df_out[c] = np.nan
+
+    return df_out
 
 # =====================================
 # INSERT BLANK ROWS
@@ -203,16 +204,13 @@ rows=[]
 for stock,sdf in df.sort_values(["Stock","Strike"]).groupby("Stock"):
     rows.append(sdf)
     rows.append(pd.DataFrame([{c:np.nan for c in df.columns}]))
-
 final_df = pd.concat(rows[:-1], ignore_index=True)
 
 # =====================================
 # MERGE LIVE DATA
 # =====================================
-stocks = (
-    final_df["Stock"].dropna().astype(str).str.strip()
-    .loc[lambda x: x!=""].unique().tolist()
-)
+stocks = final_df["Stock"].dropna().astype(str).str.strip()
+stocks = stocks[stocks!=""].unique().tolist()
 
 live_df = fetch_live_mp_and_ltp(stocks)
 final_df = final_df.merge(live_df, on=["Stock","Strike"], how="left")
@@ -224,10 +222,9 @@ final_df[pct_col] = final_df.groupby("Stock")[pct_col].transform("first")
 final_df[live_delta_col] = final_df["Live_Max_Pain"] - final_df[mp1_col]
 
 # =====================================
-# ΔΔ LIVE MP + ATM SUMS
+# ΔΔ MP + ATM SUM (CONSTANT)
 # =====================================
 final_df[delta_live_above_col] = np.nan
-final_df[sum_live_2_above_below_col] = np.nan
 final_df[sum_live_exact_atm_col] = np.nan
 
 for stock, sdf in final_df.sort_values("Strike").groupby("Stock"):
@@ -242,25 +239,20 @@ for stock, sdf in final_df.sort_values("Strike").groupby("Stock"):
 
     ltp = sdf["Live_Stock_LTP"].iloc[0]
     strikes = sdf["Strike"].values
-
     if ltp is None or np.isnan(ltp):
         continue
 
-    for i in range(len(strikes)-1):
-        if strikes[i] <= ltp <= strikes[i+1]:
-            pair_vals = sdf.loc[[i, i+1], delta_live_above_col].dropna()
-            val = pair_vals.sum()
+    below = np.max(np.where(strikes <= ltp))
+    above = below + 1 if below + 1 < len(strikes) else None
+    if above is None:
+        continue
 
-            final_df.loc[
-                sdf.loc[[i,i+1], "index"],
-                sum_live_2_above_below_col
-            ] = val
+    val = sdf.loc[[below, above], delta_live_above_col].dropna().sum()
 
-            final_df.loc[
-                final_df["Stock"] == stock,
-                sum_live_exact_atm_col
-            ] = val
-            break
+    final_df.loc[
+        final_df["Stock"] == stock,
+        sum_live_exact_atm_col
+    ] = val
 
 # =====================================
 # HIGHLIGHTING
@@ -277,11 +269,11 @@ def highlight_rows(df):
         strikes = sdf["Strike"].values
 
         if ltp is not None and not np.isnan(ltp):
-            for i in range(len(strikes)-1):
-                if strikes[i] <= ltp <= strikes[i+1]:
-                    styles.loc[sdf.index[i],:] = "background-color:#003366;color:white"
-                    styles.loc[sdf.index[i+1],:] = "background-color:#003366;color:white"
-                    break
+            below = np.max(np.where(strikes <= ltp))
+            above = below + 1 if below + 1 < len(strikes) else None
+            if above is not None:
+                styles.loc[sdf.index[below],:] = "background-color:#003366;color:white"
+                styles.loc[sdf.index[above],:] = "background-color:#003366;color:white"
 
         min_idx = sdf["Live_Max_Pain"].idxmin()
         styles.loc[min_idx,:] = "background-color:#8B0000;color:white"
@@ -296,7 +288,6 @@ display_cols = [
     mp1_col,mp2_col,
     live_delta_col,
     delta_live_above_col,
-    sum_live_2_above_below_col,
     sum_live_exact_atm_col,
     pct_col,"Live_Stock_LTP"
 ]
