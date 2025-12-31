@@ -249,6 +249,37 @@ final_df = final_df.rename(
     columns={sum_live_exact_atm_col: "Σ ΔΔ MP"}
 )
 
+
+# =====================================
+# HIGHLIGHTING (ATM + MIN MP)
+# =====================================
+def highlight_rows(df):
+    styles = pd.DataFrame("", index=df.index, columns=df.columns)
+
+    for stock in df["Stock"].dropna().unique():
+        sdf = df[(df["Stock"] == stock) & (df["Strike"].notna())]
+        if sdf.empty:
+            continue
+
+        # Highlight ATM strikes
+        ltp = sdf["Live_Stock_LTP"].iloc[0]
+        strikes = sdf["Strike"].values
+
+        if ltp is not None and not np.isnan(ltp):
+            for i in range(len(strikes) - 1):
+                if strikes[i] <= ltp <= strikes[i + 1]:
+                    styles.loc[sdf.index[i], :] = "background-color:#003366;color:white"
+                    styles.loc[sdf.index[i + 1], :] = "background-color:#003366;color:white"
+                    break
+
+        # Highlight minimum Live Max Pain
+        mp_vals = sdf["Live_Max_Pain"].dropna()
+        if not mp_vals.empty:
+            styles.loc[mp_vals.idxmin(), :] = "background-color:#8B0000;color:white"
+
+    return styles
+
+
 # =====================================
 # DISPLAY
 # =====================================
@@ -272,7 +303,12 @@ for c in display_df.columns:
         continue
     display_df[c] = pd.to_numeric(display_df[c], errors="coerce").round(2)
 
-st.dataframe(display_df, use_container_width=True, height=900)
+st.dataframe(
+    display_df.style.apply(highlight_rows, axis=None),
+    use_container_width=True,
+    height=900
+)
+
 
 # =====================================
 # DOWNLOAD
