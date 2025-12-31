@@ -85,6 +85,8 @@ delta_23 = f"Δ MP ({t2_lbl}-{t3_lbl})"
 sum_12_col = f"Σ {delta_12}"
 delta_above_col = f"ΔΔ MP ({t1_lbl}-{t2_lbl})"
 sum_2_above_below_col = f"Σ |ΔΔ MP| (±2)"
+dist_col = "% Dist from LTP (Max |ΔΔ| ±3)"
+
 
 # =====================================
 # LOAD DATA
@@ -147,6 +149,49 @@ for stock, sdf in df.sort_values("Strike").groupby("Stock"):
             )
             break
 
+
+
+# ==================================
+# % DIFFERENCE FROM MAX PAIN 
+# ==================================
+df[dist_col] = np.nan
+
+for stock, sdf in df.sort_values("Strike").groupby("Stock"):
+    sdf = sdf.reset_index()
+    ltp = float(sdf["Stock_LTP"].iloc[0])
+    strikes = sdf["Strike"].values
+
+    atm_idx = None
+    for i in range(len(strikes) - 1):
+        if strikes[i] <= ltp <= strikes[i + 1]:
+            atm_idx = i + 1
+            break
+
+    if atm_idx is None:
+        continue
+
+    # indices: 3 below + 3 above LTP
+    idxs = list(range(atm_idx - 3, atm_idx)) + list(range(atm_idx, atm_idx + 3))
+    idxs = [i for i in idxs if 0 <= i < len(sdf)]
+
+    if not idxs:
+        continue
+
+    subset = sdf.loc[idxs, ["Strike", delta_above_col]].dropna()
+
+    if subset.empty:
+        continue
+
+    # max by absolute value
+    max_row = subset.loc[subset[delta_above_col].abs().idxmax()]
+    A = float(max_row["Strike"])
+
+    value = ((A - ltp) / ltp) * 100
+
+    df.loc[df["Stock"] == stock, dist_col] = value
+
+
+
 # =====================================
 # FINAL COLUMN ORDER
 # =====================================
@@ -163,6 +208,7 @@ df = df[
         sum_12_col,
         delta_above_col,
         sum_2_above_below_col,
+        dist_col,
         pct_col,
         "Stock_LTP",
     ]
