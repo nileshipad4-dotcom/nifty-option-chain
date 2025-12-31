@@ -287,9 +287,10 @@ for stock, sdf in final_df.sort_values("Strike").groupby("Stock"):
     val = vals.dropna().sum()
 
     final_df.loc[
-        sdf.loc[[below_idx, above_idx], "index"],
+        final_df["Stock"] == stock,
         sum_live_exact_atm_col
     ] = val
+
 
 
 # =====================================
