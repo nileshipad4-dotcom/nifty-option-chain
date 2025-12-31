@@ -182,13 +182,8 @@ final_df = pd.concat(rows[:-1], ignore_index=True)
 # =====================================
 def compute_stock_signals(data):
     signals = {}
-
     for stock in data["Stock"].dropna().unique():
-        sdf = data[
-            (data["Stock"] == stock) &
-            data["Strike"].notna()
-        ].sort_values("Strike")
-
+        sdf = data[(data["Stock"] == stock) & data["Strike"].notna()].sort_values("Strike")
         if len(sdf) < 9:
             continue
 
@@ -200,12 +195,9 @@ def compute_stock_signals(data):
             if strikes[i] <= ltp <= strikes[i + 1]:
                 atm_idx = i + 1
                 break
-        if atm_idx is None or atm_idx <= 0:
+        if atm_idx is None:
             continue
 
-        # =================================================
-        # CONDITION 1: ORIGINAL TREND + STRUCTURE
-        # =================================================
         mid = sdf.iloc[4:-4]
         diffs = np.diff(mid[sum_12_col].astype(float).values)
         if len(diffs) == 0:
@@ -214,56 +206,32 @@ def compute_stock_signals(data):
         inc_ratio = np.sum(diffs > 0) / len(diffs)
         dec_ratio = np.sum(diffs < 0) / len(diffs)
 
-        # must be GREEN trend
-        if dec_ratio < 0.9:
+        trend = "red" if inc_ratio >= 0.9 else "green" if dec_ratio >= 0.9 else None
+        if trend is None:
             continue
 
         above = sdf.iloc[atm_idx:atm_idx + 5]
         below = sdf.iloc[max(atm_idx - 5, 0):atm_idx]
 
-        if not (
+        if (
+            (above[delta_12] > above[delta_23]).sum() >= 3 and
+            (below[delta_12] < below[delta_23]).sum() >= 3
+        ):
+            signal = "red"
+        elif (
             (above[delta_12] < above[delta_23]).sum() >= 3 and
             (below[delta_12] > below[delta_23]).sum() >= 3
         ):
+            signal = "green"
+        else:
             continue
 
-        # =================================================
-        # CONDITION 2: NEW ATM-STRENGTH FILTER
-        # =================================================
-        sum_val = sdf[sum_2_above_below_col].iloc[0]
-        if pd.isna(sum_val):
-            continue
-
-        threshold = (sum_val / 2) * 1
-
-        # delta_above at ATM neighbors
-        da_above_atm = sdf.iloc[atm_idx][delta_above_col]       # strike just ABOVE LTP
-        da_below_atm = sdf.iloc[atm_idx - 1][delta_above_col]  # strike just BELOW LTP
-
-        if pd.isna(da_above_atm) or pd.isna(da_below_atm):
-            continue
-
-        # ---- 2A: strength above ATM ----
-        above_vals = sdf.iloc[atm_idx + 1:][delta_above_col].dropna()
-        if (above_vals > threshold).sum() < 2:
-            continue
-
-        # ---- 2B: weakness capped below ATM ----
-        below_vals = sdf.iloc[:atm_idx - 1][delta_above_col].dropna()
-        limit = min(da_above_atm, da_below_atm)
-
-        if (below_vals > limit).any():
-            continue
-
-        # =================================================
-        # BOTH CONDITIONS PASSED
-        # =================================================
-        signals[stock] = "green"
+        if signal == trend:
+            signals[stock] = signal
 
     return signals
 
 stock_signals = compute_stock_signals(final_df)
-
 
 # =====================================
 # FILTERED TABLES
