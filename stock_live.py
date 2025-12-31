@@ -115,7 +115,7 @@ def compute_live_max_pain(df):
             + sum(G[i:] * L[i:]) - G.iloc[i] * sum(L[i:])
         )
         mp.append(int(val / 10000))
-    df["Live_Max_Pain"] = mp
+    df["MP Live"] = mp
     return df
 
 # =====================================
@@ -178,8 +178,8 @@ def fetch_live_mp_and_ltp(stocks):
                 rows.append({
                     "Stock": stock,
                     "Strike": r["Strike"],
-                    "Live_Max_Pain": r["Live_Max_Pain"],
-                    "Live_Stock_LTP": ltp,
+                    "MP Live": r["MP Live"],
+                    "LTP": ltp,
                     pct_col: live_pct
                 })
 
@@ -197,7 +197,7 @@ final_df[pct_col] = final_df.groupby("Stock")[pct_col].transform("first")
 # =====================================
 # DELTA CALCULATIONS
 # =====================================
-final_df[live_delta_col] = final_df["Live_Max_Pain"] - final_df[mp1_col]
+final_df[live_delta_col] = final_df["MP Live"] - final_df[mp1_col]
 
 final_df[delta_live_above_col] = (
     final_df[live_delta_col] -
@@ -211,7 +211,7 @@ final_df[sum_live_exact_atm_col] = np.nan
 
 for stock, sdf in final_df.sort_values("Strike").groupby("Stock"):
     sdf = sdf.reset_index()
-    ltp = sdf["Live_Stock_LTP"].iloc[0]
+    ltp = sdf["LTP"].iloc[0]
     strikes = sdf["Strike"].values
 
     if pd.isna(ltp):
@@ -239,7 +239,7 @@ def highlight_rows(df):
             continue
 
         # FIX: convert back to numeric
-        ltp = pd.to_numeric(sdf["Live_Stock_LTP"].iloc[0], errors="coerce")
+        ltp = pd.to_numeric(sdf["LTP"].iloc[0], errors="coerce")
         strikes = sdf["Strike"].values
 
         if pd.notna(ltp):
@@ -249,7 +249,7 @@ def highlight_rows(df):
                     styles.loc[sdf.index[i + 1], :] = "background-color:#003366;color:white"
                     break
 
-        mp_vals = sdf["Live_Max_Pain"].dropna()
+        mp_vals = sdf["MP Live"].dropna()
         if not mp_vals.empty:
             styles.loc[mp_vals.idxmin(), :] = "background-color:#8B0000;color:white"
 
@@ -261,14 +261,14 @@ def highlight_rows(df):
 display_cols = [
     "Stock",
     "Strike",
-    "Live_Max_Pain",
+    "MP Live",
     mp1_col,
     mp2_col,
     live_delta_col,
     delta_live_above_col,
     "Σ ΔΔ MP",
     pct_col,
-    "Live_Stock_LTP"
+    "LTP"
 ]
 
 display_df = final_df[display_cols].copy()
@@ -277,7 +277,7 @@ display_df = final_df[display_cols].copy()
 for c in display_df.columns:
     if c == "Stock":
         continue
-    if c in {pct_col, "Live_Stock_LTP"}:
+    if c in {pct_col, "LTP"}:
         display_df[c] = (
             pd.to_numeric(display_df[c], errors="coerce")
             .round(2)
