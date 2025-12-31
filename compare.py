@@ -178,81 +178,11 @@ for stock, sdf in df.sort_values(["Stock", "Strike"]).groupby("Stock"):
 final_df = pd.concat(rows[:-1], ignore_index=True)
 
 # =====================================
-# COMPUTE STOCK SIGNALS (UNCHANGED)
-# =====================================
-def compute_stock_signals(data):
-    signals = {}
-    for stock in data["Stock"].dropna().unique():
-        sdf = data[(data["Stock"] == stock) & data["Strike"].notna()].sort_values("Strike")
-        if len(sdf) < 9:
-            continue
-
-        ltp = float(sdf["Stock_LTP"].iloc[0])
-        strikes = sdf["Strike"].values
-
-        atm_idx = None
-        for i in range(len(strikes) - 1):
-            if strikes[i] <= ltp <= strikes[i + 1]:
-                atm_idx = i + 1
-                break
-        if atm_idx is None:
-            continue
-
-        mid = sdf.iloc[4:-4]
-        diffs = np.diff(mid[sum_12_col].astype(float).values)
-        if len(diffs) == 0:
-            continue
-
-        inc_ratio = np.sum(diffs > 0) / len(diffs)
-        dec_ratio = np.sum(diffs < 0) / len(diffs)
-
-        trend = "red" if inc_ratio >= 0.9 else "green" if dec_ratio >= 0.9 else None
-        if trend is None:
-            continue
-
-        above = sdf.iloc[atm_idx:atm_idx + 5]
-        below = sdf.iloc[max(atm_idx - 5, 0):atm_idx]
-
-        if (
-            (above[delta_12] > above[delta_23]).sum() >= 3 and
-            (below[delta_12] < below[delta_23]).sum() >= 3
-        ):
-            signal = "red"
-        elif (
-            (above[delta_12] < above[delta_23]).sum() >= 3 and
-            (below[delta_12] > below[delta_23]).sum() >= 3
-        ):
-            signal = "green"
-        else:
-            continue
-
-        if signal == trend:
-            signals[stock] = signal
-
-    return signals
-
-stock_signals = compute_stock_signals(final_df)
-
-# =====================================
-# FILTERED TABLES
-# =====================================
-def build_filtered_df(base_df, stocks):
-    blocks = []
-    for s in stocks:
-        sdf = base_df[base_df["Stock"] == s]
-        if not sdf.empty:
-            blocks.append(sdf)
-            blocks.append(pd.DataFrame([{col: np.nan for col in base_df.columns}]))
-    return pd.concat(blocks[:-1], ignore_index=True) if blocks else base_df.iloc[0:0]
-
-green_df = build_filtered_df(final_df, [s for s, v in stock_signals.items() if v == "green"])
-red_df   = build_filtered_df(final_df, [s for s, v in stock_signals.items() if v == "red"])
-
-# =====================================
-# HIGHLIGHTING
+# HIGHLIGHTING (ONLY ATM + MIN MAX PAIN)
 # =====================================
 def highlight_rows(data):
     styles = pd.DataFrame("", index=data.index, columns=data.columns)
+
     for stock in data["Stock"].dropna().unique():
         sdf = data[(data["Stock"] == stock) & data["Strike"].notna()].sort_values("Strike")
         if sdf.empty:
@@ -261,18 +191,15 @@ def highlight_rows(data):
         ltp = float(sdf["Stock_LTP"].iloc[0])
         strikes = sdf["Strike"].values
 
+        # ATM highlight
         for i in range(len(strikes) - 1):
             if strikes[i] <= ltp <= strikes[i + 1]:
                 styles.loc[sdf.index[i]] = "background-color:#003366;color:white"
                 styles.loc[sdf.index[i + 1]] = "background-color:#003366;color:white"
                 break
 
-        styles.loc[sdf[mp1_col].idxmin()] = "background-color:#8B0000;color:white"
-
-        if stock in stock_signals:
-            color = "background-color:#8B0000;color:white" if stock_signals[stock] == "red" else "background-color:#004d00;color:white"
-            styles.loc[sdf.index, delta_12] = color
-            styles.loc[sdf.index, delta_23] = color
+        # Min Max Pain highlight
+        styles.loc[sdf[mp1_col].astype(float).idxmin()] = "background-color:#8B0000;color:white"
 
     return styles
 
@@ -281,22 +208,17 @@ def highlight_rows(data):
 # =====================================
 display_cols = [c for c in final_df.columns if c != sum_12_col]
 
-def show(title, df_):
-    st.subheader(title)
-    st.dataframe(
-        df_[display_cols]
-        .style.apply(highlight_rows, axis=None)
-        .format(
-            {c: "{:.3f}" if c == pct_col else "{:.2f}" if c == "Stock_LTP" else "{:.0f}"
-             for c in display_cols if c not in {"Stock", "Sector"}},
-            na_rep=""
-        ),
-        use_container_width=True,
-    )
-
-show(f"🟢 UPTREND ({len(green_df['Stock'].dropna().unique())})", green_df)
-show(f"🔴 DOWNTREND ({len(red_df['Stock'].dropna().unique())})", red_df)
-show(f"📊 ALL STOCKS: {t1_lbl} vs {t2_lbl} vs {t3_lbl}", final_df)
+st.subheader(f"📊 ALL STOCKS: {t1_lbl} vs {t2_lbl} vs {t3_lbl}")
+st.dataframe(
+    final_df[display_cols]
+    .style.apply(highlight_rows, axis=None)
+    .format(
+        {c: "{:.3f}" if c == pct_col else "{:.2f}" if c == "Stock_LTP" else "{:.0f}"
+         for c in display_cols if c not in {"Stock", "Sector"}},
+        na_rep=""
+    ),
+    use_container_width=True,
+)
 
 # =====================================
 # DOWNLOAD
@@ -308,20 +230,14 @@ st.download_button(
     "text/csv",
 )
 
-
 # =====================================
-# SINGLE STOCK VIEW (DROPDOWN)
+# SINGLE STOCK VIEW
 # =====================================
 st.subheader("🔍 View Individual Stock")
 
-# get stock list (case-insensitive safe)
 stock_list = sorted(final_df["Stock"].dropna().unique().tolist())
 
-selected_stock = st.selectbox(
-    "Select Stock",
-    [""] + stock_list,
-    index=0
-)
+selected_stock = st.selectbox("Select Stock", [""] + stock_list)
 
 if selected_stock:
     stock_df = final_df[final_df["Stock"] == selected_stock]
@@ -330,13 +246,8 @@ if selected_stock:
         stock_df[display_cols]
         .style.apply(highlight_rows, axis=None)
         .format(
-            {
-                c: "{:.3f}" if c == pct_col
-                else "{:.2f}" if c == "Stock_LTP"
-                else "{:.0f}"
-                for c in display_cols
-                if c not in {"Stock", "Sector"}
-            },
+            {c: "{:.3f}" if c == pct_col else "{:.2f}" if c == "Stock_LTP" else "{:.0f}"
+             for c in display_cols if c not in {"Stock", "Sector"}},
             na_rep=""
         ),
         use_container_width=True,
