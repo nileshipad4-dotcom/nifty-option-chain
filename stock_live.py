@@ -213,7 +213,7 @@ final_df[delta_12] = final_df[mp1_col] - final_df[mp2_col]
 final_df[delta_23] = final_df[mp2_col] - final_df[mp3_col]
 
 # =====================================
-# ΔΔ LIVE MP (CORRECT PAIR LOGIC)
+# ΔΔ LIVE MP (FIXED WRITEBACK)
 # =====================================
 final_df[delta_live_above_col] = np.nan
 final_df[sum_live_2_above_below_col] = np.nan
@@ -223,22 +223,28 @@ for stock, sdf in final_df.sort_values("Strike").groupby("Stock"):
     if sdf.empty:
         continue
 
-    diff = sdf[live_delta_col].astype(float).values - np.roll(
-        sdf[live_delta_col].astype(float).values, -1
-    )
+    vals = sdf[live_delta_col].astype(float).values
+    diff = vals - np.roll(vals, -1)
     diff[-1] = np.nan
+
     final_df.loc[sdf["index"], delta_live_above_col] = diff
 
     ltp = sdf["Live_Stock_LTP"].iloc[0]
     strikes = sdf["Strike"].values
+
     if ltp is None or np.isnan(ltp):
         continue
 
-    for i in range(len(strikes)-1):
-        if strikes[i] <= ltp <= strikes[i+1]:
-            val = sdf.loc[[i,i+1], delta_live_above_col].sum()
-            final_df.loc[final_df["Stock"]==stock, sum_live_2_above_below_col] = val
+    # ✅ FIND TWO STRIKES BETWEEN WHICH LTP LIES
+    for i in range(len(strikes) - 1):
+        if strikes[i] <= ltp <= strikes[i + 1]:
+            atm_idxs = [i, i + 1]
+            val = sdf.loc[atm_idxs, delta_live_above_col].sum()
+
+            # ✅ WRITE ONLY ON THOSE TWO ROWS
+            final_df.loc[sdf.loc[atm_idxs, "index"], sum_live_2_above_below_col] = val
             break
+
 
 # =====================================
 # HIGHLIGHTING (TWO STRIKES)
