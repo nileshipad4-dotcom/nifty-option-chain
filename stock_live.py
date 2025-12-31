@@ -197,7 +197,7 @@ def fetch_live_mp_and_ltp(stocks):
                 })
 
     return pd.DataFrame(rows)
-)
+
 
 # =====================================
 # INSERT BLANK ROWS
