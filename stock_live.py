@@ -235,6 +235,41 @@ for stock, sdf in final_df.sort_values("Strike").groupby("Stock"):
             )
             break
 
+
+
+
+# =====================================
+# HIGHLIGHTING
+# =====================================
+def highlight_rows(df):
+    styles = pd.DataFrame("", index=df.index, columns=df.columns)
+
+    for stock in df["Stock"].dropna().unique():
+        sdf = df[(df["Stock"] == stock) & df["Strike"].notna()]
+        if sdf.empty:
+            continue
+
+        # ---- ATM HIGHLIGHT ----
+        ltp = pd.to_numeric(sdf["LTP"].iloc[0], errors="coerce")
+        strikes = sdf["Strike"].values
+
+        if pd.notna(ltp):
+            for i in range(len(strikes) - 1):
+                if strikes[i] <= ltp <= strikes[i + 1]:
+                    styles.loc[sdf.index[i], :] = "background-color:#003366;color:white"
+                    styles.loc[sdf.index[i + 1], :] = "background-color:#003366;color:white"
+                    break
+
+        # ---- MIN LIVE MP HIGHLIGHT ----
+        mp_vals = sdf["MP Live"].dropna()
+        if not mp_vals.empty:
+            styles.loc[mp_vals.idxmin(), :] = "background-color:#8B0000;color:white"
+
+    return styles
+
+
+
+
 # =====================================
 # DISPLAY
 # =====================================
@@ -271,7 +306,12 @@ for c in display_df.columns:
             .astype("Int64")
         )
 
-st.dataframe(display_df, use_container_width=True, height=900)
+st.dataframe(
+    display_df.style.apply(highlight_rows, axis=None),
+    use_container_width=True,
+    height=900
+)
+
 
 # =====================================
 # DOWNLOAD
