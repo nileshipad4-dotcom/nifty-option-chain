@@ -97,7 +97,8 @@ sum_live_2_above_below_col = "Σ ΔΔ MP (±2)"
 
 delta_above_col = "ΔΔ MP 1"
 sum_2_above_below_col = "Σ |ΔΔ MP-old| (±2)"
-sum_live_exact_atm_col = "Σ ΔΔ MP"
+sum_live_exact_atm_col = "Σ ΔΔ MP (Below+Above LTP)"
+
 
 
 pct_col = "% Ch"
@@ -327,7 +328,7 @@ display_cols = [
     mp1_col,mp2_col,
     live_delta_col,
     delta_live_above_col,
-    sum_live_2_above_below_col,
+    #sum_live_2_above_below_col,
     sum_live_exact_atm_col, 
     pct_col,"Live_Stock_LTP"
 ]
