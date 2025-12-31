@@ -272,11 +272,10 @@ display_cols = [
 
 display_df = final_df[display_cols].copy()
 
-# ✅ ROUNDING RULE (AS REQUESTED)
+# ROUNDING / FORMATTING
 for c in display_df.columns:
     if c == "Stock":
         continue
-
     if c in {pct_col, "Live_Stock_LTP"}:
         display_df[c] = (
             pd.to_numeric(display_df[c], errors="coerce")
@@ -290,6 +289,11 @@ for c in display_df.columns:
             .astype("Int64")
         )
 
+st.dataframe(
+    display_df.style.apply(highlight_rows, axis=None),
+    use_container_width=True,
+    height=900
+)
 
 # =====================================
 # DOWNLOAD
