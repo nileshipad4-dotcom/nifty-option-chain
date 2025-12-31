@@ -103,6 +103,12 @@ df1 = df1[["Stock", "Strike", "Max_Pain", "Stock_LTP"]].rename(columns={"Max_Pai
 df2 = df2[["Stock", "Strike", "Max_Pain"]].rename(columns={"Max_Pain": mp2_col})
 
 df = df1.merge(df2, on=["Stock", "Strike"])
+# =====================================
+# REMOVE INDEX SYMBOLS
+# =====================================
+EXCLUDE_SYMBOLS = {"NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"}
+
+df = df[~df["Stock"].isin(EXCLUDE_SYMBOLS)]
 
 # =====================================
 # LIVE MAX PAIN LOGIC
@@ -192,7 +198,11 @@ def fetch_live_mp_and_ltp(stocks):
 # =====================================
 # MERGE LIVE DATA
 # =====================================
-stocks = df["Stock"].unique().tolist()
+stocks = [
+    s for s in df["Stock"].unique().tolist()
+    if s not in {"NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"}
+]
+
 live_df = fetch_live_mp_and_ltp(stocks)
 
 final_df = df.merge(live_df, on=["Stock", "Strike"], how="left")
