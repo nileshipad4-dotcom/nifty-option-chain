@@ -234,7 +234,7 @@ def compute_stock_signals(data):
         if pd.isna(sum_val):
             continue
 
-        threshold = (sum_val / 2) * 1.5
+        threshold = (sum_val / 2) * 1
 
         # delta_above at ATM neighbors
         da_above_atm = sdf.iloc[atm_idx][delta_above_col]       # strike just ABOVE LTP
