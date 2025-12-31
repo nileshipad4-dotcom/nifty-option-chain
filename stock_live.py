@@ -19,7 +19,7 @@ st_autorefresh(interval=360_000, key="auto_refresh")
 # STREAMLIT CONFIG
 # =====================================
 st.set_page_config(page_title="Max Pain Comparison", layout="wide")
-st.title("📊 FnO STOCKS – Historical + Live Max Pain")
+st.title("📊 FnO STOCKS")
 
 DATA_DIR = "data"
 IST = pytz.timezone("Asia/Kolkata")
