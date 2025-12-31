@@ -6,7 +6,6 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import os
-from datetime import datetime
 from streamlit_autorefresh import st_autorefresh
 from kiteconnect import KiteConnect
 import pytz
@@ -90,23 +89,23 @@ mp3_col = f"MP ({t3_lbl})"
 
 live_delta_col = f"Δ MP (Live - {t1_lbl})"
 delta_live_above_col = "ΔΔ MP"
+sum_live_2_above_below_col = "Σ ΔΔ MP (±2)"
 sum_live_exact_atm_col = "Σ ΔΔ MP (Below + Above LTP)"
+
 pct_col = "% Ch"
 
 # =====================================
 # LOAD CSV DATA
 # =====================================
-df1 = pd.read_csv(file_map[t1])[["Stock","Strike","Max_Pain","Stock_LTP"]].rename(
-    columns={"Max_Pain": mp1_col}
-)
-df2 = pd.read_csv(file_map[t2])[["Stock","Strike","Max_Pain"]].rename(
-    columns={"Max_Pain": mp2_col}
-)
-df3 = pd.read_csv(file_map[t3])[["Stock","Strike","Max_Pain"]].rename(
-    columns={"Max_Pain": mp3_col}
-)
+df1 = pd.read_csv(file_map[t1])
+df2 = pd.read_csv(file_map[t2])
+df3 = pd.read_csv(file_map[t3])
 
-df = df1.merge(df2, on=["Stock","Strike"]).merge(df3, on=["Stock","Strike"])
+df1 = df1[["Stock", "Strike", "Max_Pain", "Stock_LTP"]].rename(columns={"Max_Pain": mp1_col})
+df2 = df2[["Stock", "Strike", "Max_Pain"]].rename(columns={"Max_Pain": mp2_col})
+df3 = df3[["Stock", "Strike", "Max_Pain"]].rename(columns={"Max_Pain": mp3_col})
+
+df = df1.merge(df2, on=["Stock", "Strike"]).merge(df3, on=["Stock", "Strike"])
 
 # =====================================
 # LIVE MAX PAIN LOGIC
@@ -127,40 +126,33 @@ def compute_live_max_pain(df):
     return df
 
 # =====================================
-# FETCH LIVE DATA (SAFE)
+# FETCH LIVE DATA (SAFE BATCHED)
 # =====================================
 @st.cache_data(ttl=300)
 def fetch_live_mp_and_ltp(stocks):
-    rows = []
-
+    rows=[]
     for i in range(0, len(stocks), 40):
         batch = stocks[i:i+40]
-
-        try:
-            spot_quotes = kite.quote([f"NSE:{s}" for s in batch])
-        except Exception:
-            continue
+        spot_quotes = kite.quote([f"NSE:{s}" for s in batch])
 
         for stock in batch:
             opt_df = instruments[
-                (instruments["name"] == stock) &
-                (instruments["segment"] == "NFO-OPT")
+                (instruments["name"]==stock) &
+                (instruments["segment"]=="NFO-OPT")
             ]
             if opt_df.empty:
                 continue
 
             expiry = opt_df["expiry"].min()
-            opt_df = opt_df[opt_df["expiry"] == expiry]
+            opt_df = opt_df[opt_df["expiry"]==expiry]
 
-            try:
-                quotes = kite.quote(["NFO:" + s for s in opt_df["tradingsymbol"]])
-            except Exception:
-                continue
+            quotes = kite.quote(["NFO:"+s for s in opt_df["tradingsymbol"]])
 
             chain=[]
             for strike in sorted(opt_df["strike"].unique()):
                 ce = opt_df[(opt_df["strike"]==strike)&(opt_df["instrument_type"]=="CE")]
                 pe = opt_df[(opt_df["strike"]==strike)&(opt_df["instrument_type"]=="PE")]
+
                 ce_q = quotes.get("NFO:"+ce.iloc[0]["tradingsymbol"],{}) if not ce.empty else {}
                 pe_q = quotes.get("NFO:"+pe.iloc[0]["tradingsymbol"],{}) if not pe.empty else {}
 
@@ -173,10 +165,10 @@ def fetch_live_mp_and_ltp(stocks):
                 })
 
             df_mp = compute_live_max_pain(pd.DataFrame(chain))
-
             spot = spot_quotes.get(f"NSE:{stock}", {})
             ltp = spot.get("last_price")
             prev = spot.get("ohlc", {}).get("close")
+
             live_pct = round(((ltp-prev)/prev)*100,2) if ltp and prev else np.nan
 
             for _,r in df_mp.iterrows():
@@ -187,15 +179,7 @@ def fetch_live_mp_and_ltp(stocks):
                     "Live_Stock_LTP":ltp,
                     pct_col: live_pct
                 })
-
-    df_out = pd.DataFrame(rows)
-
-    # guarantee columns
-    for c in ["Stock","Strike","Live_Max_Pain","Live_Stock_LTP",pct_col]:
-        if c not in df_out.columns:
-            df_out[c] = np.nan
-
-    return df_out
+    return pd.DataFrame(rows)
 
 # =====================================
 # INSERT BLANK ROWS
@@ -222,9 +206,10 @@ final_df[pct_col] = final_df.groupby("Stock")[pct_col].transform("first")
 final_df[live_delta_col] = final_df["Live_Max_Pain"] - final_df[mp1_col]
 
 # =====================================
-# ΔΔ MP + ATM SUM (CONSTANT)
+# ΔΔ LIVE MP + Σ (±2)
 # =====================================
 final_df[delta_live_above_col] = np.nan
+final_df[sum_live_2_above_below_col] = np.nan
 final_df[sum_live_exact_atm_col] = np.nan
 
 for stock, sdf in final_df.sort_values("Strike").groupby("Stock"):
@@ -242,20 +227,15 @@ for stock, sdf in final_df.sort_values("Strike").groupby("Stock"):
     if ltp is None or np.isnan(ltp):
         continue
 
-    below = np.max(np.where(strikes <= ltp))
-    above = below + 1 if below + 1 < len(strikes) else None
-    if above is None:
-        continue
-
-    val = sdf.loc[[below, above], delta_live_above_col].dropna().sum()
-
-    final_df.loc[
-        final_df["Stock"] == stock,
-        sum_live_exact_atm_col
-    ] = val
+    for i in range(len(strikes)-1):
+        if strikes[i] <= ltp <= strikes[i+1]:
+            pair = sdf.loc[[i,i+1], delta_live_above_col].dropna().sum()
+            final_df.loc[final_df["Stock"]==stock, sum_live_exact_atm_col] = pair
+            final_df.loc[sdf.loc[[i,i+1],"index"], sum_live_2_above_below_col] = pair
+            break
 
 # =====================================
-# HIGHLIGHTING
+# HIGHLIGHTING (SAFE)
 # =====================================
 def highlight_rows(df):
     styles = pd.DataFrame("", index=df.index, columns=df.columns)
@@ -269,14 +249,15 @@ def highlight_rows(df):
         strikes = sdf["Strike"].values
 
         if ltp is not None and not np.isnan(ltp):
-            below = np.max(np.where(strikes <= ltp))
-            above = below + 1 if below + 1 < len(strikes) else None
-            if above is not None:
-                styles.loc[sdf.index[below],:] = "background-color:#003366;color:white"
-                styles.loc[sdf.index[above],:] = "background-color:#003366;color:white"
+            for i in range(len(strikes)-1):
+                if strikes[i] <= ltp <= strikes[i+1]:
+                    styles.loc[sdf.index[i],:] = "background-color:#003366;color:white"
+                    styles.loc[sdf.index[i+1],:] = "background-color:#003366;color:white"
+                    break
 
-        min_idx = sdf["Live_Max_Pain"].idxmin()
-        styles.loc[min_idx,:] = "background-color:#8B0000;color:white"
+        mp_vals = sdf["Live_Max_Pain"].dropna()
+        if not mp_vals.empty:
+            styles.loc[mp_vals.idxmin(),:] = "background-color:#8B0000;color:white"
 
     return styles
 
@@ -288,6 +269,7 @@ display_cols = [
     mp1_col,mp2_col,
     live_delta_col,
     delta_live_above_col,
+    sum_live_2_above_below_col,
     sum_live_exact_atm_col,
     pct_col,"Live_Stock_LTP"
 ]
