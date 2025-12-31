@@ -23,18 +23,6 @@ STOCKS = ["360ONE","ABB","ABCAPITAL","ADANIENSOL","ADANIENT","ADANIGREEN","ADANI
 DATA_DIR = "data"
 os.makedirs(DATA_DIR, exist_ok=True)
 
-PLACEHOLDER_FILE = os.path.join(DATA_DIR, "README.csv")
-if not os.path.exists(PLACEHOLDER_FILE):
-    pd.DataFrame(
-        columns=[
-            "Stock","Expiry","Strike",
-            "CE_LTP","CE_OI",
-            "PE_LTP","PE_OI",
-            "Stock_LTP","Stock_%_Change",
-            "timestamp","Max_Pain"
-        ]
-    ).to_csv(PLACEHOLDER_FILE, index=False)
-
 # ==================================================
 # INIT KITE
 # ==================================================
@@ -47,7 +35,7 @@ instruments = pd.DataFrame(kite.instruments("NFO"))
 # ==================================================
 # HELPERS
 # ==================================================
-def chunk(lst, size=500):
+def chunk(lst, size=200):  # FIXED LIMIT
     for i in range(0, len(lst), size):
         yield lst[i:i + size]
 
@@ -73,7 +61,11 @@ for stock in STOCKS:
     df = df[df["expiry"] == expiry]
 
     option_map[stock] = df
-    all_option_symbols.extend("NFO:" + df["tradingsymbol"])
+
+    # ✅ FIXED SYMBOL COLLECTION
+    all_option_symbols.extend(
+        ["NFO:" + ts for ts in df["tradingsymbol"].tolist()]
+    )
 
 # ==================================================
 # BULK QUOTES
