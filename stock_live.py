@@ -97,6 +97,8 @@ sum_live_2_above_below_col = "Σ ΔΔ MP (±2)"
 
 delta_above_col = "ΔΔ MP 1"
 sum_2_above_below_col = "Σ |ΔΔ MP-old| (±2)"
+sum_live_exact_atm_col = "Σ ΔΔ MP (Below+Above LTP)"
+
 
 pct_col = "% Ch"
 
@@ -252,6 +254,43 @@ for stock, sdf in final_df.sort_values("Strike").groupby("Stock"):
             break
 
 
+# =====================================
+# Σ ΔΔ MP (JUST BELOW + JUST ABOVE LTP)
+# =====================================
+final_df[sum_live_exact_atm_col] = np.nan
+
+for stock, sdf in final_df.sort_values("Strike").groupby("Stock"):
+    sdf = sdf[sdf["Strike"].notna()].reset_index()
+    if sdf.empty:
+        continue
+
+    ltp = sdf["Live_Stock_LTP"].iloc[0]
+    strikes = sdf["Strike"].values
+
+    if ltp is None or np.isnan(ltp):
+        continue
+
+    below_idx = None
+    above_idx = None
+
+    for i in range(len(strikes)):
+        if strikes[i] <= ltp:
+            below_idx = i
+        if strikes[i] > ltp:
+            above_idx = i
+            break
+
+    if below_idx is None or above_idx is None:
+        continue
+
+    vals = sdf.loc[[below_idx, above_idx], delta_live_above_col]
+    val = vals.dropna().sum()
+
+    final_df.loc[
+        sdf.loc[[below_idx, above_idx], "index"],
+        sum_live_exact_atm_col
+    ] = val
+
 
 # =====================================
 # HIGHLIGHTING (TWO STRIKES)
@@ -288,6 +327,7 @@ display_cols = [
     live_delta_col,
     delta_live_above_col,
     sum_live_2_above_below_col,
+    sum_live_exact_atm_col, 
     pct_col,"Live_Stock_LTP"
 ]
 
