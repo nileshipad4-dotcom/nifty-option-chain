@@ -85,8 +85,12 @@ mp1_col = f"MP ({t1_lbl})"
 mp2_col = f"MP ({t2_lbl})"
 
 live_delta_col = f"Δ MP (Live - {t1_lbl})"
+live_delta_2_col = f"Δ MP (Live - {t2_lbl})"
+
 delta_live_above_col = "ΔΔ MP"
-sum_live_exact_atm_col = "Σ ΔΔ MP (Below + Above LTP)"
+delta_live_above_2_col = "ΔΔ MP 2"
+
+sum_live_exact_atm_col = "Σ ΔΔ MP"
 pct_col = "% Ch"
 
 # =====================================
@@ -119,7 +123,7 @@ def compute_live_max_pain(df):
     return df
 
 # =====================================
-# FETCH LIVE DATA (SAFE BATCHED)
+# FETCH LIVE DATA
 # =====================================
 @st.cache_data(ttl=300)
 def fetch_live_mp_and_ltp(stocks):
@@ -198,14 +202,20 @@ final_df[pct_col] = final_df.groupby("Stock")[pct_col].transform("first")
 # DELTA CALCULATIONS
 # =====================================
 final_df[live_delta_col] = final_df["MP Live"] - final_df[mp1_col]
+final_df[live_delta_2_col] = final_df["MP Live"] - final_df[mp2_col]
 
 final_df[delta_live_above_col] = (
     final_df[live_delta_col] -
     final_df.groupby("Stock")[live_delta_col].shift(-1)
 )
 
+final_df[delta_live_above_2_col] = (
+    final_df[live_delta_2_col] -
+    final_df.groupby("Stock")[live_delta_2_col].shift(-1)
+)
+
 # =====================================
-# Σ ΔΔ MP (Below + Above LTP)
+# Σ ΔΔ MP
 # =====================================
 final_df[sum_live_exact_atm_col] = np.nan
 
@@ -225,36 +235,6 @@ for stock, sdf in final_df.sort_values("Strike").groupby("Stock"):
             )
             break
 
-final_df = final_df.rename(columns={sum_live_exact_atm_col: "Σ ΔΔ MP"})
-
-# =====================================
-# HIGHLIGHTING
-# =====================================
-def highlight_rows(df):
-    styles = pd.DataFrame("", index=df.index, columns=df.columns)
-
-    for stock in df["Stock"].dropna().unique():
-        sdf = df[(df["Stock"] == stock) & (df["Strike"].notna())]
-        if sdf.empty:
-            continue
-
-        # FIX: convert back to numeric
-        ltp = pd.to_numeric(sdf["LTP"].iloc[0], errors="coerce")
-        strikes = sdf["Strike"].values
-
-        if pd.notna(ltp):
-            for i in range(len(strikes) - 1):
-                if strikes[i] <= ltp <= strikes[i + 1]:
-                    styles.loc[sdf.index[i], :] = "background-color:#003366;color:white"
-                    styles.loc[sdf.index[i + 1], :] = "background-color:#003366;color:white"
-                    break
-
-        mp_vals = sdf["MP Live"].dropna()
-        if not mp_vals.empty:
-            styles.loc[mp_vals.idxmin(), :] = "background-color:#8B0000;color:white"
-
-    return styles
-
 # =====================================
 # DISPLAY
 # =====================================
@@ -265,15 +245,16 @@ display_cols = [
     mp1_col,
     mp2_col,
     live_delta_col,
+    live_delta_2_col,
     delta_live_above_col,
-    "Σ ΔΔ MP",
+    delta_live_above_2_col,
+    sum_live_exact_atm_col,
     pct_col,
     "LTP"
 ]
 
 display_df = final_df[display_cols].copy()
 
-# ROUNDING / FORMATTING
 for c in display_df.columns:
     if c == "Stock":
         continue
@@ -290,11 +271,7 @@ for c in display_df.columns:
             .astype("Int64")
         )
 
-st.dataframe(
-    display_df.style.apply(highlight_rows, axis=None),
-    use_container_width=True,
-    height=900
-)
+st.dataframe(display_df, use_container_width=True, height=900)
 
 # =====================================
 # DOWNLOAD
