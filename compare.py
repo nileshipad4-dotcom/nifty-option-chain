@@ -5,10 +5,7 @@ import os
 import numpy as np
 from streamlit_autorefresh import st_autorefresh
 
-st_autorefresh(
-    interval=360_000,  # 5 minutes
-    key="auto_refresh"
-)
+st_autorefresh(interval=360_000, key="auto_refresh")
 
 # =====================================
 # STREAMLIT CONFIG
@@ -46,14 +43,12 @@ def load_csv_files():
 
 csv_files = load_csv_files()
 if len(csv_files) < 3:
-    st.error("Need at least 3 CSV files to compare.")
+    st.error("Need at least 3 CSV files.")
     st.stop()
 
 latest_file = csv_files[0][0]
-
 if "last_ts" not in st.session_state:
     st.session_state.last_ts = latest_file
-
 if latest_file != st.session_state.last_ts:
     st.session_state.last_ts = latest_file
     st.experimental_rerun()
@@ -110,7 +105,7 @@ df3 = df3[["Stock", "Strike", "Max_Pain"]].rename(columns={"Max_Pain": mp3_col})
 df = df1.merge(df2, on=["Stock", "Strike"]).merge(df3, on=["Stock", "Strike"])
 
 # =====================================
-# REMOVE INDEX SYMBOLS
+# NORMALIZE + REMOVE INDICES
 # =====================================
 df["Stock"] = df["Stock"].astype(str).str.upper().str.strip()
 EXCLUDE = {"NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"}
@@ -145,12 +140,10 @@ for stock, sdf in df.sort_values("Strike").groupby("Stock"):
     sdf = sdf.reset_index(drop=True)
     ltp = float(sdf["Stock_LTP"].iloc[0])
     strikes = sdf["Strike"].values
-
     for i in range(len(strikes) - 1):
         if strikes[i] <= ltp <= strikes[i + 1]:
-            idxs = [i, i + 1]
             df.loc[df["Stock"] == stock, sum_2_above_below_col] = (
-                sdf.loc[idxs, delta_above_col].astype(float).sum()
+                sdf.loc[[i, i + 1], delta_above_col].astype(float).sum()
             )
             break
 
@@ -182,11 +175,81 @@ rows = []
 for stock, sdf in df.sort_values(["Stock", "Strike"]).groupby("Stock"):
     rows.append(sdf)
     rows.append(pd.DataFrame([{col: np.nan for col in df.columns}]))
-
 final_df = pd.concat(rows[:-1], ignore_index=True)
 
 # =====================================
-# DISPLAY (HIGHLIGHT PRESERVED)
+# COMPUTE STOCK SIGNALS (UNCHANGED)
+# =====================================
+def compute_stock_signals(data):
+    signals = {}
+    for stock in data["Stock"].dropna().unique():
+        sdf = data[(data["Stock"] == stock) & data["Strike"].notna()].sort_values("Strike")
+        if len(sdf) < 9:
+            continue
+
+        ltp = float(sdf["Stock_LTP"].iloc[0])
+        strikes = sdf["Strike"].values
+
+        atm_idx = None
+        for i in range(len(strikes) - 1):
+            if strikes[i] <= ltp <= strikes[i + 1]:
+                atm_idx = i + 1
+                break
+        if atm_idx is None:
+            continue
+
+        mid = sdf.iloc[4:-4]
+        diffs = np.diff(mid[sum_12_col].astype(float).values)
+        if len(diffs) == 0:
+            continue
+
+        inc_ratio = np.sum(diffs > 0) / len(diffs)
+        dec_ratio = np.sum(diffs < 0) / len(diffs)
+
+        trend = "red" if inc_ratio >= 0.9 else "green" if dec_ratio >= 0.9 else None
+        if trend is None:
+            continue
+
+        above = sdf.iloc[atm_idx:atm_idx + 5]
+        below = sdf.iloc[max(atm_idx - 5, 0):atm_idx]
+
+        if (
+            (above[delta_12] > above[delta_23]).sum() >= 3 and
+            (below[delta_12] < below[delta_23]).sum() >= 3
+        ):
+            signal = "red"
+        elif (
+            (above[delta_12] < above[delta_23]).sum() >= 3 and
+            (below[delta_12] > below[delta_23]).sum() >= 3
+        ):
+            signal = "green"
+        else:
+            continue
+
+        if signal == trend:
+            signals[stock] = signal
+
+    return signals
+
+stock_signals = compute_stock_signals(final_df)
+
+# =====================================
+# FILTERED TABLES
+# =====================================
+def build_filtered_df(base_df, stocks):
+    blocks = []
+    for s in stocks:
+        sdf = base_df[base_df["Stock"] == s]
+        if not sdf.empty:
+            blocks.append(sdf)
+            blocks.append(pd.DataFrame([{col: np.nan for col in base_df.columns}]))
+    return pd.concat(blocks[:-1], ignore_index=True) if blocks else base_df.iloc[0:0]
+
+green_df = build_filtered_df(final_df, [s for s, v in stock_signals.items() if v == "green"])
+red_df   = build_filtered_df(final_df, [s for s, v in stock_signals.items() if v == "red"])
+
+# =====================================
+# HIGHLIGHTING
 # =====================================
 def highlight_rows(data):
     styles = pd.DataFrame("", index=data.index, columns=data.columns)
@@ -206,20 +269,34 @@ def highlight_rows(data):
 
         styles.loc[sdf[mp1_col].idxmin()] = "background-color:#8B0000;color:white"
 
+        if stock in stock_signals:
+            color = "background-color:#8B0000;color:white" if stock_signals[stock] == "red" else "background-color:#004d00;color:white"
+            styles.loc[sdf.index, delta_12] = color
+            styles.loc[sdf.index, delta_23] = color
+
     return styles
 
+# =====================================
+# DISPLAY
+# =====================================
 display_cols = [c for c in final_df.columns if c != sum_12_col]
 
-st.dataframe(
-    final_df[display_cols]
-    .style.apply(highlight_rows, axis=None)
-    .format(
-        {c: "{:.3f}" if c == pct_col else "{:.2f}" if c == "Stock_LTP" else "{:.0f}"
-         for c in display_cols if c not in {"Stock", "Sector"}},
-        na_rep=""
-    ),
-    use_container_width=True,
-)
+def show(title, df_):
+    st.subheader(title)
+    st.dataframe(
+        df_[display_cols]
+        .style.apply(highlight_rows, axis=None)
+        .format(
+            {c: "{:.3f}" if c == pct_col else "{:.2f}" if c == "Stock_LTP" else "{:.0f}"
+             for c in display_cols if c not in {"Stock", "Sector"}},
+            na_rep=""
+        ),
+        use_container_width=True,
+    )
+
+show(f"🟢 UPTREND ({len(green_df['Stock'].dropna().unique())})", green_df)
+show(f"🔴 DOWNTREND ({len(red_df['Stock'].dropna().unique())})", red_df)
+show(f"📊 ALL STOCKS: {t1_lbl} vs {t2_lbl} vs {t3_lbl}", final_df)
 
 # =====================================
 # DOWNLOAD
