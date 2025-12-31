@@ -172,7 +172,8 @@ for stock, sdf in df.sort_values("Strike").groupby("Stock"):
         .sum()
     )
 
-    df.loc[df["Stock"] == stock, sum_2_above_below_col] = abs(value)
+    df.loc[df["Stock"] == stock, sum_2_above_below_col] = value
+
 
 
 # =====================================
