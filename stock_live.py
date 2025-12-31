@@ -130,56 +130,74 @@ def compute_live_max_pain(df):
 # =====================================
 @st.cache_data(ttl=300)
 def fetch_live_mp_and_ltp(stocks):
-    rows=[]
+    rows = []
+
+    def chunk(lst, size=200):
+        for i in range(0, len(lst), size):
+            yield lst[i:i + size]
+
     for i in range(0, len(stocks), 40):
-        batch = stocks[i:i+40]
+        batch = stocks[i:i + 40]
+
+        # Spot quotes (safe, small)
         spot_quotes = kite.quote([f"NSE:{s}" for s in batch])
 
         for stock in batch:
             opt_df = instruments[
-                (instruments["name"]==stock) &
-                (instruments["segment"]=="NFO-OPT")
+                (instruments["name"] == stock) &
+                (instruments["segment"] == "NFO-OPT")
             ]
+
             if opt_df.empty:
                 continue
 
             expiry = opt_df["expiry"].min()
-            opt_df = opt_df[opt_df["expiry"]==expiry]
+            opt_df = opt_df[opt_df["expiry"] == expiry]
 
-            quotes = kite.quote(["NFO:"+s for s in opt_df["tradingsymbol"]])
+            # 🔴 FIX: batch option symbols
+            option_symbols = ["NFO:" + s for s in opt_df["tradingsymbol"].tolist()]
+            quotes = {}
 
-            chain=[]
+            for sym_batch in chunk(option_symbols, 200):
+                quotes.update(kite.quote(sym_batch))
+
+            chain = []
             for strike in sorted(opt_df["strike"].unique()):
-                ce = opt_df[(opt_df["strike"]==strike)&(opt_df["instrument_type"]=="CE")]
-                pe = opt_df[(opt_df["strike"]==strike)&(opt_df["instrument_type"]=="PE")]
+                ce = opt_df[(opt_df["strike"] == strike) & (opt_df["instrument_type"] == "CE")]
+                pe = opt_df[(opt_df["strike"] == strike) & (opt_df["instrument_type"] == "PE")]
 
-                ce_q = quotes.get("NFO:"+ce.iloc[0]["tradingsymbol"],{}) if not ce.empty else {}
-                pe_q = quotes.get("NFO:"+pe.iloc[0]["tradingsymbol"],{}) if not pe.empty else {}
+                ce_q = quotes.get("NFO:" + ce.iloc[0]["tradingsymbol"], {}) if not ce.empty else {}
+                pe_q = quotes.get("NFO:" + pe.iloc[0]["tradingsymbol"], {}) if not pe.empty else {}
 
                 chain.append({
-                    "Strike":strike,
-                    "CE_LTP":ce_q.get("last_price"),
-                    "CE_OI":ce_q.get("oi"),
-                    "PE_LTP":pe_q.get("last_price"),
-                    "PE_OI":pe_q.get("oi"),
+                    "Strike": strike,
+                    "CE_LTP": ce_q.get("last_price"),
+                    "CE_OI": ce_q.get("oi"),
+                    "PE_LTP": pe_q.get("last_price"),
+                    "PE_OI": pe_q.get("oi"),
                 })
 
+            if not chain:
+                continue
+
             df_mp = compute_live_max_pain(pd.DataFrame(chain))
+
             spot = spot_quotes.get(f"NSE:{stock}", {})
             ltp = spot.get("last_price")
             prev = spot.get("ohlc", {}).get("close")
+            live_pct = round(((ltp - prev) / prev) * 100, 2) if ltp and prev else np.nan
 
-            live_pct = round(((ltp-prev)/prev)*100,2) if ltp and prev else np.nan
-
-            for _,r in df_mp.iterrows():
+            for _, r in df_mp.iterrows():
                 rows.append({
-                    "Stock":stock,
-                    "Strike":r["Strike"],
-                    "Live_Max_Pain":r["Live_Max_Pain"],
-                    "Live_Stock_LTP":ltp,
+                    "Stock": stock,
+                    "Strike": r["Strike"],
+                    "Live_Max_Pain": r["Live_Max_Pain"],
+                    "Live_Stock_LTP": ltp,
                     pct_col: live_pct
                 })
+
     return pd.DataFrame(rows)
+)
 
 # =====================================
 # INSERT BLANK ROWS
