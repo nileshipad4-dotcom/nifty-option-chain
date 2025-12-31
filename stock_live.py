@@ -279,18 +279,27 @@ def highlight_rows(df):
 
     return styles
 
+
+final_df = final_df.rename(
+    columns={sum_live_exact_atm_col: "Σ ΔΔ MP"}
+)
+
 # =====================================
 # DISPLAY
 # =====================================
 display_cols = [
-    "Stock","Strike","Live_Max_Pain",
-    mp1_col,mp2_col,
+    "Stock",
+    "Strike",
+    "Live_Max_Pain",
+    mp1_col,
+    mp2_col,
     live_delta_col,
     delta_live_above_col,
-    sum_live_2_above_below_col,
-    sum_live_exact_atm_col,
-    pct_col,"Live_Stock_LTP"
+    "Σ ΔΔ MP",          # renamed column
+    pct_col,
+    "Live_Stock_LTP"
 ]
+
 
 display_df = final_df[display_cols].copy()
 float_cols = {pct_col,"Live_Stock_LTP"}
