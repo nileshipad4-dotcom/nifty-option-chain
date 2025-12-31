@@ -328,7 +328,7 @@ display_cols = [
     mp1_col,mp2_col,
     live_delta_col,
     delta_live_above_col,
-    #sum_live_2_above_below_col,
+    sum_live_2_above_below_col,
     sum_live_exact_atm_col, 
     pct_col,"Live_Stock_LTP"
 ]
