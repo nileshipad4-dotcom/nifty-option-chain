@@ -13,7 +13,7 @@ import pytz
 # =====================================
 # AUTO REFRESH (5 MIN)
 # =====================================
-st_autorefresh(interval=360_000, key="auto_refresh")
+st_autorefresh(interval=300_000, key="auto_refresh")
 
 # =====================================
 # STREAMLIT CONFIG
