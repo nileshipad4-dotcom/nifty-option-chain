@@ -307,3 +307,37 @@ st.download_button(
     f"max_pain_{t1_lbl}_{t2_lbl}_{t3_lbl}.csv",
     "text/csv",
 )
+
+
+# =====================================
+# SINGLE STOCK VIEW (DROPDOWN)
+# =====================================
+st.subheader("🔍 View Individual Stock")
+
+# get stock list (case-insensitive safe)
+stock_list = sorted(final_df["Stock"].dropna().unique().tolist())
+
+selected_stock = st.selectbox(
+    "Select Stock",
+    [""] + stock_list,
+    index=0
+)
+
+if selected_stock:
+    stock_df = final_df[final_df["Stock"] == selected_stock]
+
+    st.dataframe(
+        stock_df[display_cols]
+        .style.apply(highlight_rows, axis=None)
+        .format(
+            {
+                c: "{:.3f}" if c == pct_col
+                else "{:.2f}" if c == "Stock_LTP"
+                else "{:.0f}"
+                for c in display_cols
+                if c not in {"Stock", "Sector"}
+            },
+            na_rep=""
+        ),
+        use_container_width=True,
+    )
