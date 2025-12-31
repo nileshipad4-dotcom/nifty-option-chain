@@ -213,7 +213,7 @@ final_df[delta_12] = final_df[mp1_col] - final_df[mp2_col]
 final_df[delta_23] = final_df[mp2_col] - final_df[mp3_col]
 
 # =====================================
-# ΔΔ LIVE MP (FIXED WRITEBACK)
+# ΔΔ LIVE MP (FINAL CORRECT VERSION)
 # =====================================
 final_df[delta_live_above_col] = np.nan
 final_df[sum_live_2_above_below_col] = np.nan
@@ -223,6 +223,7 @@ for stock, sdf in final_df.sort_values("Strike").groupby("Stock"):
     if sdf.empty:
         continue
 
+    # ΔΔ Live MP calculation
     vals = sdf[live_delta_col].astype(float).values
     diff = vals - np.roll(vals, -1)
     diff[-1] = np.nan
@@ -235,15 +236,21 @@ for stock, sdf in final_df.sort_values("Strike").groupby("Stock"):
     if ltp is None or np.isnan(ltp):
         continue
 
-    # ✅ FIND TWO STRIKES BETWEEN WHICH LTP LIES
+    # ✅ FIND STRIKE PAIR WHERE LTP LIES
     for i in range(len(strikes) - 1):
         if strikes[i] <= ltp <= strikes[i + 1]:
-            atm_idxs = [i, i + 1]
-            val = sdf.loc[atm_idxs, delta_live_above_col].sum()
 
-            # ✅ WRITE ONLY ON THOSE TWO ROWS
-            final_df.loc[sdf.loc[atm_idxs, "index"], sum_live_2_above_below_col] = val
+            pair_vals = sdf.loc[[i, i + 1], delta_live_above_col]
+
+            # ✅ DROP NaN BEFORE SUM
+            val = pair_vals.dropna().sum()
+
+            final_df.loc[
+                sdf.loc[[i, i + 1], "index"],
+                sum_live_2_above_below_col
+            ] = val
             break
+
 
 
 # =====================================
