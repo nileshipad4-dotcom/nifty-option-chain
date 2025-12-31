@@ -276,16 +276,20 @@ display_df = final_df[display_cols].copy()
 for c in display_df.columns:
     if c == "Stock":
         continue
-    if c in {pct_col, "Live_Stock_LTP"}:
-        display_df[c] = pd.to_numeric(display_df[c], errors="coerce").round(2)
-    else:
-        display_df[c] = pd.to_numeric(display_df[c], errors="coerce").round(0).astype("Int64")
 
-st.dataframe(
-    display_df.style.apply(highlight_rows, axis=None),
-    use_container_width=True,
-    height=900
-)
+    if c in {pct_col, "Live_Stock_LTP"}:
+        display_df[c] = (
+            pd.to_numeric(display_df[c], errors="coerce")
+            .round(2)
+            .map(lambda x: f"{x:.2f}" if pd.notna(x) else "")
+        )
+    else:
+        display_df[c] = (
+            pd.to_numeric(display_df[c], errors="coerce")
+            .round(0)
+            .astype("Int64")
+        )
+
 
 # =====================================
 # DOWNLOAD
