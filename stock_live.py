@@ -85,7 +85,7 @@ mp1_col = f"MP ({t1_lbl})"
 mp2_col = f"MP ({t2_lbl})"
 
 live_delta_col = f"Δ MP (Live - {t1_lbl})"
-live_delta_2_col = f"Δ MP (Live - {t2_lbl})"
+live_delta_2_col = f"Δ MP ({t1_lbl} - {t2_lbl})"
 
 delta_live_above_col = "ΔΔ MP"
 delta_live_above_2_col = "ΔΔ MP 2"
@@ -212,7 +212,7 @@ final_df[pct_col] = final_df.groupby("Stock")[pct_col].transform("first")
 # DELTA CALCULATIONS
 # =====================================
 final_df[live_delta_col] = final_df["MP Live"] - final_df[mp1_col]
-final_df[live_delta_2_col] = final_df["MP Live"] - final_df[mp2_col]
+final_df[live_delta_2_col] = final_df[mp1_col] - final_df[mp2_col]
 
 final_df[delta_live_above_col] = (
     final_df[live_delta_col] -
