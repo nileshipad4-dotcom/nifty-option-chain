@@ -84,6 +84,7 @@ delta_12 = f"Δ MP ({t1_lbl}-{t2_lbl})"
 delta_23 = f"Δ MP ({t2_lbl}-{t3_lbl})"
 sum_12_col = f"Σ {delta_12}"
 delta_above_col = f"ΔΔ MP ({t1_lbl}-{t2_lbl})"
+delta_above_23_col = f"ΔΔ MP ({t2_lbl}-{t3_lbl})"
 sum_2_above_below_col = f"Σ |ΔΔ MP| (±2)"
 
 
@@ -137,6 +138,14 @@ for stock, sdf in df.sort_values("Strike").groupby("Stock"):
     diff[-1] = np.nan
     df.loc[sdf.index, delta_above_col] = diff
 
+df[delta_above_23_col] = np.nan
+for stock, sdf in df.sort_values("Strike").groupby("Stock"):
+    vals = sdf[delta_23].astype(float).values
+    diff = vals - np.roll(vals, -1)
+    diff[-1] = np.nan
+    df.loc[sdf.index, delta_above_23_col] = diff
+
+
 df[sum_2_above_below_col] = np.nan
 for stock, sdf in df.sort_values("Strike").groupby("Stock"):
     sdf = sdf.reset_index(drop=True)
@@ -167,6 +176,7 @@ df = df[
         delta_23,
         sum_12_col,
         delta_above_col,
+        delta_above_23_col,
         sum_2_above_below_col,
         pct_col,
         "Stock_LTP",
