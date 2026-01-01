@@ -167,7 +167,7 @@ for stock, sdf in df.sort_values("Strike").groupby("Stock"):
 df = df[
     [
         "Stock",
-        "Sector",
+        #"Sector",
         "Strike",
         mp1_col,
         mp2_col,
