@@ -186,7 +186,8 @@ for stock, sdf in df.sort_values("Strike").groupby("Stock"):
     max_row = subset.loc[subset[delta_above_col].abs().idxmax()]
     A = float(max_row["Strike"])
 
-    value = ((A - ltp) / ltp) * 100
+    value = round(((A - ltp) / ltp) * 100, 2)
+
 
     df.loc[df["Stock"] == stock, dist_col] = value
 
