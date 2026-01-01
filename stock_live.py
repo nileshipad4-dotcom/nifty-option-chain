@@ -28,7 +28,7 @@ IST = pytz.timezone("Asia/Kolkata")
 # KITE CONFIG
 # =====================================
 API_KEY = "bkgv59vaazn56c42"
-ACCESS_TOKEN = "Jtm28p8QOeAzNN4cYPhSU5UPZcCF74ry"
+ACCESS_TOKEN = "MqUjdaD7Y65j9madIC0Wp13Hij1BHQPF"
 
 @st.cache_resource
 def init_kite():
