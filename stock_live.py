@@ -138,19 +138,46 @@ def compute_live_max_pain(df):
 # =====================================
 # FETCH LIVE DATA (MP + LTP + HIGH-LOW)
 # =====================================
+# =====================================
+# FETCH LIVE DATA (MP + LTP + HIGH-LOW)
+# =====================================
 def fetch_live_mp_and_ltp(stocks):
     rows = []
 
-    def chunk(lst, size=15):   # keep small to avoid throttling
+    def chunk(lst, size=15):
         for i in range(0, len(lst), size):
             yield lst[i:i + size]
 
     for batch in chunk(stocks, 15):
 
-        # ---- RELIABLE LTP + HIGH + LOW ----
-        ltp_quotes = kite.ltp([f"NSE:{s}" for s in batch])
+        # 🔥 THIS IS THE MISSING CALL
+        spot_quotes = kite.quote([f"NSE:{s}" for s in batch])
+        time.sleep(0.5)  # critical to avoid degradation
 
         for stock in batch:
+
+            # ---- SPOT DATA (CORRECT SOURCE) ----
+            spot = spot_quotes.get(f"NSE:{stock}", {})
+            ohlc = spot.get("ohlc", {}) or {}
+
+            ltp = spot.get("last_price")
+            prev = ohlc.get("close")
+
+            high = ohlc.get("high") or spot.get("day_high")
+            low = ohlc.get("low") or spot.get("day_low")
+
+            hl_value = (
+                f"{round(high,1)} : {round(low,1)}"
+                if high is not None and low is not None
+                else ""
+            )
+
+            live_pct = (
+                round(((ltp - prev) / prev) * 100, 2)
+                if ltp and prev else np.nan
+            )
+
+            # ---- OPTION DATA ----
             opt_df = instruments[
                 (instruments["name"] == stock) &
                 (instruments["segment"] == "NFO-OPT")
@@ -161,14 +188,12 @@ def fetch_live_mp_and_ltp(stocks):
             expiry = opt_df["expiry"].min()
             opt_df = opt_df[opt_df["expiry"] == expiry]
 
-            # ---- OPTION QUOTES ----
             option_symbols = ["NFO:" + s for s in opt_df["tradingsymbol"].tolist()]
             quotes = {}
 
             for sym_batch in chunk(option_symbols, 200):
                 quotes.update(kite.quote(sym_batch))
 
-            # ---- BUILD OPTION CHAIN ----
             chain = []
             for strike in sorted(opt_df["strike"].unique()):
                 ce = opt_df[(opt_df["strike"] == strike) & (opt_df["instrument_type"] == "CE")]
@@ -190,26 +215,6 @@ def fetch_live_mp_and_ltp(stocks):
 
             df_mp = compute_live_max_pain(pd.DataFrame(chain))
 
-            # ---- SPOT DATA FROM LTP ENDPOINT (BULLETPROOF) ----
-            ltp_data = ltp_quotes.get(f"NSE:{stock}", {})
-
-            ltp = ltp_data.get("last_price")
-            high = ltp_data.get("high")
-            low = ltp_data.get("low")
-            prev = ltp_data.get("close")
-
-            hl_value = (
-                f"{round(high,1)} : {round(low,1)}"
-                if high is not None and low is not None
-                else ""
-            )
-
-            live_pct = (
-                round(((ltp - prev) / prev) * 100, 2)
-                if ltp and prev else np.nan
-            )
-
-            # ---- APPEND ROWS ----
             for _, r in df_mp.iterrows():
                 rows.append({
                     "Stock": stock,
