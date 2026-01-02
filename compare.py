@@ -230,7 +230,7 @@ df = df[
         sum_12_col,
         delta_above_col,
         delta_above_23_col,
-        pressure_ratio_col,
+        # pressure_ratio_col,
         sum_2_above_below_col,
         diff_2_above_below_col,
         pct_col,
