@@ -4,7 +4,7 @@ import os
 import numpy as np
 
 # =====================================
-# CONFIG
+# STREAMLIT CONFIG
 # =====================================
 st.set_page_config(page_title="Max Pain Components", layout="wide")
 st.title("📊 Max Pain Component Breakdown")
@@ -27,7 +27,6 @@ def load_csv_files():
     return sorted(files, reverse=True)
 
 csv_files = load_csv_files()
-
 if not csv_files:
     st.error("No option chain CSV files found.")
     st.stop()
@@ -46,7 +45,7 @@ selected_ts = st.selectbox(
 df = pd.read_csv(file_map[selected_ts])
 
 # =====================================
-# COMPUTE COMPONENTS
+# COMPUTE MAX PAIN COMPONENTS
 # =====================================
 def compute_components(stock_df):
     stock_df = stock_df.sort_values("Strike").reset_index(drop=True)
@@ -74,6 +73,7 @@ def compute_components(stock_df):
 
     stock_df["Call_Component"] = call_vals
     stock_df["Put_Component"] = put_vals
+    stock_df["Net_Component"] = stock_df["Call_Component"] - stock_df["Put_Component"]
 
     return stock_df
 
@@ -87,6 +87,25 @@ for stock, sdf in df.groupby("Stock"):
 final_df = pd.concat(result, ignore_index=True)
 
 # =====================================
+# HIGHLIGHT ATM STRIKES
+# =====================================
+def highlight_atm_strikes(data):
+    styles = pd.DataFrame("", index=data.index, columns=data.columns)
+
+    for stock, sdf in data.groupby("Stock"):
+        sdf = sdf.sort_values("Strike")
+        ltp = sdf["Stock_LTP"].iloc[0]
+        strikes = sdf["Strike"].values
+
+        for i in range(len(strikes) - 1):
+            if strikes[i] <= ltp <= strikes[i + 1]:
+                styles.loc[sdf.index[i]] = "background-color:#003366;color:white"
+                styles.loc[sdf.index[i + 1]] = "background-color:#003366;color:white"
+                break
+
+    return styles
+
+# =====================================
 # DISPLAY
 # =====================================
 display_cols = [
@@ -94,8 +113,7 @@ display_cols = [
     "Strike",
     "Call_Component",
     "Put_Component",
-    "CE_OI",
-    "PE_OI",
+    "Net_Component",
     "Stock_LTP",
 ]
 
@@ -103,10 +121,13 @@ st.subheader(f"📅 Data: {selected_ts}")
 
 st.dataframe(
     final_df[display_cols]
-    .style.format({
+    .style
+    .apply(highlight_atm_strikes, axis=None)
+    .format({
         "Call_Component": "{:,.0f}",
         "Put_Component": "{:,.0f}",
-        "Stock_LTP": "{:.2f}"
+        "Net_Component": "{:,.0f}",
+        "Stock_LTP": "{:.2f}",
     }),
     use_container_width=True
 )
@@ -115,8 +136,8 @@ st.dataframe(
 # DOWNLOAD
 # =====================================
 st.download_button(
-    "⬇️ Download Components CSV",
+    "⬇️ Download Max Pain Components CSV",
     final_df.to_csv(index=False),
     f"max_pain_components_{selected_ts}.csv",
-    "text/csv"
+    "text/csv",
 )
