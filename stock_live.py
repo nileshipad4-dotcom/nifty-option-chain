@@ -218,8 +218,10 @@ def fetch_live_mp_and_ltp(stocks):
                     "LTP": ltp,
                     "High": high,
                     "Low": low,
-                    pct_col: live_pct
+                    pct_col: live_pct,
+                    hl_col: hl_value
                 })
+
 
 
     return pd.DataFrame(rows)
@@ -237,6 +239,8 @@ live_df = fetch_live_mp_and_ltp(stocks)
 
 final_df = df.merge(live_df, on=["Stock", "Strike"], how="left")
 final_df[pct_col] = final_df.groupby("Stock")[pct_col].transform("first")
+final_df["High"] = final_df.groupby("Stock")["High"].transform("first")
+final_df["Low"] = final_df.groupby("Stock")["Low"].transform("first")
 
 
 # =====================================
@@ -348,8 +352,10 @@ display_cols = [
     delta_live_above_2_col,
     sum_live_exact_atm_col,
     pct_col,
-    "LTP"
+    "LTP",
+    hl_col
 ]
+
 
 
 display_df = final_df[display_cols].copy()
@@ -374,10 +380,9 @@ display_df["LTP"] = final_df.loc[display_df.index].apply(
 
 
 for c in display_df.columns:
-    if c in {"Stock", "LTP"}:
+    if c == "Stock":
         continue
-
-    if c in {pct_col}:
+    if c in {pct_col, "LTP", "High", "Low"}:
         display_df[c] = (
             pd.to_numeric(display_df[c], errors="coerce")
             .round(2)
