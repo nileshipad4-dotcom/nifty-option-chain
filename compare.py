@@ -278,8 +278,8 @@ def highlight_rows(data):
 # =============================================
 # DIRECTION PRESSURE
 # =============================================
-def detect_directional_pressure(df, delta_col, strikes_count=6, min_required=5):
-    results = []
+def detect_directional_pressure_stocks(df, delta_col, strikes_count=6, min_required=5):
+    qualified_stocks = []
 
     for stock, sdf in df.groupby("Stock"):
         sdf = sdf.dropna(subset=["Strike", delta_col]).sort_values("Strike")
@@ -312,31 +312,14 @@ def detect_directional_pressure(df, delta_col, strikes_count=6, min_required=5):
         above_pos = (above_vals > 0).sum()
         above_neg = (above_vals < 0).sum()
 
-        # Check dominance
-        above_sign = None
-        below_sign = None
+        # check dominance + opposite sign
+        cond1 = above_pos >= min_required and below_neg >= min_required
+        cond2 = above_neg >= min_required and below_pos >= min_required
 
-        if above_pos >= min_required:
-            above_sign = "POS"
-        elif above_neg >= min_required:
-            above_sign = "NEG"
+        if cond1 or cond2:
+            qualified_stocks.append(stock)
 
-        if below_pos >= min_required:
-            below_sign = "POS"
-        elif below_neg >= min_required:
-            below_sign = "NEG"
-
-        # Opposite sign condition
-        if above_sign and below_sign and above_sign != below_sign:
-            results.append({
-                "Stock": stock,
-                "Above_Sign": above_sign,
-                "Below_Sign": below_sign,
-                "Stock_LTP": sdf["Stock_LTP"].iloc[0]
-            })
-
-    return pd.DataFrame(results)
-
+    return qualified_stocks
 
 # =====================================
 # DISPLAY
@@ -395,21 +378,30 @@ if selected_stock:
     )
 
 # =====================================
-# DIRECTIONAL PRESSURE TABLE (NEW)
+# FILTERED STOCKS TABLE (ΔΔ MP ±6 RULE)
 # =====================================
-st.subheader("📉📈 Directional Pressure Stocks (±6 Strike Filter)")
+st.subheader("📉📈 Filtered Stocks (Directional ΔΔ MP Pressure)")
 
-pressure_df = detect_directional_pressure(
+qualified_stocks = detect_directional_pressure_stocks(
     final_df,
     delta_above_col,
     strikes_count=6,
     min_required=5
 )
 
-if pressure_df.empty:
-    st.info("No stocks matched the directional pressure criteria.")
+filtered_df = final_df[final_df["Stock"].isin(qualified_stocks)]
+
+if filtered_df.empty:
+    st.info("No stocks matched the directional ΔΔ MP pressure criteria.")
 else:
     st.dataframe(
-        pressure_df.sort_values("Stock"),
-        use_container_width=True
+        filtered_df[display_cols]
+        .style.apply(highlight_rows, axis=None)
+        .format(
+            {c: "{:.3f}" if c == pct_col else "{:.2f}" if c == "Stock_LTP" else "{:.0f}"
+             for c in display_cols if c not in {"Stock", "Sector"}},
+            na_rep=""
+        ),
+        use_container_width=True,
     )
+
