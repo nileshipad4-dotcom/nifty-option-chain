@@ -142,6 +142,9 @@ def compute_live_max_pain(df):
 # =====================================
 # FETCH LIVE DATA (MP + LTP + HIGH-LOW)
 # =====================================
+# =====================================
+# FETCH LIVE DATA (MP + LTP + DAY HIGH)
+# =====================================
 def fetch_live_mp_and_ltp(stocks):
     rows = []
 
@@ -151,32 +154,24 @@ def fetch_live_mp_and_ltp(stocks):
 
     for batch in chunk(stocks, 15):
 
-        # 🔥 THIS IS THE MISSING CALL
+        # ---- FETCH SPOT QUOTES (HIGH COMES ONLY FROM HERE) ----
         spot_quotes = kite.quote([f"NSE:{s}" for s in batch])
-        time.sleep(0.5)  # critical to avoid degradation
+        time.sleep(0.5)  # prevent quote degradation
 
         for stock in batch:
 
-            # ---- SPOT DATA (CORRECT SOURCE) ----
+            # ---- SPOT DATA ----
             spot = spot_quotes.get(f"NSE:{stock}", {})
+            if not spot:
+                continue
+
             ohlc = spot.get("ohlc", {}) or {}
 
             ltp = spot.get("last_price")
             prev = ohlc.get("close")
 
+            # ✅ DAY HIGH (ONLY THIS)
             high = ohlc.get("high") or spot.get("day_high")
-            low = ohlc.get("low") or spot.get("day_low")
-
-            hl_value = (
-                f"{round(high,1)} : {round(low,1)}"
-                if high is not None and low is not None
-                else ""
-            )
-
-            live_pct = (
-                round(((ltp - prev) / prev) * 100, 2)
-                if ltp and prev else np.nan
-            )
 
             # ---- OPTION DATA ----
             opt_df = instruments[
@@ -216,14 +211,20 @@ def fetch_live_mp_and_ltp(stocks):
 
             df_mp = compute_live_max_pain(pd.DataFrame(chain))
 
+            live_pct = (
+                round(((ltp - prev) / prev) * 100, 2)
+                if ltp and prev else np.nan
+            )
+
+            # ---- APPEND ROWS ----
             for _, r in df_mp.iterrows():
                 rows.append({
                     "Stock": stock,
                     "Strike": r["Strike"],
                     "MP Live": r["MP Live"],
                     "LTP": ltp,
-                    pct_col: live_pct,
-                    hl_col: hl_value
+                    "High": high,     # 👈 ONLY HIGH
+                    pct_col: live_pct
                 })
 
     return pd.DataFrame(rows)
@@ -331,7 +332,7 @@ display_cols = [
     sum_live_exact_atm_col,
     pct_col,
     "LTP",
-    hl_col
+    "High"
 ]
 
 display_df = final_df[display_cols].copy()
@@ -339,7 +340,7 @@ display_df = final_df[display_cols].copy()
 for c in display_df.columns:
     if c == "Stock":
         continue
-    if c in {pct_col, "LTP"}:
+    if c in {pct_col, "LTP", "High"}:
         display_df[c] = (
             pd.to_numeric(display_df[c], errors="coerce")
             .round(2)
