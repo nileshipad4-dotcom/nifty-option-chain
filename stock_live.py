@@ -93,7 +93,7 @@ delta_live_above_2_col = "ΔΔ MP 2"
 
 sum_live_exact_atm_col = "Σ ΔΔ MP"
 pct_col = "% Ch"
-hl_col = "H-L"
+
 
 
 # =====================================
@@ -242,7 +242,7 @@ live_df = fetch_live_mp_and_ltp(stocks)
 
 final_df = df.merge(live_df, on=["Stock", "Strike"], how="left")
 final_df[pct_col] = final_df.groupby("Stock")[pct_col].transform("first")
-final_df[hl_col] = final_df.groupby("Stock")[hl_col].transform("first")
+
 
 # =====================================
 # DELTA CALCULATIONS
