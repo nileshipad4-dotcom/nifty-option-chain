@@ -131,20 +131,11 @@ def compute_live_max_pain(df):
     df["MP Live"] = mp
     return df
 
-# =====================================
-# FETCH LIVE DATA
-# =====================================
 
-
-# =====================================
-# FETCH LIVE DATA (MP + LTP + HIGH-LOW)
-# =====================================
-# =====================================
-# FETCH LIVE DATA (MP + LTP + HIGH-LOW)
-# =====================================
 # =====================================
 # FETCH LIVE DATA (MP + LTP + DAY HIGH)
 # =====================================
+@st.cache_data(ttl=300)
 def fetch_live_mp_and_ltp(stocks):
     rows = []
 
@@ -330,7 +321,7 @@ for stock, sdf in final_df.groupby("Stock"):
     atm_idx = sdf["Strike"].sub(ltp).abs().idxmin()
 
     lower_idx = max(atm_idx - 6, 0)
-    upper_idx = min(atm_idx + 7, len(sdf))  # +7 to include ATM + 6 above
+    upper_idx = min(atm_idx + 6, len(sdf))  # +7 to include ATM + 6 above
 
     filtered_rows.append(sdf.iloc[lower_idx:upper_idx])
 
