@@ -212,6 +212,43 @@ for stock, sdf in df.sort_values(["Stock", "Strike"]).groupby("Stock"):
     rows.append(pd.DataFrame([{col: np.nan for col in df.columns}]))
 final_df = pd.concat(rows[:-1], ignore_index=True)
 
+
+
+# =====================================
+# 6 strike above - 6 strike below
+# =====================================
+def filter_strikes_around_ltp(df, below=6, above=6):
+    out = []
+
+    for stock, sdf in df.groupby("Stock"):
+        sdf = sdf.dropna(subset=["Strike"]).sort_values("Strike")
+
+        if sdf.empty:
+            continue
+
+        ltp = float(sdf["Stock_LTP"].iloc[0])
+        strikes = sdf["Strike"].values
+
+        atm_idx = None
+        for i in range(len(strikes) - 1):
+            if strikes[i] <= ltp <= strikes[i + 1]:
+                atm_idx = i
+                break
+
+        if atm_idx is None:
+            continue
+
+        start = max(0, atm_idx - below)
+        end = min(len(sdf), atm_idx + 2 + above)
+
+        sliced = sdf.iloc[start:end]
+        out.append(sliced)
+
+        # blank row separator
+        out.append(pd.DataFrame([{col: np.nan for col in df.columns}]))
+
+    return pd.concat(out[:-1], ignore_index=True)
+
 # =====================================
 # HIGHLIGHTING (ONLY ATM + MIN MAX PAIN)
 # =====================================
@@ -244,8 +281,10 @@ def highlight_rows(data):
 display_cols = [c for c in final_df.columns if c != sum_12_col]
 
 st.subheader(f"📊 ALL STOCKS: {t1_lbl} vs {t2_lbl} vs {t3_lbl}")
+display_df = filter_strikes_around_ltp(final_df)
+
 st.dataframe(
-    final_df[display_cols]
+    display_df[display_cols]
     .style.apply(highlight_rows, axis=None)
     .format(
         {c: "{:.3f}" if c == pct_col else "{:.2f}" if c == "Stock_LTP" else "{:.0f}"
@@ -275,7 +314,11 @@ stock_list = sorted(final_df["Stock"].dropna().unique().tolist())
 selected_stock = st.selectbox("Select Stock", [""] + stock_list)
 
 if selected_stock:
-    stock_df = final_df[final_df["Stock"] == selected_stock]
+    stock_df = filter_strikes_around_ltp(
+    final_df[final_df["Stock"] == selected_stock],
+    below=6,
+    above=6
+)
 
     st.dataframe(
         stock_df[display_cols]
