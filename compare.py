@@ -275,6 +275,69 @@ def highlight_rows(data):
 
     return styles
 
+# =============================================
+# DIRECTION PRESSURE
+# =============================================
+def detect_directional_pressure(df, delta_col, strikes_count=6, min_required=5):
+    results = []
+
+    for stock, sdf in df.groupby("Stock"):
+        sdf = sdf.dropna(subset=["Strike", delta_col]).sort_values("Strike")
+        if sdf.empty:
+            continue
+
+        ltp = float(sdf["Stock_LTP"].iloc[0])
+        strikes = sdf["Strike"].values
+
+        atm_idx = None
+        for i in range(len(strikes) - 1):
+            if strikes[i] <= ltp <= strikes[i + 1]:
+                atm_idx = i
+                break
+
+        if atm_idx is None:
+            continue
+
+        below = sdf.iloc[max(0, atm_idx - strikes_count):atm_idx]
+        above = sdf.iloc[atm_idx + 2:atm_idx + 2 + strikes_count]
+
+        if len(below) < strikes_count or len(above) < strikes_count:
+            continue
+
+        below_vals = below[delta_col].astype(float)
+        above_vals = above[delta_col].astype(float)
+
+        below_pos = (below_vals > 0).sum()
+        below_neg = (below_vals < 0).sum()
+        above_pos = (above_vals > 0).sum()
+        above_neg = (above_vals < 0).sum()
+
+        # Check dominance
+        above_sign = None
+        below_sign = None
+
+        if above_pos >= min_required:
+            above_sign = "POS"
+        elif above_neg >= min_required:
+            above_sign = "NEG"
+
+        if below_pos >= min_required:
+            below_sign = "POS"
+        elif below_neg >= min_required:
+            below_sign = "NEG"
+
+        # Opposite sign condition
+        if above_sign and below_sign and above_sign != below_sign:
+            results.append({
+                "Stock": stock,
+                "Above_Sign": above_sign,
+                "Below_Sign": below_sign,
+                "Stock_LTP": sdf["Stock_LTP"].iloc[0]
+            })
+
+    return pd.DataFrame(results)
+
+
 # =====================================
 # DISPLAY
 # =====================================
@@ -329,4 +392,24 @@ if selected_stock:
             na_rep=""
         ),
         use_container_width=True,
+    )
+
+# =====================================
+# DIRECTIONAL PRESSURE TABLE (NEW)
+# =====================================
+st.subheader("📉📈 Directional Pressure Stocks (±6 Strike Filter)")
+
+pressure_df = detect_directional_pressure(
+    final_df,
+    delta_above_col,
+    strikes_count=6,
+    min_required=5
+)
+
+if pressure_df.empty:
+    st.info("No stocks matched the directional pressure criteria.")
+else:
+    st.dataframe(
+        pressure_df.sort_values("Stock"),
+        use_container_width=True
     )
