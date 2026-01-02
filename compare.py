@@ -389,13 +389,18 @@ qualified_stocks = detect_directional_pressure_stocks(
     min_required=5
 )
 
+
+
 filtered_df = final_df[final_df["Stock"].isin(qualified_stocks)]
 
-if filtered_df.empty:
+# APPLY SAME ±6 STRIKE FILTER AS ALL STOCKS TABLE
+filtered_display_df = filter_strikes_around_ltp(filtered_df)
+
+if filtered_display_df.empty:
     st.info("No stocks matched the directional ΔΔ MP pressure criteria.")
 else:
     st.dataframe(
-        filtered_df[display_cols]
+        filtered_display_df[display_cols]
         .style.apply(highlight_rows, axis=None)
         .format(
             {c: "{:.3f}" if c == pct_col else "{:.2f}" if c == "Stock_LTP" else "{:.0f}"
@@ -404,4 +409,3 @@ else:
         ),
         use_container_width=True,
     )
-
