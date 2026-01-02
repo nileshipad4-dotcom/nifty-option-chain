@@ -133,7 +133,8 @@ def compute_live_max_pain(df):
 # =====================================
 # FETCH LIVE DATA
 # =====================================
-@st.cache_data(ttl=300)
+
+
 def fetch_live_mp_and_ltp(stocks):
     rows = []
 
@@ -183,12 +184,14 @@ def fetch_live_mp_and_ltp(stocks):
             df_mp = compute_live_max_pain(pd.DataFrame(chain))
            
             spot = spot_quotes.get(f"NSE:{stock}", {})
-            ohlc = spot.get("ohlc", {})
-            
+            ohlc = spot.get("ohlc", {}) or {}
+
             ltp = spot.get("last_price")
             prev = ohlc.get("close")
-            high = ohlc.get("high")
-            low = ohlc.get("low")
+            
+            high = ohlc.get("high") or spot.get("day_high")
+            low = ohlc.get("low") or spot.get("day_low")
+
             
             hl_value = (
                 f"{round(high,1)} : {round(low,1)}"
