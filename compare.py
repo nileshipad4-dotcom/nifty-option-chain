@@ -357,6 +357,48 @@ def detect_directional_pressure_stocks(df, delta_col, strikes_count=6, min_requi
     return qualified_stocks
 
 
+# =============================================
+# DIRECTION PRESSURE (MIN-MAX) 4 strikes
+# =============================================
+def detect_extreme_imbalance_stocks(df, delta_col, strikes_count=4):
+    qualified = []
+
+    for stock, sdf in df.sort_values("Strike").groupby("Stock"):
+        sdf = sdf.reset_index(drop=True)
+
+        if sdf.empty:
+            continue
+
+        ltp = float(sdf["Stock_LTP"].iloc[0])
+        strikes = sdf["Strike"].values
+
+        atm_idx = None
+        for i in range(len(strikes) - 1):
+            if strikes[i] <= ltp <= strikes[i + 1]:
+                atm_idx = i
+                break
+
+        if atm_idx is None:
+            continue
+
+        below = sdf.iloc[max(0, atm_idx - strikes_count):atm_idx]
+        above = sdf.iloc[atm_idx + 2:atm_idx + 2 + strikes_count]
+
+        if len(below) < strikes_count or len(above) < strikes_count:
+            continue
+
+        below_abs = below[delta_col].abs().astype(float)
+        above_abs = above[delta_col].abs().astype(float)
+
+        cond1 = above_abs.min() > below_abs.max()
+        cond2 = below_abs.min() > above_abs.max()
+
+        if cond1 or cond2:
+            qualified.append(stock)
+
+    return qualified
+
+
 
 
 # =====================================
@@ -447,3 +489,35 @@ else:
         ),
         use_container_width=True,
     )
+
+
+# =====================================
+# EXTREME IMBALANCE TABLE (±4 STRIKE RULE)
+# =====================================
+st.subheader("🔥 Extreme ΔΔ MP Imbalance (±4 Strikes)")
+
+extreme_stocks = detect_extreme_imbalance_stocks(
+    final_df,
+    delta_above_col,
+    strikes_count=4
+)
+
+extreme_df = final_df[final_df["Stock"].isin(extreme_stocks)]
+
+# Apply SAME ±6 strike display window
+extreme_display_df = filter_strikes_around_ltp(extreme_df)
+
+if extreme_display_df.empty:
+    st.info("No stocks matched the extreme ΔΔ MP imbalance criteria.")
+else:
+    st.dataframe(
+        extreme_display_df[display_cols]
+        .style.apply(highlight_rows, axis=None)
+        .format(
+            {c: "{:.3f}" if c == pct_col else "{:.2f}" if c == "Stock_LTP" else "{:.0f}"
+             for c in display_cols if c not in {"Stock", "Sector"}},
+            na_rep=""
+        ),
+        use_container_width=True,
+    )
+
