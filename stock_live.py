@@ -374,8 +374,9 @@ display_df["LTP"] = final_df.loc[display_df.index].apply(
 
 
 for c in display_df.columns:
-    if c == "Stock":
+    if c in {"Stock", "LTP"}:
         continue
+
     if c in {pct_col}:
         display_df[c] = (
             pd.to_numeric(display_df[c], errors="coerce")
