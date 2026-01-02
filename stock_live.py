@@ -314,6 +314,28 @@ def highlight_rows(df):
     return styles
 
 
+# =====================================
+# FILTER 6 STRIKES BELOW & ABOVE LTP
+# =====================================
+filtered_rows = []
+
+for stock, sdf in final_df.groupby("Stock"):
+    sdf = sdf.sort_values("Strike").reset_index(drop=True)
+
+    ltp = sdf["LTP"].iloc[0]
+    if pd.isna(ltp):
+        continue
+
+    # Find ATM index
+    atm_idx = sdf["Strike"].sub(ltp).abs().idxmin()
+
+    lower_idx = max(atm_idx - 6, 0)
+    upper_idx = min(atm_idx + 7, len(sdf))  # +7 to include ATM + 6 above
+
+    filtered_rows.append(sdf.iloc[lower_idx:upper_idx])
+
+final_df = pd.concat(filtered_rows, ignore_index=True)
+
 
 
 # =====================================
