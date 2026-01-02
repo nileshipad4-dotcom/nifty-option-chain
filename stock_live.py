@@ -92,6 +92,8 @@ delta_live_above_2_col = "ΔΔ MP 2"
 
 sum_live_exact_atm_col = "Σ ΔΔ MP"
 pct_col = "% Ch"
+hl_col = "H-L"
+
 
 # =====================================
 # LOAD CSV DATA
@@ -179,9 +181,21 @@ def fetch_live_mp_and_ltp(stocks):
                 continue
 
             df_mp = compute_live_max_pain(pd.DataFrame(chain))
+           
             spot = spot_quotes.get(f"NSE:{stock}", {})
+            ohlc = spot.get("ohlc", {})
+            
             ltp = spot.get("last_price")
-            prev = spot.get("ohlc", {}).get("close")
+            prev = ohlc.get("close")
+            high = ohlc.get("high")
+            low = ohlc.get("low")
+            
+            hl_value = (
+                f"{round(high,1)} : {round(low,1)}"
+                if high is not None and low is not None
+                else ""
+            )
+
             live_pct = round(((ltp - prev) / prev) * 100, 2) if ltp and prev else np.nan
 
             for _, r in df_mp.iterrows():
@@ -190,8 +204,10 @@ def fetch_live_mp_and_ltp(stocks):
                     "Strike": r["Strike"],
                     "MP Live": r["MP Live"],
                     "LTP": ltp,
-                    pct_col: live_pct
+                    pct_col: live_pct,
+                    hl_col: hl_value
                 })
+
 
     return pd.DataFrame(rows)
 
@@ -207,6 +223,7 @@ live_df = fetch_live_mp_and_ltp(stocks)
 
 final_df = df.merge(live_df, on=["Stock", "Strike"], how="left")
 final_df[pct_col] = final_df.groupby("Stock")[pct_col].transform("first")
+final_df[hl_col] = final_df.groupby("Stock")[hl_col].transform("first")
 
 # =====================================
 # DELTA CALCULATIONS
@@ -295,7 +312,8 @@ display_cols = [
     delta_live_above_2_col,
     sum_live_exact_atm_col,
     pct_col,
-    "LTP"
+    "LTP",
+    hl_col
 ]
 
 display_df = final_df[display_cols].copy()
