@@ -84,6 +84,7 @@ delta_12 = f"Δ MP ({t1_lbl}-{t2_lbl})"
 delta_23 = f"Δ MP ({t2_lbl}-{t3_lbl})"
 sum_12_col = f"Σ {delta_12}"
 delta_above_col = f"ΔΔ MP ({t1_lbl}-{t2_lbl})"
+pressure_ratio_col = "Abs Above/Below ΔΔ MP Ratio (±6)"
 delta_above_23_col = f"ΔΔ MP ({t2_lbl}-{t3_lbl})"
 sum_2_above_below_col = f"Σ |ΔΔ MP| (±2)"
 diff_2_above_below_col = f"Δ (ΔΔ MP) (±2)"
@@ -196,6 +197,7 @@ df = df[
         sum_12_col,
         delta_above_col,
         delta_above_23_col,
+        pressure_ratio_col,
         sum_2_above_below_col,
         diff_2_above_below_col,
         pct_col,
@@ -320,6 +322,42 @@ def detect_directional_pressure_stocks(df, delta_col, strikes_count=6, min_requi
             qualified_stocks.append(stock)
 
     return qualified_stocks
+
+# =============================================
+# DIRECTION PRESSURE RATIO
+# =============================================
+df[pressure_ratio_col] = np.nan
+
+for stock, sdf in df.sort_values("Strike").groupby("Stock"):
+    sdf = sdf.reset_index()
+    ltp = float(sdf["Stock_LTP"].iloc[0])
+    strikes = sdf["Strike"].values
+
+    atm_idx = None
+    for i in range(len(strikes) - 1):
+        if strikes[i] <= ltp <= strikes[i + 1]:
+            atm_idx = i
+            break
+
+    if atm_idx is None:
+        continue
+
+    below = sdf.iloc[max(0, atm_idx - 6):atm_idx]
+    above = sdf.iloc[atm_idx + 2:atm_idx + 2 + 6]
+
+    if len(below) < 6 or len(above) < 6:
+        continue
+
+    sum_below = below[delta_above_col].astype(float).sum()
+    sum_above = above[delta_above_col].astype(float).sum()
+
+    if sum_below == 0:
+        continue
+
+    ratio = abs(sum_above / sum_below)
+
+    df.loc[sdf["index"], pressure_ratio_col] = ratio
+
 
 # =====================================
 # DISPLAY
