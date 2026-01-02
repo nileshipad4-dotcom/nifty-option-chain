@@ -161,8 +161,10 @@ def fetch_live_mp_and_ltp(stocks):
             ltp = spot.get("last_price")
             prev = ohlc.get("close")
 
-            # ✅ DAY HIGH (ONLY THIS)
+            # ✅ DAY HIGH - LOW (ONLY THIS)
             high = ohlc.get("high") or spot.get("day_high")
+            low  = ohlc.get("low")  or spot.get("day_low")
+
 
             # ---- OPTION DATA ----
             opt_df = instruments[
@@ -214,9 +216,11 @@ def fetch_live_mp_and_ltp(stocks):
                     "Strike": r["Strike"],
                     "MP Live": r["MP Live"],
                     "LTP": ltp,
-                    "High": high,     # 👈 ONLY HIGH
+                    "High": high,
+                    "Low": low,
                     pct_col: live_pct
                 })
+
 
     return pd.DataFrame(rows)
 
@@ -344,16 +348,31 @@ display_cols = [
     delta_live_above_2_col,
     sum_live_exact_atm_col,
     pct_col,
-    "LTP",
-    "High"
+    "LTP"
 ]
 
+
 display_df = final_df[display_cols].copy()
+
+# =====================================
+# MERGE HIGH | LTP | LOW INTO LTP COLUMN
+# =====================================
+def format_h_l_ltp(row):
+    h = row["High"]
+    ltp = row["LTP"]
+    lo = row["Low"]
+
+    if pd.isna(h) or pd.isna(ltp) or pd.isna(lo):
+        return ""
+
+    return f"{int(h):>4} | {int(ltp):>4} | {int(lo):>4}"
+
+display_df["LTP"] = display_df.apply(format_h_l_ltp, axis=1)
 
 for c in display_df.columns:
     if c == "Stock":
         continue
-    if c in {pct_col, "LTP", "High"}:
+    if c in {pct_col}:
         display_df[c] = (
             pd.to_numeric(display_df[c], errors="coerce")
             .round(2)
