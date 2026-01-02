@@ -367,7 +367,11 @@ def format_h_l_ltp(row):
 
     return f"{int(h):>4} | {int(ltp):>4} | {int(lo):>4}"
 
-display_df["LTP"] = display_df.apply(format_h_l_ltp, axis=1)
+display_df["LTP"] = final_df.loc[display_df.index].apply(
+    format_h_l_ltp,
+    axis=1
+)
+
 
 for c in display_df.columns:
     if c == "Stock":
