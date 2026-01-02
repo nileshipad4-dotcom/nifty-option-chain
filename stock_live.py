@@ -9,6 +9,7 @@ import os
 from streamlit_autorefresh import st_autorefresh
 from kiteconnect import KiteConnect
 import pytz
+import time 
 
 # =====================================
 # AUTO REFRESH (5 MIN)
