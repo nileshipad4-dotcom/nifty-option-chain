@@ -7,7 +7,7 @@ import os
 # CONFIG
 # =====================================
 st.set_page_config(page_title="ΔΔ Max Pain Viewer", layout="wide")
-st.title("📊 ΔΔ Max Pain Viewer (Multi-Timestamp)")
+st.title("📊 ΔΔ Max Pain Viewer (5 Timestamp Compare)")
 
 DATA_DIR = "data"
 
@@ -41,23 +41,28 @@ t1 = st.selectbox(
     index=0
 )
 
-other_ts = st.multiselect(
-    "Select 5 Comparison Timestamps",
-    [ts for ts in timestamps if ts != t1],
-    default=[ts for ts in timestamps[1:6]],
-    max_selections=5
-)
+# 5 independent dropdowns
+c1, c2, c3, c4, c5 = st.columns(5)
 
-if len(other_ts) != 5:
-    st.warning("Please select exactly 5 comparison timestamps")
-    st.stop()
+with c1:
+    t2 = st.selectbox("T2", timestamps, index=1, key="t2")
+with c2:
+    t3 = st.selectbox("T3", timestamps, index=2, key="t3")
+with c3:
+    t4 = st.selectbox("T4", timestamps, index=3, key="t4")
+with c4:
+    t5 = st.selectbox("T5", timestamps, index=4, key="t5")
+with c5:
+    t6 = st.selectbox("T6", timestamps, index=5, key="t6")
+
+compare_ts = [t2, t3, t4, t5, t6]
 
 # =====================================
 # LOAD BASE DATA
 # =====================================
 df_base = pd.read_csv(file_map[t1])
-required_cols = {"Stock", "Strike", "Max_Pain", "Stock_LTP"}
 
+required_cols = {"Stock", "Strike", "Max_Pain", "Stock_LTP"}
 if not required_cols.issubset(df_base.columns):
     st.error("CSV must contain Stock, Strike, Max_Pain, Stock_LTP")
     st.stop()
@@ -78,7 +83,7 @@ df = df_base.copy()
 # =====================================
 # PROCESS EACH TIMESTAMP
 # =====================================
-for idx, ts in enumerate(other_ts, start=1):
+for idx, ts in enumerate(compare_ts, start=1):
     df_ts = pd.read_csv(file_map[ts])
     df_ts["Stock"] = df_ts["Stock"].str.upper().str.strip()
 
@@ -88,7 +93,7 @@ for idx, ts in enumerate(other_ts, start=1):
         suffixes=("", f"_t{idx}")
     )
 
-    # Δ MP
+    # Δ MP (T1 - Ti)
     delta_col = f"delta_12_{idx}"
     df[delta_col] = df["Max_Pain"] - df[f"Max_Pain_t{idx}"]
 
@@ -140,7 +145,7 @@ cols = ["Stock", "Strike"] + [f"ΔΔ MP{i}" for i in range(1, 6)]
 display_df = view_df[cols].copy()
 display_df["Stock"] = selected_stock
 
-st.subheader("📈 ΔΔ MP Comparison (ATM ±6)")
+st.subheader("📈 ΔΔ MP Comparison (ATM ±6 strikes)")
 
 st.dataframe(
     display_df.style.format(
