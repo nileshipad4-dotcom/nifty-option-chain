@@ -129,6 +129,29 @@ def render_table(table_idx):
     # ---- column order (LTP LAST) ----
     display_df = view_df[["Stock", "Strike"] + time_cols + ["Stock_LTP"]].copy()
 
+
+
+    def is_monotonic_4_of_5(values):
+    """
+    values: list of 5 numbers
+    Returns True if at least 4 consecutive moves
+    are increasing or decreasing
+    """
+    if len(values) != 5:
+        return False
+
+    inc = 0
+    dec = 0
+
+    for i in range(4):
+        if values[i] <= values[i + 1]:
+            inc += 1
+        if values[i] >= values[i + 1]:
+            dec += 1
+
+    return inc >= 4 or dec >= 4
+
+    
     # ---- highlighting ----
     def highlight(df_):
         styles = pd.DataFrame("", index=df_.index, columns=df_.columns)
@@ -174,3 +197,90 @@ for i in range(len(st.session_state.tables)):
 # =====================================
 if st.button("➕ Add another table"):
     st.session_state.tables.append(all_stocks[0])
+
+
+# =====================================
+# FILTERED STOCKS TABLE (ΔΔ MP TREND)
+# =====================================
+st.subheader("🧩 Stocks with Consistent ΔΔ MP Trend (≥4 of 5)")
+
+filtered_rows = []
+
+for stock in all_stocks:
+
+    df = df_base.copy()
+
+    # ---- recompute ΔΔ MP for this stock ----
+    for ts in compare_ts:
+        label = short_ts(ts)
+
+        df_ts = pd.read_csv(file_map[ts])
+        df_ts["Stock"] = df_ts["Stock"].str.upper().str.strip()
+
+        df = df.merge(
+            df_ts[["Stock", "Strike", "Max_Pain"]],
+            on=["Stock", "Strike"],
+            suffixes=("", "_cmp")
+        )
+
+        delta_col = f"_delta_{label}"
+        df[delta_col] = df["Max_Pain"] - df["Max_Pain_cmp"]
+        df[label] = np.nan
+
+        for s, sdf in df.sort_values("Strike").groupby("Stock"):
+            vals = sdf[delta_col].astype(float).values
+            diff = vals - np.roll(vals, -1)
+            diff[-1] = np.nan
+            df.loc[sdf.index, label] = diff
+
+        df.drop(columns=["Max_Pain_cmp", delta_col], inplace=True)
+
+    # ---- filter stock ----
+    sdf = df[df["Stock"] == stock].sort_values("Strike").reset_index(drop=True)
+    if sdf.empty:
+        continue
+
+    ltp = float(sdf["Stock_LTP"].iloc[0])
+    strikes = sdf["Strike"].values
+
+    # ---- ATM ----
+    atm_idx = None
+    for i in range(len(strikes) - 1):
+        if strikes[i] <= ltp <= strikes[i + 1]:
+            atm_idx = i
+            break
+
+    if atm_idx is None:
+        continue
+
+    atm_row = sdf.iloc[atm_idx]
+
+    values = [atm_row[c] for c in time_cols]
+    if any(pd.isna(values)):
+        continue
+
+    if is_monotonic_4_of_5(values):
+        row = {
+            "Stock": stock,
+            "Strike": int(atm_row["Strike"]),
+            **{c: int(atm_row[c]) for c in time_cols},
+            "Stock_LTP": round(atm_row["Stock_LTP"], 2)
+        }
+        filtered_rows.append(row)
+
+# ---- DISPLAY FILTERED TABLE ----
+if filtered_rows:
+    filtered_df = pd.DataFrame(filtered_rows)
+
+    st.dataframe(
+        filtered_df.style.format(
+            {
+                "Strike": "{:.0f}",
+                "Stock_LTP": "{:.2f}",
+                **{c: "{:.0f}" for c in time_cols}
+            }
+        ),
+        use_container_width=True
+    )
+else:
+    st.info("No stocks matched the ΔΔ MP trend condition.")
