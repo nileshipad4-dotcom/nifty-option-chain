@@ -147,11 +147,9 @@ def render_table(table_idx):
     def highlight(df_):
         styles = pd.DataFrame("", index=df_.index, columns=df_.columns)
 
-        # Max Pain (RED)
         mp_strike = sdf.loc[sdf["Max_Pain"].idxmin(), "Strike"]
         styles.loc[df_.index[df_["Strike"] == mp_strike]] = "background-color:#8B0000;color:white"
 
-        # ATM (BLUE)
         for i in range(len(strikes) - 1):
             if strikes[i] <= ltp <= strikes[i + 1]:
                 atm_strikes = [strikes[i], strikes[i + 1]]
@@ -187,9 +185,9 @@ if st.button("➕ Add another table"):
     st.session_state.tables.append(all_stocks[0])
 
 # =====================================
-# FILTERED TABLE — ALL STRIKES
+# FILTERED TABLE — STRONG TREND + MAGNITUDE + ±5% LTP
 # =====================================
-st.subheader("🧩 Stocks & Strikes with Consistent ΔΔ MP Trend (≥4 of 5)")
+st.subheader("🧩 Stocks & Strikes with Strong Consistent ΔΔ MP Trend (±5% of LTP)")
 
 filtered_rows = []
 df_all = compute_ddmp(df_base)
@@ -204,13 +202,28 @@ for stock in all_stocks:
         if any(pd.isna(values)):
             continue
 
-        if is_monotonic_4_of_5(values):
-            filtered_rows.append({
-                "Stock": stock,
-                "Strike": int(row["Strike"]),
-                **{c: int(row[c]) for c in time_cols},
-                "Stock_LTP": round(row["Stock_LTP"], 2)
-            })
+        # Condition 1: monotonic
+        if not is_monotonic_4_of_5(values):
+            continue
+
+        # Condition 2: magnitude
+        if abs(values[-1] - values[0]) <= 147:
+            continue
+
+        # Condition 3: strike within ±5% of LTP
+        ltp = float(row["Stock_LTP"])
+        strike = float(row["Strike"])
+        pct_diff = abs(strike - ltp) / ltp * 100
+
+        if pct_diff > 5:
+            continue
+
+        filtered_rows.append({
+            "Stock": stock,
+            "Strike": int(strike),
+            **{c: int(row[c]) for c in time_cols},
+            "Stock_LTP": round(ltp, 2)
+        })
 
 # =====================================
 # DISPLAY FILTERED TABLE
@@ -229,4 +242,4 @@ if filtered_rows:
         use_container_width=True
     )
 else:
-    st.info("No strikes matched the ΔΔ MP trend condition.")
+    st.info("No strikes matched the strengthened ΔΔ MP trend + proximity condition.")
