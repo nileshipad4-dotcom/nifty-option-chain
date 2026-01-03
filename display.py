@@ -7,7 +7,7 @@ import os
 # CONFIG
 # =====================================
 st.set_page_config(page_title="ΔΔ Max Pain Viewer", layout="wide")
-st.title("📊 ΔΔ Max Pain Viewer")
+st.title("📊 ΔΔ Max Pain Viewer (Multi-Timestamp)")
 
 DATA_DIR = "data"
 
@@ -23,101 +23,84 @@ def load_csv_files():
     return sorted(files, reverse=True)
 
 csv_files = load_csv_files()
-if len(csv_files) < 2:
-    st.error("Need at least 2 option chain CSV files")
+if len(csv_files) < 6:
+    st.error("Need at least 6 option chain CSV files")
     st.stop()
 
 timestamps = [ts for ts, _ in csv_files]
 file_map = dict(csv_files)
 
-def short_ts(ts):
-    return ts.split("_")[-1].replace("-", ":")
-
 # =====================================
-# TIMESTAMP 1 (BASE)
+# TIMESTAMP SELECTION
 # =====================================
-st.subheader("🕒 Timestamp 1 (Base)")
+st.subheader("🕒 Timestamp Selection")
 
 t1 = st.selectbox(
-    "Select Timestamp 1",
+    "Base Timestamp (T1)",
     timestamps,
-    index=0,
-    key="t1"
+    index=0
 )
 
-t1_lbl = short_ts(t1)
+other_ts = st.multiselect(
+    "Select 5 Comparison Timestamps",
+    [ts for ts in timestamps if ts != t1],
+    default=[ts for ts in timestamps[1:6]],
+    max_selections=5
+)
+
+if len(other_ts) != 5:
+    st.warning("Please select exactly 5 comparison timestamps")
+    st.stop()
 
 # =====================================
 # LOAD BASE DATA
 # =====================================
-df1 = pd.read_csv(file_map[t1])
-
+df_base = pd.read_csv(file_map[t1])
 required_cols = {"Stock", "Strike", "Max_Pain", "Stock_LTP"}
-if not required_cols.issubset(df1.columns):
+
+if not required_cols.issubset(df_base.columns):
     st.error("CSV must contain Stock, Strike, Max_Pain, Stock_LTP")
     st.stop()
 
-df1["Stock"] = df1["Stock"].str.upper().str.strip()
+df_base["Stock"] = df_base["Stock"].str.upper().str.strip()
 
 # =====================================
 # STOCK SELECTOR
 # =====================================
-stock_list = sorted(df1["Stock"].unique())
+stock_list = sorted(df_base["Stock"].unique())
 selected_stock = st.selectbox("Select Stock", stock_list)
 
 # =====================================
-# TABLE HEADER (FAKE HEADER ROW)
+# START MERGED DF
 # =====================================
-h1, h2, h3 = st.columns([2, 2, 3])
+df = df_base.copy()
 
-with h1:
-    st.markdown("**Stock**")
+# =====================================
+# PROCESS EACH TIMESTAMP
+# =====================================
+for idx, ts in enumerate(other_ts, start=1):
+    df_ts = pd.read_csv(file_map[ts])
+    df_ts["Stock"] = df_ts["Stock"].str.upper().str.strip()
 
-with h2:
-    st.markdown("**Strike**")
-
-with h3:
-    t2 = st.selectbox(
-        "ΔΔ MP",
-        timestamps,
-        index=1,
-        label_visibility="collapsed",
-        key="t2_header"
+    df = df.merge(
+        df_ts[["Stock", "Strike", "Max_Pain"]],
+        on=["Stock", "Strike"],
+        suffixes=("", f"_t{idx}")
     )
 
-t2_lbl = short_ts(t2)
+    # Δ MP
+    delta_col = f"delta_12_{idx}"
+    df[delta_col] = df["Max_Pain"] - df[f"Max_Pain_t{idx}"]
 
-# =====================================
-# LOAD TIMESTAMP 2 DATA
-# =====================================
-df2 = pd.read_csv(file_map[t2])
-df2["Stock"] = df2["Stock"].str.upper().str.strip()
+    # ΔΔ MP
+    dd_col = f"ΔΔ MP{idx}"
+    df[dd_col] = np.nan
 
-# =====================================
-# MERGE
-# =====================================
-df = df1.merge(
-    df2[["Stock", "Strike", "Max_Pain"]],
-    on=["Stock", "Strike"],
-    suffixes=("", "_prev")
-)
-
-# =====================================
-# delta_12
-# =====================================
-df["delta_12"] = df["Max_Pain"] - df["Max_Pain_prev"]
-
-# =====================================
-# ΔΔ MP (delta_above)
-# =====================================
-delta_above_col = f"ΔΔ MP ({t1_lbl} → {t2_lbl})"
-df[delta_above_col] = np.nan
-
-for stock, sdf in df.sort_values("Strike").groupby("Stock"):
-    vals = sdf["delta_12"].astype(float).values
-    diff = vals - np.roll(vals, -1)
-    diff[-1] = np.nan
-    df.loc[sdf.index, delta_above_col] = diff
+    for stock, sdf in df.sort_values("Strike").groupby("Stock"):
+        vals = sdf[delta_col].astype(float).values
+        diff = vals - np.roll(vals, -1)
+        diff[-1] = np.nan
+        df.loc[sdf.index, dd_col] = diff
 
 # =====================================
 # FILTER SELECTED STOCK
@@ -150,19 +133,18 @@ end = min(len(sdf), atm_idx + 2 + 6)
 view_df = sdf.iloc[start:end]
 
 # =====================================
-# FINAL DISPLAY (NO HEADER)
+# FINAL DISPLAY
 # =====================================
-display_df = pd.DataFrame({
-    "Stock": selected_stock,
-    "Strike": view_df["Strike"].values,
-    delta_above_col: view_df[delta_above_col].values
-})
+cols = ["Stock", "Strike"] + [f"ΔΔ MP{i}" for i in range(1, 6)]
+
+display_df = view_df[cols].copy()
+display_df["Stock"] = selected_stock
+
+st.subheader("📈 ΔΔ MP Comparison (ATM ±6)")
 
 st.dataframe(
-    display_df.style.format({
-        "Strike": "{:.0f}",
-        delta_above_col: "{:.0f}"
-    }),
-    hide_index=True,
+    display_df.style.format(
+        {c: "{:.0f}" for c in display_df.columns if c not in {"Stock"}}
+    ),
     use_container_width=True
 )
