@@ -398,6 +398,22 @@ def detect_extreme_imbalance_stocks(df, delta_col, strikes_count=4):
 
     return qualified
 
+# =====================================
+# PRE-COMPUTE SIGNAL STOCK LISTS (USED BY UNION)
+# =====================================
+
+qualified_stocks = detect_directional_pressure_stocks(
+    final_df,
+    delta_above_col,
+    strikes_count=6,
+    min_required=5
+)
+
+extreme_stocks = detect_extreme_imbalance_stocks(
+    final_df,
+    delta_above_col,
+    strikes_count=4
+)
 
 
 # =====================================
