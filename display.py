@@ -185,9 +185,33 @@ if st.button("➕ Add another table"):
     st.session_state.tables.append(all_stocks[0])
 
 # =====================================
-# FILTERED TABLE — STRONG TREND + MAGNITUDE + ±5% LTP
+# USER-CONTROLLED FILTER INPUTS
 # =====================================
-st.subheader("🧩 Stocks & Strikes with Strong Consistent ΔΔ MP Trend (±5% of LTP)")
+st.subheader("🎛 Filter Parameters")
+
+p1, p2 = st.columns(2)
+
+with p1:
+    ltp_pct_limit = st.number_input(
+        "Max % distance from LTP",
+        min_value=0.0,
+        max_value=50.0,
+        value=5.0,
+        step=0.5
+    )
+
+with p2:
+    ddmp_diff_limit = st.number_input(
+        "Min |ΔΔ MP(last − first)|",
+        min_value=0.0,
+        value=147.0,
+        step=10.0
+    )
+
+# =====================================
+# FILTERED TABLE
+# =====================================
+st.subheader("🧩 Stocks & Strikes with Strong Consistent ΔΔ MP Trend")
 
 filtered_rows = []
 df_all = compute_ddmp(df_base)
@@ -205,7 +229,7 @@ for stock in all_stocks:
         if not is_monotonic_4_of_5(values):
             continue
 
-        if abs(values[-1] - values[0]) <= 147:
+        if abs(values[-1] - values[0]) <= ddmp_diff_limit:
             continue
 
         ltp = float(row["Stock_LTP"])
@@ -214,7 +238,8 @@ for stock in all_stocks:
 
         strike = float(row["Strike"])
         pct_diff = abs(strike - ltp) / ltp * 100
-        if pct_diff > 5:
+
+        if pct_diff > ltp_pct_limit:
             continue
 
         filtered_rows.append({
@@ -241,4 +266,4 @@ if filtered_rows:
         use_container_width=True
     )
 else:
-    st.info("No strikes matched the strengthened ΔΔ MP trend + proximity condition.")
+    st.info("No strikes matched the current filter parameters.")
