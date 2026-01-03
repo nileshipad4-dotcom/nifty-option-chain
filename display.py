@@ -48,8 +48,6 @@ with c4: t5 = st.selectbox("T5", timestamps, index=4)
 with c5: t6 = st.selectbox("T6", timestamps, index=5)
 
 compare_ts = [t2, t3, t4, t5, t6]
-
-# sort time columns in increasing HH:MM order
 time_cols = sorted([short_ts(ts) for ts in compare_ts])
 
 # =====================================
@@ -63,23 +61,31 @@ if not required_cols.issubset(df_base.columns):
     st.stop()
 
 df_base["Stock"] = df_base["Stock"].str.upper().str.strip()
-
-# =====================================
-# SESSION STATE FOR STOCKS
-# =====================================
-if "stocks_to_show" not in st.session_state:
-    st.session_state.stocks_to_show = []
-
 all_stocks = sorted(df_base["Stock"].unique())
 
 # =====================================
-# FUNCTION TO RENDER ONE STOCK TABLE
+# SESSION STATE
 # =====================================
-def render_stock_table(selected_stock):
+if "tables" not in st.session_state:
+    st.session_state.tables = [all_stocks[0]]
+
+# =====================================
+# FUNCTION TO RENDER ONE TABLE
+# =====================================
+def render_table(table_idx):
+
+    # ---- stock selector (ALWAYS EDITABLE) ----
+    selected_stock = st.selectbox(
+        f"Select Stock (Table {table_idx + 1})",
+        all_stocks,
+        index=all_stocks.index(st.session_state.tables[table_idx]),
+        key=f"stock_{table_idx}"
+    )
+    st.session_state.tables[table_idx] = selected_stock
 
     df = df_base.copy()
 
-    # ---------- merge + ΔΔ MP ----------
+    # ---- merge & ΔΔ MP ----
     for ts in compare_ts:
         label = short_ts(ts)
 
@@ -96,7 +102,7 @@ def render_stock_table(selected_stock):
         df[delta_col] = df["Max_Pain"] - df["Max_Pain_cmp"]
         df[label] = np.nan
 
-        for stock, sdf in df.sort_values("Strike").groupby("Stock"):
+        for s, sdf in df.sort_values("Strike").groupby("Stock"):
             vals = sdf[delta_col].astype(float).values
             diff = vals - np.roll(vals, -1)
             diff[-1] = np.nan
@@ -104,10 +110,9 @@ def render_stock_table(selected_stock):
 
         df.drop(columns=["Max_Pain_cmp", delta_col], inplace=True)
 
-    # ---------- filter stock ----------
+    # ---- filter stock ----
     sdf = df[df["Stock"] == selected_stock].sort_values("Strike").reset_index(drop=True)
 
-    # ---------- ATM ±6 ----------
     ltp = float(sdf["Stock_LTP"].iloc[0])
     strikes = sdf["Strike"].values
 
@@ -121,29 +126,28 @@ def render_stock_table(selected_stock):
 
     view_df = sdf.iloc[max(0, atm_idx - 6): min(len(sdf), atm_idx + 2 + 6)]
 
-    display_df = view_df[["Stock", "Strike", "Stock_LTP"] + time_cols].copy()
+    # ---- column order (LTP LAST) ----
+    display_df = view_df[["Stock", "Strike"] + time_cols + ["Stock_LTP"]].copy()
 
-    # ---------- highlighting ----------
-    def highlight(df):
-        styles = pd.DataFrame("", index=df.index, columns=df.columns)
+    # ---- highlighting ----
+    def highlight(df_):
+        styles = pd.DataFrame("", index=df_.index, columns=df_.columns)
 
-        # max pain (RED – priority)
+        # Max Pain (RED – priority)
         mp_strike = sdf.loc[sdf["Max_Pain"].idxmin(), "Strike"]
-        mp_idx = df.index[df["Strike"] == mp_strike]
-        styles.loc[mp_idx] = "background-color:#8B0000;color:white"
+        mp_rows = df_.index[df_["Strike"] == mp_strike]
+        styles.loc[mp_rows] = "background-color:#8B0000;color:white"
 
         # ATM (BLUE)
         for i in range(len(strikes) - 1):
             if strikes[i] <= ltp <= strikes[i + 1]:
                 atm_strikes = [strikes[i], strikes[i + 1]]
-                for idx in df.index[df["Strike"].isin(atm_strikes)]:
+                for idx in df_.index[df_["Strike"].isin(atm_strikes)]:
                     if styles.loc[idx].eq("").all():
                         styles.loc[idx] = "background-color:#003366;color:white"
                 break
 
         return styles
-
-    st.subheader(f"📈 {selected_stock}")
 
     st.dataframe(
         display_df.style
@@ -159,15 +163,14 @@ def render_stock_table(selected_stock):
     )
 
 # =====================================
-# MAIN LOOP – ADD STOCKS ONE BY ONE
+# RENDER ALL TABLES
 # =====================================
-for stock in st.session_state.stocks_to_show:
-    render_stock_table(stock)
+for i in range(len(st.session_state.tables)):
+    st.subheader(f"📈 Table {i + 1}")
+    render_table(i)
 
-# dropdown AFTER last table
-remaining = [s for s in all_stocks if s not in st.session_state.stocks_to_show]
-if remaining:
-    next_stock = st.selectbox("➕ Add another stock", [""] + remaining)
-    if next_stock:
-        st.session_state.stocks_to_show.append(next_stock)
-        st.experimental_rerun()
+# =====================================
+# ADD NEW TABLE
+# =====================================
+if st.button("➕ Add another table"):
+    st.session_state.tables.append(all_stocks[0])
