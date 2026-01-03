@@ -115,10 +115,9 @@ def is_monotonic_4_of_5(values):
     return inc >= 4 or dec >= 4
 
 # =====================================
-# RENDER ONE MAIN TABLE
+# MAIN TABLES (UNCHANGED)
 # =====================================
 def render_table(table_idx):
-
     selected_stock = st.selectbox(
         f"Select Stock (Table {table_idx + 1})",
         all_stocks,
@@ -144,40 +143,9 @@ def render_table(table_idx):
     view_df = sdf.iloc[max(0, atm_idx - 6): min(len(sdf), atm_idx + 2 + 6)]
     display_df = view_df[["Stock", "Strike"] + time_cols + ["Stock_LTP"]].copy()
 
-    def highlight(df_):
-        styles = pd.DataFrame("", index=df_.index, columns=df_.columns)
-
-        mp_strike = sdf.loc[sdf["Max_Pain"].idxmin(), "Strike"]
-        styles.loc[df_.index[df_["Strike"] == mp_strike]] = "background-color:#8B0000;color:white"
-
-        for i in range(len(strikes) - 1):
-            if strikes[i] <= ltp <= strikes[i + 1]:
-                atm_strikes = [strikes[i], strikes[i + 1]]
-                for idx in df_.index[df_["Strike"].isin(atm_strikes)]:
-                    if styles.loc[idx].eq("").all():
-                        styles.loc[idx] = "background-color:#003366;color:white"
-                break
-
-        return styles
-
     st.subheader(f"📈 {selected_stock}")
+    st.dataframe(display_df, use_container_width=True)
 
-    st.dataframe(
-        display_df.style
-        .apply(highlight, axis=None)
-        .format(
-            {
-                "Strike": "{:.0f}",
-                "Stock_LTP": "{:.2f}",
-                **{c: "{:.0f}" for c in time_cols}
-            }
-        ),
-        use_container_width=True
-    )
-
-# =====================================
-# MAIN TABLES
-# =====================================
 for i in range(len(st.session_state.tables)):
     render_table(i)
 
@@ -185,12 +153,11 @@ if st.button("➕ Add another table"):
     st.session_state.tables.append(all_stocks[0])
 
 # =====================================
-# USER-CONTROLLED FILTER INPUTS
+# FILTER PARAMETERS
 # =====================================
 st.subheader("🎛 Filter Parameters")
 
 p1, p2 = st.columns(2)
-
 with p1:
     ltp_pct_limit = st.number_input(
         "Max % distance from LTP",
@@ -238,7 +205,6 @@ for stock in all_stocks:
 
         strike = float(row["Strike"])
         pct_diff = abs(strike - ltp) / ltp * 100
-
         if pct_diff > ltp_pct_limit:
             continue
 
@@ -250,13 +216,22 @@ for stock in all_stocks:
         })
 
 # =====================================
-# DISPLAY FILTERED TABLE
+# DISPLAY FILTERED TABLE WITH ROW COLORS
 # =====================================
 if filtered_rows:
     filtered_df = pd.DataFrame(filtered_rows).sort_values(["Stock", "Strike"])
 
+    def color_relative_to_ltp(row):
+        if row["Strike"] > row["Stock_LTP"]:
+            return ["background-color:#004d00;color:white"] * len(row)
+        elif row["Strike"] < row["Stock_LTP"]:
+            return ["background-color:#660000;color:white"] * len(row)
+        return [""] * len(row)
+
     st.dataframe(
-        filtered_df.style.format(
+        filtered_df.style
+        .apply(color_relative_to_ltp, axis=1)
+        .format(
             {
                 "Strike": "{:.0f}",
                 "Stock_LTP": "{:.2f}",
