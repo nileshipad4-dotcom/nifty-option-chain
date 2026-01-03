@@ -31,7 +31,6 @@ timestamps = [ts for ts, _ in csv_files]
 file_map = dict(csv_files)
 
 def short_ts(ts):
-    """Return HH:MM from timestamp string"""
     return ts.split("_")[-1].replace("-", ":")
 
 # =====================================
@@ -39,26 +38,17 @@ def short_ts(ts):
 # =====================================
 st.subheader("🕒 Timestamp Selection")
 
-t1 = st.selectbox(
-    "Base Timestamp (T1)",
-    timestamps,
-    index=0
-)
+t1 = st.selectbox("Base Timestamp (T1)", timestamps, index=0)
 
 c1, c2, c3, c4, c5 = st.columns(5)
-
-with c1:
-    t2 = st.selectbox("T2", timestamps, index=1, key="t2")
-with c2:
-    t3 = st.selectbox("T3", timestamps, index=2, key="t3")
-with c3:
-    t4 = st.selectbox("T4", timestamps, index=3, key="t4")
-with c4:
-    t5 = st.selectbox("T5", timestamps, index=4, key="t5")
-with c5:
-    t6 = st.selectbox("T6", timestamps, index=5, key="t6")
+with c1: t2 = st.selectbox("T2", timestamps, index=1)
+with c2: t3 = st.selectbox("T3", timestamps, index=2)
+with c3: t4 = st.selectbox("T4", timestamps, index=3)
+with c4: t5 = st.selectbox("T5", timestamps, index=4)
+with c5: t6 = st.selectbox("T6", timestamps, index=5)
 
 compare_ts = [t2, t3, t4, t5, t6]
+time_cols = [short_ts(ts) for ts in compare_ts]
 
 # =====================================
 # LOAD BASE DATA
@@ -73,90 +63,117 @@ if not required_cols.issubset(df_base.columns):
 df_base["Stock"] = df_base["Stock"].str.upper().str.strip()
 
 # =====================================
-# STOCK SELECTOR
+# STOCK SELECTION (MULTI)
 # =====================================
-stock_list = sorted(df_base["Stock"].unique())
-selected_stock = st.selectbox("Select Stock", stock_list)
+all_stocks = sorted(df_base["Stock"].unique())
+
+if "selected_stocks" not in st.session_state:
+    st.session_state.selected_stocks = []
+
+new_stock = st.selectbox(
+    "Add Stock to View",
+    [""] + [s for s in all_stocks if s not in st.session_state.selected_stocks]
+)
+
+if new_stock:
+    st.session_state.selected_stocks.append(new_stock)
 
 # =====================================
-# START MERGED DF
+# PROCESS EACH SELECTED STOCK
 # =====================================
-df = df_base.copy()
+for selected_stock in st.session_state.selected_stocks:
 
-# =====================================
-# PROCESS EACH COMPARISON TIMESTAMP
-# =====================================
-for ts in compare_ts:
-    time_label = short_ts(ts)   # column name (HH:MM)
+    df = df_base.copy()
 
-    df_ts = pd.read_csv(file_map[ts])
-    df_ts["Stock"] = df_ts["Stock"].str.upper().str.strip()
+    # ===============================
+    # MERGE + CALCULATIONS
+    # ===============================
+    for ts in compare_ts:
+        label = short_ts(ts)
 
-    df = df.merge(
-        df_ts[["Stock", "Strike", "Max_Pain"]],
-        on=["Stock", "Strike"],
-        suffixes=("", "_cmp")
+        df_ts = pd.read_csv(file_map[ts])
+        df_ts["Stock"] = df_ts["Stock"].str.upper().str.strip()
+
+        df = df.merge(
+            df_ts[["Stock", "Strike", "Max_Pain"]],
+            on=["Stock", "Strike"],
+            suffixes=("", "_cmp")
+        )
+
+        delta_col = f"_delta_{label}"
+        df[delta_col] = df["Max_Pain"] - df["Max_Pain_cmp"]
+
+        df[label] = np.nan
+
+        for stock, sdf in df.sort_values("Strike").groupby("Stock"):
+            vals = sdf[delta_col].astype(float).values
+            diff = vals - np.roll(vals, -1)
+            diff[-1] = np.nan
+            df.loc[sdf.index, label] = diff
+
+        df.drop(columns=["Max_Pain_cmp", delta_col], inplace=True)
+
+    # ===============================
+    # FILTER STOCK
+    # ===============================
+    sdf = (
+        df[df["Stock"] == selected_stock]
+        .sort_values("Strike")
+        .reset_index(drop=True)
     )
 
-    # Δ MP (T1 − Ti)
-    delta_col = f"_delta_{time_label}"
-    df[delta_col] = df["Max_Pain"] - df["Max_Pain_cmp"]
+    # ===============================
+    # ATM ±6 STRIKES
+    # ===============================
+    ltp = float(sdf["Stock_LTP"].iloc[0])
+    strikes = sdf["Strike"].values
 
-    # ΔΔ MP column named ONLY by time
-    df[time_label] = np.nan
+    atm_idx = None
+    for i in range(len(strikes) - 1):
+        if strikes[i] <= ltp <= strikes[i + 1]:
+            atm_idx = i
+            break
 
-    for stock, sdf in df.sort_values("Strike").groupby("Stock"):
-        vals = sdf[delta_col].astype(float).values
-        diff = vals - np.roll(vals, -1)
-        diff[-1] = np.nan
-        df.loc[sdf.index, time_label] = diff
+    if atm_idx is None:
+        continue
 
-    # clean temp column
-    df.drop(columns=["Max_Pain_cmp", delta_col], inplace=True)
+    start = max(0, atm_idx - 6)
+    end = min(len(sdf), atm_idx + 2 + 6)
+    view_df = sdf.iloc[start:end]
 
-# =====================================
-# FILTER SELECTED STOCK
-# =====================================
-sdf = (
-    df[df["Stock"] == selected_stock]
-    .sort_values("Strike")
-    .reset_index(drop=True)
-)
+    # ===============================
+    # DISPLAY DF
+    # ===============================
+    display_df = view_df[["Stock", "Strike", "Stock_LTP"] + time_cols].copy()
 
-# =====================================
-# ATM ±6 STRIKES
-# =====================================
-ltp = float(sdf["Stock_LTP"].iloc[0])
-strikes = sdf["Strike"].values
+    # ===============================
+    # HIGHLIGHTING
+    # ===============================
+    def highlight(df):
+        styles = pd.DataFrame("", index=df.index, columns=df.columns)
 
-atm_idx = None
-for i in range(len(strikes) - 1):
-    if strikes[i] <= ltp <= strikes[i + 1]:
-        atm_idx = i
-        break
+        # Max Pain (RED) — priority
+        mp_idx = df["Strike"].sub(
+            sdf.loc[sdf["Max_Pain"].idxmin(), "Strike"]
+        ).abs().idxmin()
+        styles.loc[mp_idx] = "background-color:#8B0000;color:white"
 
-if atm_idx is None:
-    st.error("ATM strike not found")
-    st.stop()
+        # ATM strikes (BLUE)
+        for i in range(len(strikes) - 1):
+            if strikes[i] <= ltp <= strikes[i + 1]:
+                idxs = df.index[df["Strike"].isin([strikes[i], strikes[i + 1]])]
+                for idx in idxs:
+                    if styles.loc[idx].eq("").all():  # do not override red
+                        styles.loc[idx] = "background-color:#003366;color:white"
+                break
 
-start = max(0, atm_idx - 6)
-end = min(len(sdf), atm_idx + 2 + 6)
+        return styles
 
-view_df = sdf.iloc[start:end]
+    st.subheader(f"📈 {selected_stock}")
 
-# =====================================
-# FINAL DISPLAY
-# =====================================
-time_cols = [short_ts(ts) for ts in compare_ts]
-
-display_df = view_df[["Stock", "Strike"] + time_cols].copy()
-display_df["Stock"] = selected_stock
-
-st.subheader("📈 ΔΔ MP (Base → Selected Times)")
-
-st.dataframe(
-    display_df.style.format(
-        {c: "{:.0f}" for c in time_cols}
-    ),
-    use_container_width=True
-)
+    st.dataframe(
+        display_df.style
+        .apply(highlight, axis=None)
+        .format({c: "{:.0f}" for c in time_cols}),
+        use_container_width=True
+    )
