@@ -422,8 +422,8 @@ extreme_stocks = detect_extreme_imbalance_stocks(
 def detect_atm_delta_intensity_stocks(
     df,
     delta_col,
-    diff_threshold=350,
-    sum_threshold=350,
+    diff_threshold=300,
+    sum_threshold=300,
     window=3
 ):
     qualified = []
