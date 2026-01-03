@@ -7,7 +7,7 @@ import os
 # CONFIG
 # =====================================
 st.set_page_config(page_title="ΔΔ Max Pain Viewer", layout="wide")
-st.title("📊 ΔΔ Max Pain Viewer (5 Timestamp Compare)")
+st.title("📊 ΔΔ Max Pain Viewer")
 
 DATA_DIR = "data"
 
@@ -30,6 +30,10 @@ if len(csv_files) < 6:
 timestamps = [ts for ts, _ in csv_files]
 file_map = dict(csv_files)
 
+def short_ts(ts):
+    """Return HH:MM from timestamp string"""
+    return ts.split("_")[-1].replace("-", ":")
+
 # =====================================
 # TIMESTAMP SELECTION
 # =====================================
@@ -41,7 +45,6 @@ t1 = st.selectbox(
     index=0
 )
 
-# 5 independent dropdowns
 c1, c2, c3, c4, c5 = st.columns(5)
 
 with c1:
@@ -81,31 +84,35 @@ selected_stock = st.selectbox("Select Stock", stock_list)
 df = df_base.copy()
 
 # =====================================
-# PROCESS EACH TIMESTAMP
+# PROCESS EACH COMPARISON TIMESTAMP
 # =====================================
-for idx, ts in enumerate(compare_ts, start=1):
+for ts in compare_ts:
+    time_label = short_ts(ts)   # column name (HH:MM)
+
     df_ts = pd.read_csv(file_map[ts])
     df_ts["Stock"] = df_ts["Stock"].str.upper().str.strip()
 
     df = df.merge(
         df_ts[["Stock", "Strike", "Max_Pain"]],
         on=["Stock", "Strike"],
-        suffixes=("", f"_t{idx}")
+        suffixes=("", "_cmp")
     )
 
-    # Δ MP (T1 - Ti)
-    delta_col = f"delta_12_{idx}"
-    df[delta_col] = df["Max_Pain"] - df[f"Max_Pain_t{idx}"]
+    # Δ MP (T1 − Ti)
+    delta_col = f"_delta_{time_label}"
+    df[delta_col] = df["Max_Pain"] - df["Max_Pain_cmp"]
 
-    # ΔΔ MP
-    dd_col = f"ΔΔ MP{idx}"
-    df[dd_col] = np.nan
+    # ΔΔ MP column named ONLY by time
+    df[time_label] = np.nan
 
     for stock, sdf in df.sort_values("Strike").groupby("Stock"):
         vals = sdf[delta_col].astype(float).values
         diff = vals - np.roll(vals, -1)
         diff[-1] = np.nan
-        df.loc[sdf.index, dd_col] = diff
+        df.loc[sdf.index, time_label] = diff
+
+    # clean temp column
+    df.drop(columns=["Max_Pain_cmp", delta_col], inplace=True)
 
 # =====================================
 # FILTER SELECTED STOCK
@@ -140,16 +147,16 @@ view_df = sdf.iloc[start:end]
 # =====================================
 # FINAL DISPLAY
 # =====================================
-cols = ["Stock", "Strike"] + [f"ΔΔ MP{i}" for i in range(1, 6)]
+time_cols = [short_ts(ts) for ts in compare_ts]
 
-display_df = view_df[cols].copy()
+display_df = view_df[["Stock", "Strike"] + time_cols].copy()
 display_df["Stock"] = selected_stock
 
-st.subheader("📈 ΔΔ MP Comparison (ATM ±6 strikes)")
+st.subheader("📈 ΔΔ MP (Base → Selected Times)")
 
 st.dataframe(
     display_df.style.format(
-        {c: "{:.0f}" for c in display_df.columns if c not in {"Stock"}}
+        {c: "{:.0f}" for c in time_cols}
     ),
     use_container_width=True
 )
