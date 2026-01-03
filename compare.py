@@ -416,6 +416,60 @@ extreme_stocks = detect_extreme_imbalance_stocks(
 )
 
 
+# =============================================
+# ATM ±3 ΔΔ MP INTENSITY FILTER (MODULAR)
+# =============================================
+def detect_atm_delta_intensity_stocks(
+    df,
+    delta_col,
+    diff_threshold=350,
+    sum_threshold=350,
+    window=3
+):
+    qualified = []
+
+    for stock, sdf in df.groupby("Stock"):
+        sdf = sdf.dropna(subset=["Strike", delta_col]).sort_values("Strike")
+        if sdf.empty:
+            continue
+
+        ltp = float(sdf["Stock_LTP"].iloc[0])
+        strikes = sdf["Strike"].values
+
+        atm_idx = None
+        for i in range(len(strikes) - 1):
+            if strikes[i] <= ltp <= strikes[i + 1]:
+                atm_idx = i
+                break
+
+        if atm_idx is None:
+            continue
+
+        # Collect exactly 3 ΔΔ MP values: (i-1, i, i+1)
+        idxs = [atm_idx - 1, atm_idx, atm_idx + 1]
+        idxs = [i for i in idxs if 0 <= i < len(sdf)]
+
+        if len(idxs) < window:
+            continue
+
+        deltas = sdf.iloc[idxs][delta_col].astype(float).values
+
+        # FILTER 1: max absolute difference (ΔΔ MP already a difference)
+        max_diff = np.max(np.abs(deltas))
+
+        # FILTER 2: max absolute pairwise sum
+        sums = [
+            deltas[i] + deltas[i + 1]
+            for i in range(len(deltas) - 1)
+        ]
+        max_sum = np.max(np.abs(sums)) if sums else 0
+
+        if max_diff > diff_threshold or max_sum > sum_threshold:
+            qualified.append(stock)
+
+    return qualified
+
+
 # =====================================
 # DISPLAY
 # =====================================
@@ -479,7 +533,22 @@ if selected_stock:
 # =====================================
 st.subheader("🧩 Combined Signal Stocks (Directional OR Extreme ΔΔ MP)")
 
+# Union of base signal stocks
 union_stocks = sorted(set(qualified_stocks) | set(extreme_stocks))
+
+# Apply ATM ±3 ΔΔ MP intensity filter (NEW)
+intensity_stocks = detect_atm_delta_intensity_stocks(
+    final_df,
+    delta_above_col,
+    diff_threshold=350,
+    sum_threshold=350,
+    window=3
+)
+
+# FINAL stocks for Combined Signal table
+union_stocks = sorted(set(union_stocks) & set(intensity_stocks))
+
+
 
 union_df = final_df[final_df["Stock"].isin(union_stocks)]
 
