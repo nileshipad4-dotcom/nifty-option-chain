@@ -64,12 +64,6 @@ df_base["Stock"] = df_base["Stock"].astype(str).str.upper().str.strip()
 all_stocks = sorted(df_base["Stock"].unique())
 
 # =====================================
-# SESSION STATE
-# =====================================
-if "tables" not in st.session_state:
-    st.session_state.tables = [all_stocks[0]]
-
-# =====================================
 # ΔΔ MP CALCULATION
 # =====================================
 def compute_ddmp(df):
@@ -91,7 +85,7 @@ def compute_ddmp(df):
         df[delta_col] = df["Max_Pain"] - df["Max_Pain_cmp"]
         df[label] = np.nan
 
-        for stock, sdf in df.sort_values("Strike").groupby("Stock"):
+        for _, sdf in df.sort_values("Strike").groupby("Stock"):
             vals = sdf[delta_col].astype(float).values
             diff = vals - np.roll(vals, -1)
             diff[-1] = np.nan
@@ -102,7 +96,7 @@ def compute_ddmp(df):
     return df
 
 # =====================================
-# MONOTONIC FILTER (≥4 of 5)
+# MONOTONIC FILTER
 # =====================================
 def is_monotonic_4_of_5(values):
     inc = 0
@@ -115,65 +109,15 @@ def is_monotonic_4_of_5(values):
     return inc >= 4 or dec >= 4
 
 # =====================================
-# MAIN TABLES (UNCHANGED)
-# =====================================
-def render_table(table_idx):
-    selected_stock = st.selectbox(
-        f"Select Stock (Table {table_idx + 1})",
-        all_stocks,
-        index=all_stocks.index(st.session_state.tables[table_idx]),
-        key=f"stock_{table_idx}"
-    )
-    st.session_state.tables[table_idx] = selected_stock
-
-    df = compute_ddmp(df_base)
-    sdf = df[df["Stock"] == selected_stock].sort_values("Strike").reset_index(drop=True)
-
-    ltp = float(sdf["Stock_LTP"].iloc[0])
-    strikes = sdf["Strike"].values
-
-    atm_idx = None
-    for i in range(len(strikes) - 1):
-        if strikes[i] <= ltp <= strikes[i + 1]:
-            atm_idx = i
-            break
-    if atm_idx is None:
-        return
-
-    view_df = sdf.iloc[max(0, atm_idx - 6): min(len(sdf), atm_idx + 2 + 6)]
-    display_df = view_df[["Stock", "Strike"] + time_cols + ["Stock_LTP"]].copy()
-
-    st.subheader(f"📈 {selected_stock}")
-    st.dataframe(display_df, use_container_width=True)
-
-for i in range(len(st.session_state.tables)):
-    render_table(i)
-
-if st.button("➕ Add another table"):
-    st.session_state.tables.append(all_stocks[0])
-
-# =====================================
 # FILTER PARAMETERS
 # =====================================
 st.subheader("🎛 Filter Parameters")
 
 p1, p2 = st.columns(2)
 with p1:
-    ltp_pct_limit = st.number_input(
-        "Max % distance from LTP",
-        min_value=0.0,
-        max_value=50.0,
-        value=5.0,
-        step=0.5
-    )
-
+    ltp_pct_limit = st.number_input("Max % distance from LTP", 0.0, 50.0, 5.0, 0.5)
 with p2:
-    ddmp_diff_limit = st.number_input(
-        "Min |ΔΔ MP(last − first)|",
-        min_value=0.0,
-        value=147.0,
-        step=10.0
-    )
+    ddmp_diff_limit = st.number_input("Min |ΔΔ MP(last − first)|", 0.0, value=147.0, step=10.0)
 
 # =====================================
 # FILTERED TABLE
@@ -183,9 +127,32 @@ st.subheader("🧩 Stocks & Strikes with Strong Consistent ΔΔ MP Trend")
 filtered_rows = []
 df_all = compute_ddmp(df_base)
 
+# Pre-compute ATM strikes & Max Pain per stock
+atm_map = {}
+mp_map = {}
+
 for stock in all_stocks:
-    sdf = df_all[df_all["Stock"] == stock].sort_values("Strike").reset_index(drop=True)
+    sdf = df_all[df_all["Stock"] == stock].sort_values("Strike")
     if sdf.empty:
+        continue
+
+    ltp = float(sdf["Stock_LTP"].iloc[0])
+    strikes = sdf["Strike"].values
+
+    for i in range(len(strikes) - 1):
+        if strikes[i] <= ltp <= strikes[i + 1]:
+            atm_map[stock] = {strikes[i], strikes[i + 1]}
+            break
+
+    mp_map[stock] = sdf.loc[sdf["Max_Pain"].idxmin(), "Strike"]
+
+for stock in all_stocks:
+    sdf = df_all[df_all["Stock"] == stock].sort_values("Strike")
+    if sdf.empty:
+        continue
+
+    ltp = float(sdf["Stock_LTP"].iloc[0])
+    if ltp <= 0:
         continue
 
     for _, row in sdf.iterrows():
@@ -197,10 +164,6 @@ for stock in all_stocks:
             continue
 
         if abs(values[-1] - values[0]) <= ddmp_diff_limit:
-            continue
-
-        ltp = float(row["Stock_LTP"])
-        if pd.isna(ltp) or ltp <= 0:
             continue
 
         strike = float(row["Strike"])
@@ -216,21 +179,32 @@ for stock in all_stocks:
         })
 
 # =====================================
-# DISPLAY FILTERED TABLE WITH ROW COLORS
+# DISPLAY FILTERED TABLE WITH COLORS
 # =====================================
 if filtered_rows:
     filtered_df = pd.DataFrame(filtered_rows).sort_values(["Stock", "Strike"])
 
-    def color_relative_to_ltp(row):
-        if row["Strike"] > row["Stock_LTP"]:
+    def color_row(row):
+        stock = row["Stock"]
+        strike = row["Strike"]
+
+        # 1️⃣ Max Pain – Dark Brown
+        if strike == mp_map.get(stock):
+            return ["background-color:#4E342E;color:white"] * len(row)
+
+        # 2️⃣ ATM – Dark Blue
+        if strike in atm_map.get(stock, set()):
+            return ["background-color:#003366;color:white"] * len(row)
+
+        # 3️⃣ Above / Below LTP
+        if strike > row["Stock_LTP"]:
             return ["background-color:#004d00;color:white"] * len(row)
-        elif row["Strike"] < row["Stock_LTP"]:
+        else:
             return ["background-color:#660000;color:white"] * len(row)
-        return [""] * len(row)
 
     st.dataframe(
         filtered_df.style
-        .apply(color_relative_to_ltp, axis=1)
+        .apply(color_row, axis=1)
         .format(
             {
                 "Strike": "{:.0f}",
