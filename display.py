@@ -24,7 +24,7 @@ def load_csv_files():
 
 csv_files = load_csv_files()
 if len(csv_files) < 2:
-    st.error("Need at least 2 option chain CSV files")
+    st.error("Need at least 2 CSV files")
     st.stop()
 
 timestamps = [ts for ts, _ in csv_files]
@@ -34,15 +34,31 @@ def short_ts(ts):
     return ts.split("_")[-1].replace("-", ":")
 
 # ===============================
-# TIMESTAMP SELECTION
+# TIMESTAMP 1 (ABOVE TABLE)
 # ===============================
-st.subheader("🕒 Select Base Timestamp")
+st.subheader("🕒 Timestamp 1 (Base)")
 
-t1 = st.selectbox("Timestamp 1 (Base)", timestamps, index=0)
-t2 = st.selectbox("Timestamp 2 (Shown as Column)", timestamps, index=1)
+t1 = st.selectbox(
+    "Select Timestamp 1",
+    timestamps,
+    index=0,
+    key="t1"
+)
+
+# ===============================
+# TIMESTAMP 2 (COLUMN NAME CONTROL)
+# ===============================
+t2 = st.selectbox(
+    "ΔΔ MP Column Timestamp (Timestamp 2)",
+    timestamps,
+    index=1,
+    key="t2"
+)
 
 t1_lbl = short_ts(t1)
 t2_lbl = short_ts(t2)
+
+delta_above_col = f"ΔΔ MP ({t1_lbl} → {t2_lbl})"
 
 # ===============================
 # LOAD DATA
@@ -52,7 +68,7 @@ df2 = pd.read_csv(file_map[t2])
 
 required_cols = {"Stock", "Strike", "Max_Pain", "Stock_LTP"}
 if not required_cols.issubset(df1.columns) or not required_cols.issubset(df2.columns):
-    st.error("CSV files must contain Stock, Strike, Max_Pain, Stock_LTP")
+    st.error("CSV must contain Stock, Strike, Max_Pain, Stock_LTP")
     st.stop()
 
 df1["Stock"] = df1["Stock"].str.upper().str.strip()
@@ -68,14 +84,13 @@ df = df1.merge(
 )
 
 # ===============================
-# delta_12 (MP difference across time)
+# delta_12
 # ===============================
 df["delta_12"] = df["Max_Pain"] - df["Max_Pain_prev"]
 
 # ===============================
-# delta_above_col (ΔΔ MP)
+# ΔΔ MP (delta_above_col)
 # ===============================
-delta_above_col = f"ΔΔ MP ({t1_lbl}-{t2_lbl})"
 df[delta_above_col] = np.nan
 
 for stock, sdf in df.sort_values("Strike").groupby("Stock"):
@@ -85,7 +100,7 @@ for stock, sdf in df.sort_values("Strike").groupby("Stock"):
     df.loc[sdf.index, delta_above_col] = diff
 
 # ===============================
-# STOCK SELECTOR
+# STOCK DROPDOWN
 # ===============================
 stock_list = sorted(df["Stock"].unique())
 selected_stock = st.selectbox("Select Stock", stock_list)
@@ -118,15 +133,15 @@ end = min(len(sdf), atm_idx + 2 + 6)
 view_df = sdf.iloc[start:end]
 
 # ===============================
-# FINAL DISPLAY TABLE
+# DISPLAY TABLE
 # ===============================
 display_df = pd.DataFrame({
-    "Stock": [selected_stock] * len(view_df),
+    "Stock": selected_stock,
     "Strike": view_df["Strike"].values,
     delta_above_col: view_df[delta_above_col].values
 })
 
-st.subheader(f"📈 ΔΔ MP View")
+st.subheader("📈 ΔΔ MP Around ATM")
 
 st.dataframe(
     display_df.style.format({
