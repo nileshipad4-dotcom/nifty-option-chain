@@ -60,7 +60,7 @@ if not required_cols.issubset(df_base.columns):
     st.error("CSV must contain Stock, Strike, Max_Pain, Stock_LTP")
     st.stop()
 
-df_base["Stock"] = df_base["Stock"].str.upper().str.strip()
+df_base["Stock"] = df_base["Stock"].astype(str).str.upper().str.strip()
 all_stocks = sorted(df_base["Stock"].unique())
 
 # =====================================
@@ -79,7 +79,7 @@ def compute_ddmp(df):
         label = short_ts(ts)
 
         df_ts = pd.read_csv(file_map[ts])
-        df_ts["Stock"] = df_ts["Stock"].str.upper().str.strip()
+        df_ts["Stock"] = df_ts["Stock"].astype(str).str.upper().str.strip()
 
         df = df.merge(
             df_ts[["Stock", "Strike", "Max_Pain"]],
@@ -202,19 +202,18 @@ for stock in all_stocks:
         if any(pd.isna(values)):
             continue
 
-        # Condition 1: monotonic
         if not is_monotonic_4_of_5(values):
             continue
 
-        # Condition 2: magnitude
         if abs(values[-1] - values[0]) <= 147:
             continue
 
-        # Condition 3: strike within ±5% of LTP
         ltp = float(row["Stock_LTP"])
+        if pd.isna(ltp) or ltp <= 0:
+            continue
+
         strike = float(row["Strike"])
         pct_diff = abs(strike - ltp) / ltp * 100
-
         if pct_diff > 5:
             continue
 
