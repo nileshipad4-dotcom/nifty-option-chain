@@ -48,7 +48,9 @@ with c4: t5 = st.selectbox("T5", timestamps, index=4)
 with c5: t6 = st.selectbox("T6", timestamps, index=5)
 
 compare_ts = [t2, t3, t4, t5, t6]
-time_cols = [short_ts(ts) for ts in compare_ts]
+
+# sort time columns in increasing HH:MM order
+time_cols = sorted([short_ts(ts) for ts in compare_ts])
 
 # =====================================
 # LOAD BASE DATA
@@ -63,31 +65,21 @@ if not required_cols.issubset(df_base.columns):
 df_base["Stock"] = df_base["Stock"].str.upper().str.strip()
 
 # =====================================
-# STOCK SELECTION (MULTI)
+# SESSION STATE FOR STOCKS
 # =====================================
+if "stocks_to_show" not in st.session_state:
+    st.session_state.stocks_to_show = []
+
 all_stocks = sorted(df_base["Stock"].unique())
 
-if "selected_stocks" not in st.session_state:
-    st.session_state.selected_stocks = []
-
-new_stock = st.selectbox(
-    "Add Stock to View",
-    [""] + [s for s in all_stocks if s not in st.session_state.selected_stocks]
-)
-
-if new_stock:
-    st.session_state.selected_stocks.append(new_stock)
-
 # =====================================
-# PROCESS EACH SELECTED STOCK
+# FUNCTION TO RENDER ONE STOCK TABLE
 # =====================================
-for selected_stock in st.session_state.selected_stocks:
+def render_stock_table(selected_stock):
 
     df = df_base.copy()
 
-    # ===============================
-    # MERGE + CALCULATIONS
-    # ===============================
+    # ---------- merge + ΔΔ MP ----------
     for ts in compare_ts:
         label = short_ts(ts)
 
@@ -102,7 +94,6 @@ for selected_stock in st.session_state.selected_stocks:
 
         delta_col = f"_delta_{label}"
         df[delta_col] = df["Max_Pain"] - df["Max_Pain_cmp"]
-
         df[label] = np.nan
 
         for stock, sdf in df.sort_values("Strike").groupby("Stock"):
@@ -113,18 +104,10 @@ for selected_stock in st.session_state.selected_stocks:
 
         df.drop(columns=["Max_Pain_cmp", delta_col], inplace=True)
 
-    # ===============================
-    # FILTER STOCK
-    # ===============================
-    sdf = (
-        df[df["Stock"] == selected_stock]
-        .sort_values("Strike")
-        .reset_index(drop=True)
-    )
+    # ---------- filter stock ----------
+    sdf = df[df["Stock"] == selected_stock].sort_values("Strike").reset_index(drop=True)
 
-    # ===============================
-    # ATM ±6 STRIKES
-    # ===============================
+    # ---------- ATM ±6 ----------
     ltp = float(sdf["Stock_LTP"].iloc[0])
     strikes = sdf["Strike"].values
 
@@ -133,37 +116,28 @@ for selected_stock in st.session_state.selected_stocks:
         if strikes[i] <= ltp <= strikes[i + 1]:
             atm_idx = i
             break
-
     if atm_idx is None:
-        continue
+        return
 
-    start = max(0, atm_idx - 6)
-    end = min(len(sdf), atm_idx + 2 + 6)
-    view_df = sdf.iloc[start:end]
+    view_df = sdf.iloc[max(0, atm_idx - 6): min(len(sdf), atm_idx + 2 + 6)]
 
-    # ===============================
-    # DISPLAY DF
-    # ===============================
     display_df = view_df[["Stock", "Strike", "Stock_LTP"] + time_cols].copy()
 
-    # ===============================
-    # HIGHLIGHTING
-    # ===============================
+    # ---------- highlighting ----------
     def highlight(df):
         styles = pd.DataFrame("", index=df.index, columns=df.columns)
 
-        # Max Pain (RED) — priority
-        mp_idx = df["Strike"].sub(
-            sdf.loc[sdf["Max_Pain"].idxmin(), "Strike"]
-        ).abs().idxmin()
+        # max pain (RED – priority)
+        mp_strike = sdf.loc[sdf["Max_Pain"].idxmin(), "Strike"]
+        mp_idx = df.index[df["Strike"] == mp_strike]
         styles.loc[mp_idx] = "background-color:#8B0000;color:white"
 
-        # ATM strikes (BLUE)
+        # ATM (BLUE)
         for i in range(len(strikes) - 1):
             if strikes[i] <= ltp <= strikes[i + 1]:
-                idxs = df.index[df["Strike"].isin([strikes[i], strikes[i + 1]])]
-                for idx in idxs:
-                    if styles.loc[idx].eq("").all():  # do not override red
+                atm_strikes = [strikes[i], strikes[i + 1]]
+                for idx in df.index[df["Strike"].isin(atm_strikes)]:
+                    if styles.loc[idx].eq("").all():
                         styles.loc[idx] = "background-color:#003366;color:white"
                 break
 
@@ -174,6 +148,26 @@ for selected_stock in st.session_state.selected_stocks:
     st.dataframe(
         display_df.style
         .apply(highlight, axis=None)
-        .format({c: "{:.0f}" for c in time_cols}),
+        .format(
+            {
+                "Strike": "{:.0f}",
+                "Stock_LTP": "{:.2f}",
+                **{c: "{:.0f}" for c in time_cols}
+            }
+        ),
         use_container_width=True
     )
+
+# =====================================
+# MAIN LOOP – ADD STOCKS ONE BY ONE
+# =====================================
+for stock in st.session_state.stocks_to_show:
+    render_stock_table(stock)
+
+# dropdown AFTER last table
+remaining = [s for s in all_stocks if s not in st.session_state.stocks_to_show]
+if remaining:
+    next_stock = st.selectbox("➕ Add another stock", [""] + remaining)
+    if next_stock:
+        st.session_state.stocks_to_show.append(next_stock)
+        st.experimental_rerun()
