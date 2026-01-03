@@ -456,69 +456,7 @@ if selected_stock:
         use_container_width=True,
     )
 
-# =====================================
-# FILTERED STOCKS TABLE (ΔΔ MP ±6 RULE)
-# =====================================
-st.subheader("📉📈 Filtered Stocks (Directional ΔΔ MP Pressure)")
 
-qualified_stocks = detect_directional_pressure_stocks(
-    final_df,
-    delta_above_col,
-    strikes_count=6,
-    min_required=5
-)
-
-
-
-filtered_df = final_df[final_df["Stock"].isin(qualified_stocks)]
-
-# APPLY SAME ±6 STRIKE FILTER AS ALL STOCKS TABLE
-filtered_display_df = filter_strikes_around_ltp(filtered_df)
-
-if filtered_display_df.empty:
-    st.info("No stocks matched the directional ΔΔ MP pressure criteria.")
-else:
-    st.dataframe(
-        filtered_display_df[display_cols]
-        .style.apply(highlight_rows, axis=None)
-        .format(
-            {c: "{:.3f}" if c == pct_col else "{:.2f}" if c == "Stock_LTP" else "{:.0f}"
-             for c in display_cols if c not in {"Stock", "Sector"}},
-            na_rep=""
-        ),
-        use_container_width=True,
-    )
-
-
-# =====================================
-# EXTREME IMBALANCE TABLE (±4 STRIKE RULE)
-# =====================================
-st.subheader("🔥 Extreme ΔΔ MP Imbalance (±4 Strikes)")
-
-extreme_stocks = detect_extreme_imbalance_stocks(
-    final_df,
-    delta_above_col,
-    strikes_count=4
-)
-
-extreme_df = final_df[final_df["Stock"].isin(extreme_stocks)]
-
-# Apply SAME ±6 strike display window
-extreme_display_df = filter_strikes_around_ltp(extreme_df)
-
-if extreme_display_df.empty:
-    st.info("No stocks matched the extreme ΔΔ MP imbalance criteria.")
-else:
-    st.dataframe(
-        extreme_display_df[display_cols]
-        .style.apply(highlight_rows, axis=None)
-        .format(
-            {c: "{:.3f}" if c == pct_col else "{:.2f}" if c == "Stock_LTP" else "{:.0f}"
-             for c in display_cols if c not in {"Stock", "Sector"}},
-            na_rep=""
-        ),
-        use_container_width=True,
-    )
 
 # =====================================
 # UNION OF DIRECTIONAL + EXTREME FILTERS
@@ -546,20 +484,4 @@ else:
         use_container_width=True,
     )
 
-
-st.subheader("🧩 Combined Signal Stocks (Directional OR Extreme ΔΔ MP)")
-
-if union_display_df.empty:
-    st.info("No stocks matched either of the ΔΔ MP filter conditions.")
-else:
-    st.dataframe(
-        union_display_df[display_cols]
-        .style.apply(highlight_rows, axis=None)
-        .format(
-            {c: "{:.3f}" if c == pct_col else "{:.2f}" if c == "Stock_LTP" else "{:.0f}"
-             for c in display_cols if c not in {"Stock", "Sector"}},
-            na_rep=""
-        ),
-        use_container_width=True,
-    )
 
