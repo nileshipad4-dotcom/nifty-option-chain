@@ -70,7 +70,7 @@ if "tables" not in st.session_state:
     st.session_state.tables = [all_stocks[0]]
 
 # =====================================
-# HELPER: ΔΔ MP CALCULATION
+# ΔΔ MP CALCULATION
 # =====================================
 def compute_ddmp(df):
     df = df.copy()
@@ -102,25 +102,20 @@ def compute_ddmp(df):
     return df
 
 # =====================================
-# HELPER: MONOTONIC FILTER (4 OF 5)
+# MONOTONIC FILTER (≥4 of 5)
 # =====================================
 def is_monotonic_4_of_5(values):
-    if len(values) != 5:
-        return False
-
     inc = 0
     dec = 0
-
     for i in range(4):
         if values[i] <= values[i + 1]:
             inc += 1
         if values[i] >= values[i + 1]:
             dec += 1
-
     return inc >= 4 or dec >= 4
 
 # =====================================
-# RENDER ONE TABLE
+# RENDER ONE MAIN TABLE
 # =====================================
 def render_table(table_idx):
 
@@ -133,7 +128,6 @@ def render_table(table_idx):
     st.session_state.tables[table_idx] = selected_stock
 
     df = compute_ddmp(df_base)
-
     sdf = df[df["Stock"] == selected_stock].sort_values("Strike").reset_index(drop=True)
 
     ltp = float(sdf["Stock_LTP"].iloc[0])
@@ -153,9 +147,11 @@ def render_table(table_idx):
     def highlight(df_):
         styles = pd.DataFrame("", index=df_.index, columns=df_.columns)
 
+        # Max Pain (RED)
         mp_strike = sdf.loc[sdf["Max_Pain"].idxmin(), "Strike"]
         styles.loc[df_.index[df_["Strike"] == mp_strike]] = "background-color:#8B0000;color:white"
 
+        # ATM (BLUE)
         for i in range(len(strikes) - 1):
             if strikes[i] <= ltp <= strikes[i + 1]:
                 atm_strikes = [strikes[i], strikes[i + 1]]
@@ -191,9 +187,9 @@ if st.button("➕ Add another table"):
     st.session_state.tables.append(all_stocks[0])
 
 # =====================================
-# FILTERED STOCKS TABLE (TREND)
+# FILTERED TABLE — ALL STRIKES
 # =====================================
-st.subheader("🧩 Stocks with Consistent ΔΔ MP Trend (≥4 of 5)")
+st.subheader("🧩 Stocks & Strikes with Consistent ΔΔ MP Trend (≥4 of 5)")
 
 filtered_rows = []
 df_all = compute_ddmp(df_base)
@@ -203,33 +199,25 @@ for stock in all_stocks:
     if sdf.empty:
         continue
 
-    ltp = float(sdf["Stock_LTP"].iloc[0])
-    strikes = sdf["Strike"].values
+    for _, row in sdf.iterrows():
+        values = [row[c] for c in time_cols]
+        if any(pd.isna(values)):
+            continue
 
-    atm_idx = None
-    for i in range(len(strikes) - 1):
-        if strikes[i] <= ltp <= strikes[i + 1]:
-            atm_idx = i
-            break
-    if atm_idx is None:
-        continue
+        if is_monotonic_4_of_5(values):
+            filtered_rows.append({
+                "Stock": stock,
+                "Strike": int(row["Strike"]),
+                **{c: int(row[c]) for c in time_cols},
+                "Stock_LTP": round(row["Stock_LTP"], 2)
+            })
 
-    atm_row = sdf.iloc[atm_idx]
-    values = [atm_row[c] for c in time_cols]
-
-    if any(pd.isna(values)):
-        continue
-
-    if is_monotonic_4_of_5(values):
-        filtered_rows.append({
-            "Stock": stock,
-            "Strike": int(atm_row["Strike"]),
-            **{c: int(atm_row[c]) for c in time_cols},
-            "Stock_LTP": round(atm_row["Stock_LTP"], 2)
-        })
-
+# =====================================
+# DISPLAY FILTERED TABLE
+# =====================================
 if filtered_rows:
-    filtered_df = pd.DataFrame(filtered_rows)
+    filtered_df = pd.DataFrame(filtered_rows).sort_values(["Stock", "Strike"])
+
     st.dataframe(
         filtered_df.style.format(
             {
@@ -241,4 +229,4 @@ if filtered_rows:
         use_container_width=True
     )
 else:
-    st.info("No stocks matched the ΔΔ MP trend condition.")
+    st.info("No strikes matched the ΔΔ MP trend condition.")
