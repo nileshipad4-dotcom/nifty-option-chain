@@ -353,29 +353,35 @@ def filter_strikes_around_ltp(df, below=6, above=6):
 
     return pd.concat(out[:-1], ignore_index=True)
 
-# =====================================
-# HIGHLIGHTING (ONLY ATM + MIN MAX PAIN)
-# =====================================
 def highlight_rows(data):
     styles = pd.DataFrame("", index=data.index, columns=data.columns)
 
     for stock in data["Stock"].dropna().unique():
-        sdf = data[(data["Stock"] == stock) & data["Strike"].notna()].sort_values("Strike")
+        sdf = data[
+            (data["Stock"] == stock) & data["Strike"].notna()
+        ].sort_values("Strike")
+
         if sdf.empty:
             continue
 
         ltp = float(sdf["Stock_LTP"].iloc[0])
         strikes = sdf["Strike"].values
 
+        # ======================
         # ATM highlight
+        # ======================
         for i in range(len(strikes) - 1):
             if strikes[i] <= ltp <= strikes[i + 1]:
                 styles.loc[sdf.index[i]] = "background-color:#003366;color:white"
                 styles.loc[sdf.index[i + 1]] = "background-color:#003366;color:white"
                 break
 
-        # Min Max Pain highlight
-        styles.loc[sdf[mp1_col].astype(float).idxmin()] = "background-color:#8B0000;color:white"
+        # ======================
+        # Min Max Pain highlight (SAFE)
+        # ======================
+        if mp1_col in sdf.columns:
+            idx = sdf[mp1_col].astype(float).idxmin()
+            styles.loc[idx] = "background-color:#8B0000;color:white"
 
     return styles
 
