@@ -168,7 +168,7 @@ for stock, sdf in df.sort_values("Strike").groupby("Stock"):
         continue
 
     below_idx = list(range(atm_idx - 7, atm_idx))
-    above_idx = list(range(atm_idx + 2, atm_idx + 9))
+    above_idx = list(range(atm_idx + 1, atm_idx + 8))
 
     if min(below_idx) < 0 or max(above_idx) >= len(sdf):
         continue
