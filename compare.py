@@ -128,6 +128,69 @@ df = df.merge(sector_df, on="Stock", how="left")
 df[delta_12] = df[mp1_col] - df[mp2_col]
 df[delta_23] = df[mp2_col] - df[mp3_col]
 
+
+# =====================================================
+# Σ7 ABOVE / BELOW LTP (REPEATED PER STOCK) + DIFFERENCE
+# =====================================================
+
+sum7_below_12_col = "Σ7 Δ MP Below LTP (t1–t2)"
+sum7_above_12_col = "Σ7 Δ MP Above LTP (t1–t2)"
+sum7_below_23_col = "Σ7 Δ MP Below LTP (t2–t3)"
+sum7_above_23_col = "Σ7 Δ MP Above LTP (t2–t3)"
+
+diff7_above_col = "Δ Σ7 Above (t1–t2 minus t2–t3)"
+diff7_below_col = "Δ Σ7 Below (t1–t2 minus t2–t3)"
+
+# initialize
+for col in [
+    sum7_below_12_col,
+    sum7_above_12_col,
+    sum7_below_23_col,
+    sum7_above_23_col,
+    diff7_above_col,
+    diff7_below_col,
+]:
+    df[col] = np.nan
+
+for stock, sdf in df.sort_values("Strike").groupby("Stock"):
+    sdf = sdf.reset_index(drop=True)
+
+    ltp = float(sdf["Stock_LTP"].iloc[0])
+    strikes = sdf["Strike"].values
+
+    atm_idx = None
+    for i in range(len(strikes) - 1):
+        if strikes[i] <= ltp <= strikes[i + 1]:
+            atm_idx = i
+            break
+
+    if atm_idx is None:
+        continue
+
+    below_idx = list(range(atm_idx - 7, atm_idx))
+    above_idx = list(range(atm_idx + 2, atm_idx + 9))
+
+    if min(below_idx) < 0 or max(above_idx) >= len(sdf):
+        continue
+
+    sum_below_12 = sdf.loc[below_idx, delta_12].astype(float).sum()
+    sum_above_12 = sdf.loc[above_idx, delta_12].astype(float).sum()
+    sum_below_23 = sdf.loc[below_idx, delta_23].astype(float).sum()
+    sum_above_23 = sdf.loc[above_idx, delta_23].astype(float).sum()
+
+    df.loc[df["Stock"] == stock, sum7_below_12_col] = sum_below_12
+    df.loc[df["Stock"] == stock, sum7_above_12_col] = sum_above_12
+    df.loc[df["Stock"] == stock, sum7_below_23_col] = sum_below_23
+    df.loc[df["Stock"] == stock, sum7_above_23_col] = sum_above_23
+
+    df.loc[df["Stock"] == stock, diff7_above_col] = (
+        sum_above_12 - sum_above_23
+    )
+    df.loc[df["Stock"] == stock, diff7_below_col] = (
+        sum_below_12 - sum_below_23
+    )
+
+
 df[sum_12_col] = np.nan
 for stock, sdf in df.sort_values("Strike").groupby("Stock"):
     df.loc[sdf.index, sum_12_col] = (
@@ -227,6 +290,12 @@ df = df[
         mp3_col,
         delta_12,
         delta_23,
+        sum7_below_12_col,
+        sum7_above_12_col,
+        sum7_below_23_col,
+        sum7_above_23_col,
+        diff7_above_col,
+        diff7_below_col,
         sum_12_col,
         delta_above_col,
         delta_above_23_col,
