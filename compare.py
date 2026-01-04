@@ -542,7 +542,23 @@ def detect_atm_delta_intensity_stocks(
 # =====================================
 # DISPLAY
 # =====================================
-display_cols = [c for c in final_df.columns if c != sum_12_col]
+# =====================================
+# COLUMNS TO HIDE FROM DISPLAY
+# =====================================
+HIDE_COLS = {
+    mp1_col,
+    mp2_col,
+    mp3_col,
+    sum_12_col,
+    delta_above_col,
+    delta_above_23_col,
+    # pressure_ratio_col,
+    sum_2_above_below_col,
+    diff_2_above_below_col,
+}
+
+display_cols = [c for c in final_df.columns if c not in HIDE_COLS]
+
 
 st.subheader(f"📊 ALL STOCKS: {t1_lbl} vs {t2_lbl} vs {t3_lbl}")
 display_df = filter_strikes_around_ltp(final_df)
