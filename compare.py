@@ -88,6 +88,10 @@ pressure_ratio_col = "Abs Above/Below ΔΔ MP Ratio (±6)"
 delta_above_23_col = f"ΔΔ MP ({t2_lbl}-{t3_lbl})"
 sum_2_above_below_col = f"Σ |ΔΔ MP| (±2)"
 diff_2_above_below_col = f"Δ (ΔΔ MP) (±2)"
+d12_63_64_col = "ΔΔ MP 63–64 (Below LTP)"
+d12_64_65_col = "ΔΔ MP 64–65 (Below LTP)"
+d12_66_67_col = "ΔΔ MP 66–67 (Above LTP)"
+d12_67_68_col = "ΔΔ MP 67–68 (Above LTP)"
 
 
 
@@ -128,6 +132,59 @@ df = df.merge(sector_df, on="Stock", how="left")
 df[delta_12] = df[mp1_col] - df[mp2_col]
 df[delta_23] = df[mp2_col] - df[mp3_col]
 
+
+# =====================================================
+# LOCAL ATM DELTA_12 DIFFERENCES (FIXED STRIKE PAIRS)
+# =====================================================
+
+d12_below_2_col = "ΔΔ MP (i-2)-(i-1)"
+d12_below_1_col = "ΔΔ MP (i-1)-i"
+d12_above_1_col = "ΔΔ MP (i+1)-(i+2)"
+d12_above_2_col = "ΔΔ MP (i+2)-(i+3)"
+
+for col in [
+    d12_below_2_col,
+    d12_below_1_col,
+    d12_above_1_col,
+    d12_above_2_col,
+]:
+    df[col] = np.nan
+
+for stock, sdf in df.sort_values("Strike").groupby("Stock"):
+    sdf = sdf.reset_index(drop=True)
+
+    ltp = float(sdf["Stock_LTP"].iloc[0])
+    strikes = sdf["Strike"].values
+
+    atm_idx = None
+    for i in range(len(strikes) - 1):
+        if strikes[i] <= ltp <= strikes[i + 1]:
+            atm_idx = i
+            break
+
+    if atm_idx is None:
+        continue
+
+    # required indices:
+    # below: (i-2,i-1) and (i-1,i)
+    # above: (i+1,i+2) and (i+2,i+3)
+    needed = [atm_idx - 2, atm_idx - 1, atm_idx,
+              atm_idx + 1, atm_idx + 2, atm_idx + 3]
+
+    if min(needed) < 0 or max(needed) >= len(sdf):
+        continue
+
+    v = sdf[delta_12].astype(float).values
+
+    d_below_2 = v[atm_idx - 2] - v[atm_idx - 1]
+    d_below_1 = v[atm_idx - 1] - v[atm_idx]
+    d_above_1 = v[atm_idx + 1] - v[atm_idx + 2]
+    d_above_2 = v[atm_idx + 2] - v[atm_idx + 3]
+
+    df.loc[df["Stock"] == stock, d12_below_2_col] = d_below_2
+    df.loc[df["Stock"] == stock, d12_below_1_col] = d_below_1
+    df.loc[df["Stock"] == stock, d12_above_1_col] = d_above_1
+    df.loc[df["Stock"] == stock, d12_above_2_col] = d_above_2
 
 # =====================================================
 # Σ7 ABOVE / BELOW LTP (REPEATED PER STOCK) + DIFFERENCE
@@ -290,12 +347,11 @@ df = df[
         mp3_col,
         delta_12,
         delta_23,
-        sum7_below_12_col,
-        sum7_above_12_col,
-        sum7_below_23_col,
-        sum7_above_23_col,
-        diff7_above_col,
-        diff7_below_col,
+        d12_below_2_col,
+        d12_below_1_col,
+        d12_above_1_col,
+        d12_above_2_col,
+
         sum_12_col,
         delta_above_col,
         delta_above_23_col,
@@ -353,35 +409,29 @@ def filter_strikes_around_ltp(df, below=6, above=6):
 
     return pd.concat(out[:-1], ignore_index=True)
 
+# =====================================
+# HIGHLIGHTING (ONLY ATM + MIN MAX PAIN)
+# =====================================
 def highlight_rows(data):
     styles = pd.DataFrame("", index=data.index, columns=data.columns)
 
     for stock in data["Stock"].dropna().unique():
-        sdf = data[
-            (data["Stock"] == stock) & data["Strike"].notna()
-        ].sort_values("Strike")
-
+        sdf = data[(data["Stock"] == stock) & data["Strike"].notna()].sort_values("Strike")
         if sdf.empty:
             continue
 
         ltp = float(sdf["Stock_LTP"].iloc[0])
         strikes = sdf["Strike"].values
 
-        # ======================
         # ATM highlight
-        # ======================
         for i in range(len(strikes) - 1):
             if strikes[i] <= ltp <= strikes[i + 1]:
                 styles.loc[sdf.index[i]] = "background-color:#003366;color:white"
                 styles.loc[sdf.index[i + 1]] = "background-color:#003366;color:white"
                 break
 
-        # ======================
-        # Min Max Pain highlight (SAFE)
-        # ======================
-        if mp1_col in sdf.columns:
-            idx = sdf[mp1_col].astype(float).idxmin()
-            styles.loc[idx] = "background-color:#8B0000;color:white"
+        # Min Max Pain highlight
+        styles.loc[sdf[mp1_col].astype(float).idxmin()] = "background-color:#8B0000;color:white"
 
     return styles
 
@@ -551,19 +601,8 @@ def detect_atm_delta_intensity_stocks(
 # =====================================
 # COLUMNS TO HIDE FROM DISPLAY
 # =====================================
-HIDE_COLS = {
-    mp1_col,
-    mp2_col,
-    mp3_col,
-    sum_12_col,
-    delta_above_col,
-    delta_above_23_col,
-    # pressure_ratio_col,
-    sum_2_above_below_col,
-    diff_2_above_below_col,
-}
+display_cols = [c for c in final_df.columns if c != sum_12_col]
 
-display_cols = [c for c in final_df.columns if c not in HIDE_COLS]
 
 
 st.subheader(f"📊 ALL STOCKS: {t1_lbl} vs {t2_lbl} vs {t3_lbl}")
@@ -659,5 +698,3 @@ else:
         ),
         use_container_width=True,
     )
-
-
