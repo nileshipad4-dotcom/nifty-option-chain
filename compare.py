@@ -574,10 +574,25 @@ st.dataframe(
     display_df[display_cols]
     .style.apply(highlight_rows, axis=None)
     .format(
-        {c: "{:.3f}" if c == pct_col else "{:.2f}" if c == "Stock_LTP" else "{:.0f}"
-         for c in display_cols if c not in {"Stock", "Sector"}},
-        na_rep=""
-    ),
+    {
+        ltp_pct_12_col: "{:.2f}",
+        pct_col: "{:.3f}",
+        "Stock_LTP": "{:.2f}",
+        **{
+            c: "{:.0f}"
+            for c in display_cols
+            if c not in {
+                "Stock",
+                "Sector",
+                pct_col,
+                "Stock_LTP",
+                ltp_pct_12_col,
+            }
+        },
+    },
+    na_rep="",
+)
+
     use_container_width=True,
 )
 
@@ -611,10 +626,25 @@ if selected_stock:
         stock_df[display_cols]
         .style.apply(highlight_rows, axis=None)
         .format(
-            {c: "{:.3f}" if c == pct_col else "{:.2f}" if c == "Stock_LTP" else "{:.0f}"
-             for c in display_cols if c not in {"Stock", "Sector"}},
-            na_rep=""
-        ),
+            {
+                ltp_pct_12_col: "{:.2f}",
+                pct_col: "{:.3f}",
+                "Stock_LTP": "{:.2f}",
+                **{
+                    c: "{:.0f}"
+                    for c in display_cols
+                    if c not in {
+                        "Stock",
+                        "Sector",
+                        pct_col,
+                        "Stock_LTP",
+                        ltp_pct_12_col,
+                    }
+                },
+            },
+            na_rep="",
+        )
+
         use_container_width=True,
     )
 
@@ -654,9 +684,24 @@ else:
         union_display_df[display_cols]
         .style.apply(highlight_rows, axis=None)
         .format(
-            {c: "{:.3f}" if c == pct_col else "{:.2f}" if c == "Stock_LTP" else "{:.0f}"
-             for c in display_cols if c not in {"Stock", "Sector"}},
-            na_rep=""
-        ),
+                {
+                    ltp_pct_12_col: "{:.2f}",
+                    pct_col: "{:.3f}",
+                    "Stock_LTP": "{:.2f}",
+                    **{
+                        c: "{:.0f}"
+                        for c in display_cols
+                        if c not in {
+                            "Stock",
+                            "Sector",
+                            pct_col,
+                            "Stock_LTP",
+                            ltp_pct_12_col,
+                        }
+                    },
+                },
+                na_rep="",
+            )
+
         use_container_width=True,
     )
