@@ -300,12 +300,14 @@ df = df[
         "Stock",
         #"Sector",
         "Strike",
+        delta_12,
+        pct_col,
+        "Stock_LTP",
+        ltp_pct_12_col,
+        delta_23,
         mp1_col,
         mp2_col,
-        mp3_col,
-        delta_12,
-        delta_23,
-        sum7_below_12_col,
+        mp3_col, sum7_below_12_col,
         sum7_above_12_col,
         sum7_below_23_col,
         sum7_above_23_col,
@@ -317,9 +319,7 @@ df = df[
         # pressure_ratio_col,
         sum_2_above_below_col,
         diff_2_above_below_col,
-        pct_col,
-        "Stock_LTP",
-        ltp_pct_12_col,
+        
     ]
 ]
 
