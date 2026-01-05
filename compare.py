@@ -28,16 +28,9 @@ def load_csv_files():
     return sorted(files, reverse=True)
 
 csv_files = load_csv_files()
-if len(csv_files) < 3:
-    st.error("Need at least 3 CSV files.")
+if len(csv_files) < 6:
+    st.error("Need at least 6 CSV files.")
     st.stop()
-
-latest_file = csv_files[0][0]
-if "last_ts" not in st.session_state:
-    st.session_state.last_ts = latest_file
-if latest_file != st.session_state.last_ts:
-    st.session_state.last_ts = latest_file
-    st.experimental_rerun()
 
 timestamps = [ts for ts, _ in csv_files]
 file_map = dict(csv_files)
@@ -46,66 +39,62 @@ def short_ts(ts):
     return ts.split("_")[-1].replace("-", ":")
 
 # =====================================
-# DROPDOWNS
+# TIMESTAMP SELECTORS (6)
 # =====================================
-c1, c2, c3 = st.columns(3)
-with c1:
-    t1 = st.selectbox("Timestamp 1 (Latest)", timestamps, 0)
-with c2:
-    t2 = st.selectbox("Timestamp 2", timestamps, 1)
-with c3:
-    t3 = st.selectbox("Timestamp 3", timestamps, 2)
+cols = st.columns(6)
+t = []
+for i in range(6):
+    with cols[i]:
+        t.append(st.selectbox(f"Timestamp {i+1}", timestamps, i))
 
-t1_lbl, t2_lbl, t3_lbl = short_ts(t1), short_ts(t2), short_ts(t3)
+labels = [short_ts(x) for x in t]
 
 # =====================================
 # COLUMN NAMES
 # =====================================
-mp1_col = f"MP ({t1_lbl})"
-mp2_col = f"MP ({t2_lbl})"
-mp3_col = f"MP ({t3_lbl})"
-
-pct_col = f"% Ch ({t1_lbl})"
-delta_12 = f"Δ MP ({t1_lbl}-{t2_lbl})"
-delta_23 = f"Δ MP ({t2_lbl}-{t3_lbl})"
-ltp_pct_12_col = f"% LTP Ch ({t1_lbl}-{t2_lbl})"
+mp_cols = [f"MP ({lbl})" for lbl in labels]
+delta_mp_cols = [f"Δ MP ({labels[0]}-{labels[i]})" for i in range(1, 6)]
+ltp_pct_cols = [f"% LTP Ch ({labels[0]}-{labels[i]})" for i in range(1, 6)]
 
 # =====================================
-# LOAD DATA
+# LOAD ALL DATAFRAMES
 # =====================================
-df1 = pd.read_csv(file_map[t1])
-df2 = pd.read_csv(file_map[t2])
-df3 = pd.read_csv(file_map[t3])
+dfs = []
+for i, ts in enumerate(t):
+    df = pd.read_csv(file_map[ts])
+    df = df[["Stock", "Strike", "Max_Pain", "Stock_LTP"]].rename(
+        columns={"Max_Pain": mp_cols[i], "Stock_LTP": f"Stock_LTP_t{i+1}"}
+    )
+    dfs.append(df)
 
-if "Stock_%_Change" not in df1.columns:
-    df1["Stock_%_Change"] = np.nan
-
-df1 = df1[["Stock", "Strike", "Max_Pain", "Stock_LTP", "Stock_%_Change"]].rename(
-    columns={"Max_Pain": mp1_col, "Stock_%_Change": pct_col}
-)
-df2 = df2[["Stock", "Strike", "Max_Pain", "Stock_LTP"]].rename(
-    columns={"Max_Pain": mp2_col, "Stock_LTP": "Stock_LTP_t2"}
-)
-df3 = df3[["Stock", "Strike", "Max_Pain"]].rename(
-    columns={"Max_Pain": mp3_col}
-)
-
-df = df1.merge(df2, on=["Stock", "Strike"]).merge(df3, on=["Stock", "Strike"])
+# % change column only needed from t1
+if "Stock_%_Change" in pd.read_csv(file_map[t[0]]).columns:
+    dfs[0]["% Ch"] = pd.read_csv(file_map[t[0]])["Stock_%_Change"]
+else:
+    dfs[0]["% Ch"] = np.nan
 
 # =====================================
-# BASIC CALCULATIONS (ONLY REQUIRED)
+# MERGE ALL
 # =====================================
-df[delta_12] = df[mp1_col] - df[mp2_col]
-df[delta_23] = df[mp2_col] - df[mp3_col]
-
-df[ltp_pct_12_col] = (
-    (df["Stock_LTP"] - df["Stock_LTP_t2"]) / df["Stock_LTP_t2"]
-) * 100
+df = dfs[0]
+for i in range(1, 6):
+    df = df.merge(dfs[i], on=["Stock", "Strike"])
 
 # =====================================
-# CLEAN + REMOVE INDICES
+# CALCULATIONS
 # =====================================
-df["Stock"] = df["Stock"].astype(str).str.upper().str.strip()
+for i in range(1, 6):
+    df[delta_mp_cols[i-1]] = df[mp_cols[0]] - df[mp_cols[i]]
+
+    df[ltp_pct_cols[i-1]] = (
+        (df["Stock_LTP_t1"] - df[f"Stock_LTP_t{i+1}"])
+        / df[f"Stock_LTP_t{i+1}"]
+    ) * 100
+
+# =====================================
+# CLEAN
+# =====================================
+df["Stock"] = df["Stock"].str.upper().str.strip()
 EXCLUDE = {"NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"}
 df = df[~df["Stock"].isin(EXCLUDE)]
 
@@ -113,58 +102,45 @@ df = df[~df["Stock"].isin(EXCLUDE)]
 # FINAL COLUMN ORDER
 # =====================================
 df = df[
-    [
-        "Stock",
-        "Strike",
-        delta_12,
-        delta_23,
-        "Stock_LTP",
-        pct_col,
-        ltp_pct_12_col,
-    ]
-]
+    ["Stock", "Strike"]
+    + delta_mp_cols
+    + ["Stock_LTP_t1", "% Ch"]
+    + ltp_pct_cols
+].rename(columns={"Stock_LTP_t1": "Stock_LTP"})
 
 # =====================================
-# FILTER ±6 STRIKES AROUND LTP
+# FILTER ±6 STRIKES
 # =====================================
 def filter_strikes_around_ltp(df, below=6, above=6):
     out = []
-
     for stock, sdf in df.groupby("Stock"):
-        sdf = sdf.dropna(subset=["Strike"]).sort_values("Strike")
-        if sdf.empty:
-            continue
-
+        sdf = sdf.sort_values("Strike")
         ltp = float(sdf["Stock_LTP"].iloc[0])
         strikes = sdf["Strike"].values
 
-        atm_idx = None
+        atm = None
         for i in range(len(strikes) - 1):
             if strikes[i] <= ltp <= strikes[i + 1]:
-                atm_idx = i
+                atm = i
                 break
 
-        if atm_idx is None:
+        if atm is None:
             continue
 
-        start = max(0, atm_idx - below)
-        end = min(len(sdf), atm_idx + 2 + above)
-
-        out.append(sdf.iloc[start:end])
+        out.append(sdf.iloc[max(0, atm - below): atm + 2 + above])
         out.append(pd.DataFrame([{c: np.nan for c in df.columns}]))
 
     return pd.concat(out[:-1], ignore_index=True)
 
 # =====================================
-# HIGHLIGHTING (ATM + MIN MP)
+# HIGHLIGHTING
 # =====================================
 def highlight_rows(data):
     styles = pd.DataFrame("", index=data.index, columns=data.columns)
 
     for stock in data["Stock"].dropna().unique():
-        sdf = data[(data["Stock"] == stock) & data["Strike"].notna()].sort_values("Strike")
-        if sdf.empty:
-            continue
+        sdf = data[(data["Stock"] == stock) & data["Strike"].notna()]
+        sdf = sdf.sort_values("Strike")
 
         ltp = float(sdf["Stock_LTP"].iloc[0])
         strikes = sdf["Strike"].values
@@ -172,10 +148,10 @@ def highlight_rows(data):
         for i in range(len(strikes) - 1):
             if strikes[i] <= ltp <= strikes[i + 1]:
                 styles.loc[sdf.index[i]] = "background-color:#003366;color:white"
-                styles.loc[sdf.index[i + 1]] = "background-color:#003366;color:white"
+                styles.loc[sdf.index[i+1]] = "background-color:#003366;color:white"
                 break
 
-        styles.loc[sdf[delta_12].abs().idxmax()] = "background-color:#8B0000;color:white"
+        styles.loc[sdf[delta_mp_cols[0]].abs().idxmax()] = "background-color:#8B0000;color:white"
 
     return styles
 
@@ -184,19 +160,13 @@ def highlight_rows(data):
 # =====================================
 display_df = filter_strikes_around_ltp(df)
 
-st.subheader(f"📊 ALL STOCKS: {t1_lbl} vs {t2_lbl} vs {t3_lbl}")
-
 st.dataframe(
     display_df
     .style.apply(highlight_rows, axis=None)
     .format(
-        {
-            delta_12: "{:.0f}",
-            delta_23: "{:.0f}",
-            "Stock_LTP": "{:.2f}",
-            pct_col: "{:.3f}",
-            ltp_pct_12_col: "{:.2f}",
-        },
+        {c: "{:.0f}" for c in delta_mp_cols}
+        | {c: "{:.2f}" for c in ltp_pct_cols + ["Stock_LTP"]}
+        | {"% Ch": "{:.3f}"},
         na_rep="",
     ),
     use_container_width=True,
@@ -206,35 +176,8 @@ st.dataframe(
 # DOWNLOAD
 # =====================================
 st.download_button(
-    "⬇️ Download Comparison CSV",
+    "⬇️ Download CSV",
     df.to_csv(index=False),
-    f"max_pain_clean_{t1_lbl}_{t2_lbl}_{t3_lbl}.csv",
+    "max_pain_6_ts.csv",
     "text/csv",
 )
-
-# =====================================
-# SINGLE STOCK VIEW
-# =====================================
-st.subheader("🔍 View Individual Stock")
-
-stock_list = sorted(df["Stock"].dropna().unique())
-selected_stock = st.selectbox("Select Stock", [""] + stock_list)
-
-if selected_stock:
-    stock_df = filter_strikes_around_ltp(df[df["Stock"] == selected_stock])
-
-    st.dataframe(
-        stock_df
-        .style.apply(highlight_rows, axis=None)
-        .format(
-            {
-                delta_12: "{:.0f}",
-                delta_23: "{:.0f}",
-                "Stock_LTP": "{:.2f}",
-                pct_col: "{:.3f}",
-                ltp_pct_12_col: "{:.2f}",
-            },
-            na_rep="",
-        ),
-        use_container_width=True,
-    )
