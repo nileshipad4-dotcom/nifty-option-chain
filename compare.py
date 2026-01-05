@@ -595,8 +595,8 @@ display_df = filter_strikes_around_ltp(final_df)
 
 st.dataframe(
     display_df[display_cols]
-    .style.apply(highlight_rows, axis=None)
-   .format(
+        .style.apply(highlight_rows, axis=None)
+        .format(
             {
                 ltp_pct_12_col: "{:.2f}",
                 pct_col: "{:.3f}",
@@ -614,8 +614,7 @@ st.dataframe(
                 },
             },
             na_rep="",
-        )
-
+        ),
     use_container_width=True,
 )
 
@@ -645,8 +644,8 @@ if selected_stock:
     above=6
 )
 
-    st.dataframe(
-        stock_df[display_cols]
+   st.dataframe(
+    stock_df[display_cols]
         .style.apply(highlight_rows, axis=None)
         .format(
             {
@@ -666,10 +665,10 @@ if selected_stock:
                 },
             },
             na_rep="",
-        )
+        ),
+    use_container_width=True,
+)
 
-        use_container_width=True,
-    )
 
 
 
@@ -703,28 +702,27 @@ union_display_df = filter_strikes_around_ltp(union_df)
 if union_display_df.empty:
     st.info("No stocks matched either of the ΔΔ MP filter conditions.")
 else:
-    st.dataframe(
-        union_display_df[display_cols]
+   st.dataframe(
+    union_display_df[display_cols]
         .style.apply(highlight_rows, axis=None)
         .format(
-                {
-                    ltp_pct_12_col: "{:.2f}",
-                    pct_col: "{:.3f}",
-                    "Stock_LTP": "{:.2f}",
-                    **{
-                        c: "{:.0f}"
-                        for c in display_cols
-                        if c not in {
-                            "Stock",
-                            "Sector",
-                            pct_col,
-                            "Stock_LTP",
-                            ltp_pct_12_col,
-                        }
-                    },
+            {
+                ltp_pct_12_col: "{:.2f}",
+                pct_col: "{:.3f}",
+                "Stock_LTP": "{:.2f}",
+                **{
+                    c: "{:.0f}"
+                    for c in display_cols
+                    if c not in {
+                        "Stock",
+                        "Sector",
+                        pct_col,
+                        "Stock_LTP",
+                        ltp_pct_12_col,
+                    }
                 },
-                na_rep="",
-            )
-
-        use_container_width=True,
-    )
+            },
+            na_rep="",
+        ),
+    use_container_width=True,
+)
