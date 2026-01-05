@@ -105,21 +105,14 @@ if "Stock_%_Change" not in df1.columns:
 df1 = df1[["Stock", "Strike", "Max_Pain", "Stock_LTP", "Stock_%_Change"]].rename(
     columns={"Max_Pain": mp1_col, "Stock_%_Change": pct_col}
 )
-df2 = df2[["Stock", "Strike", "Max_Pain", "Stock_LTP"]].rename(
-    columns={
-        "Max_Pain": mp2_col,
-        "Stock_LTP": "Stock_LTP_t2"
-    }
-)
-
+df2 = df2[["Stock", "Strike", "Max_Pain"]].rename(columns={"Max_Pain": mp2_col})
 df3 = df3[["Stock", "Strike", "Max_Pain"]].rename(columns={"Max_Pain": mp3_col})
 
 df = df1.merge(df2, on=["Stock", "Strike"]).merge(df3, on=["Stock", "Strike"])
 
 # =====================================
-# % CHANGE IN STOCK LTP (t1 vs t2)
+# % CHANGE IN LTP (t1 vs t2) — NEW COLUMN
 # =====================================
-
 ltp_pct_12_col = f"% LTP Ch ({t1_lbl}-{t2_lbl})"
 
 df[ltp_pct_12_col] = (
@@ -307,21 +300,20 @@ df = df[
         delta_12,
         delta_23,
         sum7_below_12_col,
-       sum7_above_12_col,
-       sum7_below_23_col,
-       sum7_above_23_col,
+        sum7_above_12_col,
+        sum7_below_23_col,
+        sum7_above_23_col,
         diff7_above_col,
         diff7_below_col,
         sum_12_col,
         delta_above_col,
         delta_above_23_col,
-         pressure_ratio_col,
+        # pressure_ratio_col,
         sum_2_above_below_col,
         diff_2_above_below_col,
         pct_col,
         "Stock_LTP",
         ltp_pct_12_col,
-        
     ]
 ]
 
@@ -563,29 +555,7 @@ def detect_atm_delta_intensity_stocks(
 # =====================================
 # COLUMNS TO HIDE FROM DISPLAY
 # =====================================
-
-# =====================================
-# COLUMNS TO HIDE FROM DISPLAY (UI ONLY)
-# =====================================
-HIDE_COLS = {
-    mp1_col,
-    mp2_col,
-    mp3_col,
-    sum7_below_12_col,
-    sum7_above_12_col,
-    sum7_below_23_col,
-    sum7_above_23_col,
-    diff7_above_col,
-    diff7_below_col,
-    sum_12_col,
-    delta_above_23_col,
-    pressure_ratio_col,
-    sum_2_above_below_col,
-    diff_2_above_below_col,
-}
-
-
-display_cols = [c for c in final_df.columns if c not in HIDE_COLS]
+display_cols = [c for c in final_df.columns if c != sum_12_col]
 
 
 
@@ -594,26 +564,12 @@ display_df = filter_strikes_around_ltp(final_df)
 
 st.dataframe(
     display_df[display_cols]
-        .style.apply(highlight_rows, axis=None)
-        .format(
-            {
-                ltp_pct_12_col: "{:.2f}",
-                pct_col: "{:.3f}",
-                "Stock_LTP": "{:.2f}",
-                **{
-                    c: "{:.0f}"
-                    for c in display_cols
-                    if c not in {
-                        "Stock",
-                        "Sector",
-                        pct_col,
-                        "Stock_LTP",
-                        ltp_pct_12_col,
-                    }
-                },
-            },
-            na_rep="",
-        ),
+    .style.apply(highlight_rows, axis=None)
+    .format(
+        {c: "{:.3f}" if c == pct_col else "{:.2f}" if c in {"Stock_LTP", ltp_pct_12_col} else "{:.0f}"
+         for c in display_cols if c not in {"Stock", "Sector"}},
+        na_rep=""
+    ),
     use_container_width=True,
 )
 
@@ -638,35 +594,23 @@ selected_stock = st.selectbox("Select Stock", [""] + stock_list)
 
 if selected_stock:
     stock_df = filter_strikes_around_ltp(
-        final_df[final_df["Stock"] == selected_stock],
-        below=6,
-        above=6,
-    )
+    final_df[final_df["Stock"] == selected_stock],
+    below=6,
+    above=6
+)
 
     st.dataframe(
         stock_df[display_cols]
-            .style.apply(highlight_rows, axis=None)
-            .format(
-                {
-                    ltp_pct_12_col: "{:.2f}",
-                    pct_col: "{:.3f}",
-                    "Stock_LTP": "{:.2f}",
-                    **{
-                        c: "{:.0f}"
-                        for c in display_cols
-                        if c not in {
-                            "Stock",
-                            "Sector",
-                            pct_col,
-                            "Stock_LTP",
-                            ltp_pct_12_col,
-                        }
-                    },
-                },
-                na_rep="",
-            ),
+        .style.apply(highlight_rows, axis=None)
+        .format(
+            {c: "{:.3f}" if c == pct_col else "{:.2f}" if c in {"Stock_LTP", ltp_pct_12_col} else "{:.0f}"
+             for c in display_cols if c not in {"Stock", "Sector"}},
+            na_rep=""
+        ),
         use_container_width=True,
     )
+
+
 
 # =====================================
 # UNION OF DIRECTIONAL + EXTREME FILTERS
@@ -682,11 +626,13 @@ intensity_stocks = detect_atm_delta_intensity_stocks(
     delta_above_col,
     diff_threshold=350,
     sum_threshold=350,
-    window=3,
+    window=3
 )
 
 # FINAL stocks for Combined Signal table
 union_stocks = sorted(set(union_stocks) & set(intensity_stocks))
+
+
 
 union_df = final_df[final_df["Stock"].isin(union_stocks)]
 
@@ -698,26 +644,12 @@ if union_display_df.empty:
 else:
     st.dataframe(
         union_display_df[display_cols]
-            .style.apply(highlight_rows, axis=None)
-            .format(
-                {
-                    ltp_pct_12_col: "{:.2f}",
-                    pct_col: "{:.3f}",
-                    "Stock_LTP": "{:.2f}",
-                    **{
-                        c: "{:.0f}"
-                        for c in display_cols
-                        if c not in {
-                            "Stock",
-                            "Sector",
-                            pct_col,
-                            "Stock_LTP",
-                            ltp_pct_12_col,
-                        }
-                    },
-                },
-                na_rep="",
-            ),
+        .style.apply(highlight_rows, axis=None)
+        .format(
+            {c: "{:.3f}" if c == pct_col else "{:.2f}" if c in {"Stock_LTP", ltp_pct_12_col} else "{:.0f}"
+             for c in display_cols if c not in {"Stock", "Sector"}},
+            na_rep=""
+        ),
         use_container_width=True,
     )
 
