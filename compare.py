@@ -88,10 +88,6 @@ pressure_ratio_col = "Abs Above/Below ΔΔ MP Ratio (±6)"
 delta_above_23_col = f"ΔΔ MP ({t2_lbl}-{t3_lbl})"
 sum_2_above_below_col = f"Σ |ΔΔ MP| (±2)"
 diff_2_above_below_col = f"Δ (ΔΔ MP) (±2)"
-d12_63_64_col = "ΔΔ MP 63–64 (Below LTP)"
-d12_64_65_col = "ΔΔ MP 64–65 (Below LTP)"
-d12_66_67_col = "ΔΔ MP 66–67 (Above LTP)"
-d12_67_68_col = "ΔΔ MP 67–68 (Above LTP)"
 
 
 
@@ -109,10 +105,26 @@ if "Stock_%_Change" not in df1.columns:
 df1 = df1[["Stock", "Strike", "Max_Pain", "Stock_LTP", "Stock_%_Change"]].rename(
     columns={"Max_Pain": mp1_col, "Stock_%_Change": pct_col}
 )
-df2 = df2[["Stock", "Strike", "Max_Pain"]].rename(columns={"Max_Pain": mp2_col})
+df2 = df2[["Stock", "Strike", "Max_Pain", "Stock_LTP"]].rename(
+    columns={
+        "Max_Pain": mp2_col,
+        "Stock_LTP": "Stock_LTP_t2"
+    }
+)
+
 df3 = df3[["Stock", "Strike", "Max_Pain"]].rename(columns={"Max_Pain": mp3_col})
 
 df = df1.merge(df2, on=["Stock", "Strike"]).merge(df3, on=["Stock", "Strike"])
+
+# =====================================
+# % CHANGE IN STOCK LTP (t1 vs t2)
+# =====================================
+
+ltp_pct_12_col = f"% LTP Ch ({t1_lbl}-{t2_lbl})"
+
+df[ltp_pct_12_col] = (
+    (df["Stock_LTP"] - df["Stock_LTP_t2"]) / df["Stock_LTP_t2"]
+) * 100
 
 # =====================================
 # NORMALIZE + REMOVE INDICES
@@ -132,59 +144,6 @@ df = df.merge(sector_df, on="Stock", how="left")
 df[delta_12] = df[mp1_col] - df[mp2_col]
 df[delta_23] = df[mp2_col] - df[mp3_col]
 
-
-# =====================================================
-# LOCAL ATM DELTA_12 DIFFERENCES (FIXED STRIKE PAIRS)
-# =====================================================
-
-d12_below_2_col = "ΔΔ MP (i-2)-(i-1)"
-d12_below_1_col = "ΔΔ MP (i-1)-i"
-d12_above_1_col = "ΔΔ MP (i+1)-(i+2)"
-d12_above_2_col = "ΔΔ MP (i+2)-(i+3)"
-
-for col in [
-    d12_below_2_col,
-    d12_below_1_col,
-    d12_above_1_col,
-    d12_above_2_col,
-]:
-    df[col] = np.nan
-
-for stock, sdf in df.sort_values("Strike").groupby("Stock"):
-    sdf = sdf.reset_index(drop=True)
-
-    ltp = float(sdf["Stock_LTP"].iloc[0])
-    strikes = sdf["Strike"].values
-
-    atm_idx = None
-    for i in range(len(strikes) - 1):
-        if strikes[i] <= ltp <= strikes[i + 1]:
-            atm_idx = i
-            break
-
-    if atm_idx is None:
-        continue
-
-    # required indices:
-    # below: (i-2,i-1) and (i-1,i)
-    # above: (i+1,i+2) and (i+2,i+3)
-    needed = [atm_idx - 2, atm_idx - 1, atm_idx,
-              atm_idx + 1, atm_idx + 2, atm_idx + 3]
-
-    if min(needed) < 0 or max(needed) >= len(sdf):
-        continue
-
-    v = sdf[delta_12].astype(float).values
-
-    d_below_2 = v[atm_idx - 2] - v[atm_idx - 1]
-    d_below_1 = v[atm_idx - 1] - v[atm_idx]
-    d_above_1 = v[atm_idx + 1] - v[atm_idx + 2]
-    d_above_2 = v[atm_idx + 2] - v[atm_idx + 3]
-
-    df.loc[df["Stock"] == stock, d12_below_2_col] = d_below_2
-    df.loc[df["Stock"] == stock, d12_below_1_col] = d_below_1
-    df.loc[df["Stock"] == stock, d12_above_1_col] = d_above_1
-    df.loc[df["Stock"] == stock, d12_above_2_col] = d_above_2
 
 # =====================================================
 # Σ7 ABOVE / BELOW LTP (REPEATED PER STOCK) + DIFFERENCE
@@ -347,19 +306,22 @@ df = df[
         mp3_col,
         delta_12,
         delta_23,
-        d12_below_2_col,
-        d12_below_1_col,
-        d12_above_1_col,
-        d12_above_2_col,
-
-        sum_12_col,
-        delta_above_col,
-        delta_above_23_col,
+        #sum7_below_12_col,
+       ## sum7_above_12_col,
+       # sum7_below_23_col,
+        #sum7_above_23_col,
+        #diff7_above_col,
+        #diff7_below_col,
+        #sum_12_col,
+        #delta_above_col,
+        #delta_above_23_col,
         # pressure_ratio_col,
-        sum_2_above_below_col,
-        diff_2_above_below_col,
+        #sum_2_above_below_col,
+        #diff_2_above_below_col,
         pct_col,
         "Stock_LTP",
+        ltp_pct_12_col,
+        
     ]
 ]
 
