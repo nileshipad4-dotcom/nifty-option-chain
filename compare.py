@@ -589,7 +589,6 @@ display_cols = [c for c in final_df.columns if c not in HIDE_COLS]
 
 
 
-
 st.subheader(f"📊 ALL STOCKS: {t1_lbl} vs {t2_lbl} vs {t3_lbl}")
 display_df = filter_strikes_around_ltp(final_df)
 
@@ -639,38 +638,35 @@ selected_stock = st.selectbox("Select Stock", [""] + stock_list)
 
 if selected_stock:
     stock_df = filter_strikes_around_ltp(
-    final_df[final_df["Stock"] == selected_stock],
-    below=6,
-    above=6
-)
+        final_df[final_df["Stock"] == selected_stock],
+        below=6,
+        above=6,
+    )
 
-   st.dataframe(
-    stock_df[display_cols]
-        .style.apply(highlight_rows, axis=None)
-        .format(
-            {
-                ltp_pct_12_col: "{:.2f}",
-                pct_col: "{:.3f}",
-                "Stock_LTP": "{:.2f}",
-                **{
-                    c: "{:.0f}"
-                    for c in display_cols
-                    if c not in {
-                        "Stock",
-                        "Sector",
-                        pct_col,
-                        "Stock_LTP",
-                        ltp_pct_12_col,
-                    }
+    st.dataframe(
+        stock_df[display_cols]
+            .style.apply(highlight_rows, axis=None)
+            .format(
+                {
+                    ltp_pct_12_col: "{:.2f}",
+                    pct_col: "{:.3f}",
+                    "Stock_LTP": "{:.2f}",
+                    **{
+                        c: "{:.0f}"
+                        for c in display_cols
+                        if c not in {
+                            "Stock",
+                            "Sector",
+                            pct_col,
+                            "Stock_LTP",
+                            ltp_pct_12_col,
+                        }
+                    },
                 },
-            },
-            na_rep="",
-        ),
-    use_container_width=True,
-)
-
-
-
+                na_rep="",
+            ),
+        use_container_width=True,
+    )
 
 # =====================================
 # UNION OF DIRECTIONAL + EXTREME FILTERS
@@ -686,13 +682,11 @@ intensity_stocks = detect_atm_delta_intensity_stocks(
     delta_above_col,
     diff_threshold=350,
     sum_threshold=350,
-    window=3
+    window=3,
 )
 
 # FINAL stocks for Combined Signal table
 union_stocks = sorted(set(union_stocks) & set(intensity_stocks))
-
-
 
 union_df = final_df[final_df["Stock"].isin(union_stocks)]
 
@@ -702,27 +696,28 @@ union_display_df = filter_strikes_around_ltp(union_df)
 if union_display_df.empty:
     st.info("No stocks matched either of the ΔΔ MP filter conditions.")
 else:
-   st.dataframe(
-    union_display_df[display_cols]
-        .style.apply(highlight_rows, axis=None)
-        .format(
-            {
-                ltp_pct_12_col: "{:.2f}",
-                pct_col: "{:.3f}",
-                "Stock_LTP": "{:.2f}",
-                **{
-                    c: "{:.0f}"
-                    for c in display_cols
-                    if c not in {
-                        "Stock",
-                        "Sector",
-                        pct_col,
-                        "Stock_LTP",
-                        ltp_pct_12_col,
-                    }
+    st.dataframe(
+        union_display_df[display_cols]
+            .style.apply(highlight_rows, axis=None)
+            .format(
+                {
+                    ltp_pct_12_col: "{:.2f}",
+                    pct_col: "{:.3f}",
+                    "Stock_LTP": "{:.2f}",
+                    **{
+                        c: "{:.0f}"
+                        for c in display_cols
+                        if c not in {
+                            "Stock",
+                            "Sector",
+                            pct_col,
+                            "Stock_LTP",
+                            ltp_pct_12_col,
+                        }
+                    },
                 },
-            },
-            na_rep="",
-        ),
-    use_container_width=True,
-)
+                na_rep="",
+            ),
+        use_container_width=True,
+    )
+
