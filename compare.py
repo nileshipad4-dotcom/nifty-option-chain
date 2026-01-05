@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import os
+from datetime import time
 from streamlit_autorefresh import st_autorefresh
 
 st_autorefresh(interval=360_000, key="auto_refresh")
@@ -32,20 +33,74 @@ if len(csv_files) < 6:
     st.error("Need at least 6 CSV files.")
     st.stop()
 
-timestamps = [ts for ts, _ in csv_files]
+timestamps_all = [ts for ts, _ in csv_files]
 file_map = dict(csv_files)
 
-def short_ts(ts):
-    return ts.split("_")[-1].replace("-", ":")
+# =====================================
+# TIME FILTERING
+# =====================================
+def extract_time(ts):
+    try:
+        t = ts.split("_")[-1]
+        hh, mm = map(int, t.split("-")[:2])
+        return time(hh, mm)
+    except Exception:
+        return None
+
+START_TIME = time(7, 30)
+END_TIME = time(16, 0)
+
+filtered_ts = [
+    ts for ts in timestamps_all
+    if extract_time(ts) and START_TIME <= extract_time(ts) <= END_TIME
+]
 
 # =====================================
-# TIMESTAMP SELECTORS (6)
+# SESSION STATE
+# =====================================
+for k in ["t3_manual", "t5_manual"]:
+    if k not in st.session_state:
+        st.session_state[k] = False
+
+# =====================================
+# TIMESTAMP SELECTORS
 # =====================================
 cols = st.columns(6)
-t = []
-for i in range(6):
-    with cols[i]:
-        t.append(st.selectbox(f"Timestamp {i+1}", timestamps, i))
+
+with cols[0]:
+    t1 = st.selectbox("Timestamp 1", filtered_ts, 0)
+with cols[1]:
+    t2 = st.selectbox("Timestamp 2", filtered_ts, 1)
+with cols[2]:
+    t3_default = t2 if not st.session_state.t3_manual else None
+    t3 = st.selectbox(
+        "Timestamp 3",
+        filtered_ts,
+        index=filtered_ts.index(t3_default) if t3_default in filtered_ts else 2,
+    )
+    if t3 != t2:
+        st.session_state.t3_manual = True
+with cols[3]:
+    t4 = st.selectbox("Timestamp 4", filtered_ts, 3)
+with cols[4]:
+    t5_default = t4 if not st.session_state.t5_manual else None
+    t5 = st.selectbox(
+        "Timestamp 5",
+        filtered_ts,
+        index=filtered_ts.index(t5_default) if t5_default in filtered_ts else 4,
+    )
+    if t5 != t4:
+        st.session_state.t5_manual = True
+with cols[5]:
+    t6 = st.selectbox("Timestamp 6 (ALL)", timestamps_all, 0)
+
+t = [t1, t2, t3, t4, t5, t6]
+
+# =====================================
+# LABELS
+# =====================================
+def short_ts(ts):
+    return ts.split("_")[-1].replace("-", ":")
 
 labels = [short_ts(x) for x in t]
 
@@ -65,21 +120,20 @@ ltp_pct_cols = [
 ]
 
 # =====================================
-# LOAD DATAFRAMES
+# LOAD DATA
 # =====================================
 dfs = []
 for i, ts in enumerate(t):
-    df = pd.read_csv(file_map[ts])
-    df = df[["Stock", "Strike", "Max_Pain", "Stock_LTP"]].rename(
+    d = pd.read_csv(file_map[ts])
+    d = d[["Stock", "Strike", "Max_Pain", "Stock_LTP"]].rename(
         columns={
             "Max_Pain": f"MP_{i}",
             "Stock_LTP": f"LTP_{i}",
         }
     )
-    dfs.append(df)
+    dfs.append(d)
 
-# % change from TS1
-raw_t1 = pd.read_csv(file_map[t[0]])
+raw_t1 = pd.read_csv(file_map[t1])
 pct_col = f"% Ch ({labels[0]})"
 dfs[0][pct_col] = raw_t1["Stock_%_Change"] if "Stock_%_Change" in raw_t1.columns else np.nan
 
@@ -91,10 +145,9 @@ for i in range(1, 6):
     df = df.merge(dfs[i], on=["Stock", "Strike"])
 
 # =====================================
-# PAIRWISE CALCULATIONS
+# PAIRWISE CALCS
 # =====================================
 pairs = [(0, 1), (2, 3), (4, 5)]
-
 for idx, (a, b) in enumerate(pairs):
     df[delta_mp_cols[idx]] = df[f"MP_{a}"] - df[f"MP_{b}"]
     df[ltp_pct_cols[idx]] = (
@@ -104,13 +157,10 @@ for idx, (a, b) in enumerate(pairs):
 # =====================================
 # CLEAN
 # =====================================
-df["Stock"] = df["Stock"].astype(str).str.upper().str.strip()
+df["Stock"] = df["Stock"].str.upper().str.strip()
 EXCLUDE = {"NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"}
 df = df[~df["Stock"].isin(EXCLUDE)]
 
-# =====================================
-# FINAL COLUMN ORDER
-# =====================================
 df = df[
     ["Stock", "Strike"]
     + delta_mp_cols
@@ -119,7 +169,7 @@ df = df[
 ].rename(columns={"LTP_0": "Stock_LTP"})
 
 # =====================================
-# FILTER ±6 STRIKES
+# ±6 STRIKE FILTER
 # =====================================
 def filter_strikes_around_ltp(df, below=6, above=6):
     out = []
@@ -133,7 +183,6 @@ def filter_strikes_around_ltp(df, below=6, above=6):
             if strikes[i] <= ltp <= strikes[i + 1]:
                 atm = i
                 break
-
         if atm is None:
             continue
 
@@ -156,12 +205,22 @@ def highlight_rows(data):
         for i in range(len(strikes) - 1):
             if strikes[i] <= ltp <= strikes[i + 1]:
                 styles.loc[sdf.index[i]] = "background-color:#003366;color:white"
-                styles.loc[sdf.index[i+1]] = "background-color:#003366;color:white"
+                styles.loc[sdf.index[i + 1]] = "background-color:#003366;color:white"
                 break
 
         styles.loc[sdf[delta_mp_cols[0]].abs().idxmax()] = "background-color:#8B0000;color:white"
 
     return styles
+
+# =====================================
+# STRIKE FORMATTER (NEW)
+# =====================================
+def format_strike(x):
+    if pd.isna(x):
+        return ""
+    if float(x).is_integer():
+        return f"{int(x)}"
+    return f"{x:.2f}"
 
 # =====================================
 # DISPLAY
@@ -170,11 +229,15 @@ display_df = filter_strikes_around_ltp(df)
 
 st.dataframe(
     display_df
-    .style.apply(highlight_rows, axis=None)
+    .style
+    .apply(highlight_rows, axis=None)
     .format(
-        {c: "{:.0f}" for c in delta_mp_cols}
-        | {c: "{:.2f}" for c in ltp_pct_cols + ["Stock_LTP"]}
-        | {pct_col: "{:.3f}"},
+        {
+            "Strike": format_strike,
+            **{c: "{:.0f}" for c in delta_mp_cols},
+            **{c: "{:.2f}" for c in ltp_pct_cols + ["Stock_LTP"]},
+            pct_col: "{:.3f}",
+        },
         na_rep="",
     ),
     use_container_width=True,
@@ -186,6 +249,6 @@ st.dataframe(
 st.download_button(
     "⬇️ Download CSV",
     df.to_csv(index=False),
-    "max_pain_pairwise_6_ts.csv",
+    "max_pain_pairwise_time_filtered.csv",
     "text/csv",
 )
