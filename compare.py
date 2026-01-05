@@ -563,7 +563,30 @@ def detect_atm_delta_intensity_stocks(
 # =====================================
 # COLUMNS TO HIDE FROM DISPLAY
 # =====================================
-display_cols = [c for c in final_df.columns if c != sum_12_col]
+
+# =====================================
+# COLUMNS TO HIDE FROM DISPLAY (UI ONLY)
+# =====================================
+HIDE_COLS = {
+    mp1_col,
+    mp2_col,
+    mp3_col,
+    sum7_below_12_col,
+    sum7_above_12_col,
+    sum7_below_23_col,
+    sum7_above_23_col,
+    diff7_above_col,
+    diff7_below_col,
+    sum_12_col,
+    delta_above_23_col,
+    pressure_ratio_col,
+    sum_2_above_below_col,
+    diff_2_above_below_col,
+}
+
+
+display_cols = [c for c in final_df.columns if c not in HIDE_COLS]
+
 
 
 
@@ -573,25 +596,25 @@ display_df = filter_strikes_around_ltp(final_df)
 st.dataframe(
     display_df[display_cols]
     .style.apply(highlight_rows, axis=None)
-    .format(
-    {
-        ltp_pct_12_col: "{:.2f}",
-        pct_col: "{:.3f}",
-        "Stock_LTP": "{:.2f}",
-        **{
-            c: "{:.0f}"
-            for c in display_cols
-            if c not in {
-                "Stock",
-                "Sector",
-                pct_col,
-                "Stock_LTP",
-                ltp_pct_12_col,
-            }
-        },
-    },
-    na_rep="",
-)
+   .format(
+            {
+                ltp_pct_12_col: "{:.2f}",
+                pct_col: "{:.3f}",
+                "Stock_LTP": "{:.2f}",
+                **{
+                    c: "{:.0f}"
+                    for c in display_cols
+                    if c not in {
+                        "Stock",
+                        "Sector",
+                        pct_col,
+                        "Stock_LTP",
+                        ltp_pct_12_col,
+                    }
+                },
+            },
+            na_rep="",
+        )
 
     use_container_width=True,
 )
