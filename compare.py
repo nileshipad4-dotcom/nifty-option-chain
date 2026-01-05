@@ -52,49 +52,59 @@ labels = [short_ts(x) for x in t]
 # =====================================
 # COLUMN NAMES
 # =====================================
-mp_cols = [f"MP ({lbl})" for lbl in labels]
-delta_mp_cols = [f"Δ MP ({labels[0]}-{labels[i]})" for i in range(1, 6)]
-ltp_pct_cols = [f"% LTP Ch ({labels[0]}-{labels[i]})" for i in range(1, 6)]
+delta_mp_cols = [
+    f"Δ MP ({labels[0]}-{labels[1]})",
+    f"Δ MP ({labels[2]}-{labels[3]})",
+    f"Δ MP ({labels[4]}-{labels[5]})",
+]
+
+ltp_pct_cols = [
+    f"% LTP Ch ({labels[0]}-{labels[1]})",
+    f"% LTP Ch ({labels[2]}-{labels[3]})",
+    f"% LTP Ch ({labels[4]}-{labels[5]})",
+]
 
 # =====================================
-# LOAD ALL DATAFRAMES
+# LOAD DATAFRAMES
 # =====================================
 dfs = []
 for i, ts in enumerate(t):
     df = pd.read_csv(file_map[ts])
     df = df[["Stock", "Strike", "Max_Pain", "Stock_LTP"]].rename(
-        columns={"Max_Pain": mp_cols[i], "Stock_LTP": f"Stock_LTP_t{i+1}"}
+        columns={
+            "Max_Pain": f"MP_{i}",
+            "Stock_LTP": f"LTP_{i}",
+        }
     )
     dfs.append(df)
 
-# % change column only needed from t1
-if "Stock_%_Change" in pd.read_csv(file_map[t[0]]).columns:
-    dfs[0]["% Ch"] = pd.read_csv(file_map[t[0]])["Stock_%_Change"]
-else:
-    dfs[0]["% Ch"] = np.nan
+# % change from TS1
+raw_t1 = pd.read_csv(file_map[t[0]])
+pct_col = f"% Ch ({labels[0]})"
+dfs[0][pct_col] = raw_t1["Stock_%_Change"] if "Stock_%_Change" in raw_t1.columns else np.nan
 
 # =====================================
-# MERGE ALL
+# MERGE
 # =====================================
 df = dfs[0]
 for i in range(1, 6):
     df = df.merge(dfs[i], on=["Stock", "Strike"])
 
 # =====================================
-# CALCULATIONS
+# PAIRWISE CALCULATIONS
 # =====================================
-for i in range(1, 6):
-    df[delta_mp_cols[i-1]] = df[mp_cols[0]] - df[mp_cols[i]]
+pairs = [(0, 1), (2, 3), (4, 5)]
 
-    df[ltp_pct_cols[i-1]] = (
-        (df["Stock_LTP_t1"] - df[f"Stock_LTP_t{i+1}"])
-        / df[f"Stock_LTP_t{i+1}"]
+for idx, (a, b) in enumerate(pairs):
+    df[delta_mp_cols[idx]] = df[f"MP_{a}"] - df[f"MP_{b}"]
+    df[ltp_pct_cols[idx]] = (
+        (df[f"LTP_{a}"] - df[f"LTP_{b}"]) / df[f"LTP_{b}"]
     ) * 100
 
 # =====================================
 # CLEAN
 # =====================================
-df["Stock"] = df["Stock"].str.upper().str.strip()
+df["Stock"] = df["Stock"].astype(str).str.upper().str.strip()
 EXCLUDE = {"NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"}
 df = df[~df["Stock"].isin(EXCLUDE)]
 
@@ -104,9 +114,9 @@ df = df[~df["Stock"].isin(EXCLUDE)]
 df = df[
     ["Stock", "Strike"]
     + delta_mp_cols
-    + ["Stock_LTP_t1", "% Ch"]
+    + ["LTP_0", pct_col]
     + ltp_pct_cols
-].rename(columns={"Stock_LTP_t1": "Stock_LTP"})
+].rename(columns={"LTP_0": "Stock_LTP"})
 
 # =====================================
 # FILTER ±6 STRIKES
@@ -139,9 +149,7 @@ def highlight_rows(data):
     styles = pd.DataFrame("", index=data.index, columns=data.columns)
 
     for stock in data["Stock"].dropna().unique():
-        sdf = data[(data["Stock"] == stock) & data["Strike"].notna()]
-        sdf = sdf.sort_values("Strike")
-
+        sdf = data[(data["Stock"] == stock) & data["Strike"].notna()].sort_values("Strike")
         ltp = float(sdf["Stock_LTP"].iloc[0])
         strikes = sdf["Strike"].values
 
@@ -166,7 +174,7 @@ st.dataframe(
     .format(
         {c: "{:.0f}" for c in delta_mp_cols}
         | {c: "{:.2f}" for c in ltp_pct_cols + ["Stock_LTP"]}
-        | {"% Ch": "{:.3f}"},
+        | {pct_col: "{:.3f}"},
         na_rep="",
     ),
     use_container_width=True,
@@ -178,6 +186,6 @@ st.dataframe(
 st.download_button(
     "⬇️ Download CSV",
     df.to_csv(index=False),
-    "max_pain_6_ts.csv",
+    "max_pain_pairwise_6_ts.csv",
     "text/csv",
 )
