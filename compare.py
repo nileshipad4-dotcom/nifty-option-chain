@@ -105,7 +105,13 @@ if "Stock_%_Change" not in df1.columns:
 df1 = df1[["Stock", "Strike", "Max_Pain", "Stock_LTP", "Stock_%_Change"]].rename(
     columns={"Max_Pain": mp1_col, "Stock_%_Change": pct_col}
 )
-df2 = df2[["Stock", "Strike", "Max_Pain"]].rename(columns={"Max_Pain": mp2_col})
+df2 = df2[["Stock", "Strike", "Max_Pain", "Stock_LTP"]].rename(
+    columns={
+        "Max_Pain": mp2_col,
+        "Stock_LTP": "Stock_LTP_t2"
+    }
+)
+
 df3 = df3[["Stock", "Strike", "Max_Pain"]].rename(columns={"Max_Pain": mp3_col})
 
 df = df1.merge(df2, on=["Stock", "Strike"]).merge(df3, on=["Stock", "Strike"])
