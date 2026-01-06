@@ -186,20 +186,36 @@ for stock in all_stocks:
 if filtered_rows:
     filtered_df = pd.DataFrame(filtered_rows).sort_values(["Stock", "Strike"])
 
-    def color_row(row):
-        stock = row["Stock"]
-        strike = row["Strike"]
+def color_row(row):
+    stock = row["Stock"]
+    strike = row["Strike"]
+    high = row["Stock_High"]
+    low = row["Stock_Low"]
 
-        if strike == mp_map.get(stock):
-            return ["background-color:#4E342E;color:white"] * len(row)
+    # Determine base row color (unchanged logic)
+    if strike == mp_map.get(stock):
+        base_style = "background-color:#4E342E;color:white"
+    elif strike in atm_map.get(stock, set()):
+        base_style = "background-color:#003366;color:white"
+    elif strike > row["Stock_LTP"]:
+        base_style = "background-color:#004d00;color:white"
+    else:
+        base_style = "background-color:#660000;color:white"
 
-        if strike in atm_map.get(stock, set()):
-            return ["background-color:#003366;color:white"] * len(row)
+    styles = []
 
-        if strike > row["Stock_LTP"]:
-            return ["background-color:#004d00;color:white"] * len(row)
+    for col in row.index:
+        # Special rule ONLY for Stock_High & Stock_Low
+        if col in ("Stock_High", "Stock_Low"):
+            if low <= strike <= high:
+                styles.append("")  # no highlight
+            else:
+                styles.append(base_style)
         else:
-            return ["background-color:#660000;color:white"] * len(row)
+            styles.append(base_style)
+
+    return styles
+
 
     st.dataframe(
         filtered_df.style
