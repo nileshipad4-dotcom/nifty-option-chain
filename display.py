@@ -66,12 +66,11 @@ df_base["Stock"] = df_base["Stock"].astype(str).str.upper().str.strip()
 all_stocks = sorted(df_base["Stock"].unique())
 
 # =====================================
-# ΔΔ MP CALCULATION (T1 vs T2, T2 vs T3)
+# ΔΔ MP CALCULATION
 # =====================================
 def compute_ddmp(df):
     df = df.copy()
-
-    prev_mp_col = "Max_Pain"
+    prev_mp = "Max_Pain"
 
     for ts in compare_ts:
         label = short_ts(ts)
@@ -85,22 +84,22 @@ def compute_ddmp(df):
             suffixes=("", f"_{label}")
         )
 
-        curr_mp_col = f"Max_Pain_{label}"
+        curr_mp = f"Max_Pain_{label}"
         df[label] = np.nan
 
         for _, sdf in df.sort_values("Strike").groupby("Stock"):
-            vals = (sdf[prev_mp_col] - sdf[curr_mp_col]).astype(float).values
+            vals = (sdf[prev_mp] - sdf[curr_mp]).astype(float).values
             diff = vals - np.roll(vals, -1)
             diff[-1] = np.nan
             df.loc[sdf.index, label] = diff
 
-        df.drop(columns=[curr_mp_col], inplace=True)
-        prev_mp_col = "Max_Pain"
+        df.drop(columns=[curr_mp], inplace=True)
+        prev_mp = "Max_Pain"
 
     return df
 
 # =====================================
-# MONOTONIC FILTER (2 of 2)
+# MONOTONIC FILTER
 # =====================================
 def is_monotonic_2_of_2(values):
     return values[0] <= values[1] or values[0] >= values[1]
@@ -123,10 +122,12 @@ with p2:
 # =====================================
 df_all = compute_ddmp(df_base)
 
-df_t2 = pd.read_csv(file_map[t2]).set_index("Stock")
-df_t3 = pd.read_csv(file_map[t3]).set_index("Stock")
+df_t2 = pd.read_csv(file_map[t2])
+df_t3 = pd.read_csv(file_map[t3])
 
-# Precompute ATM & Max Pain
+# =====================================
+# PRE-COMPUTE ATM & MAX PAIN
+# =====================================
 atm_map = {}
 mp_map = {}
 
@@ -156,12 +157,14 @@ for stock in all_stocks:
         continue
 
     ltp1 = float(sdf["Stock_LTP"].iloc[0])
-    ltp2 = float(df_t2.loc[stock, "Stock_LTP"].iloc[0])
-    ltp3 = float(df_t3.loc[stock, "Stock_LTP"].iloc[0])
+    if ltp1 <= 0:
+        continue
 
+    ltp2 = float(df_t2[df_t2["Stock"] == stock]["Stock_LTP"].iloc[0])
+    ltp3 = float(df_t3[df_t3["Stock"] == stock]["Stock_LTP"].iloc[0])
 
-    pct_12 = (ltp2 - ltp1) / ltp1 * 100 if ltp1 else np.nan
-    pct_23 = (ltp3 - ltp2) / ltp2 * 100 if ltp2 else np.nan
+    pct_12 = (ltp2 - ltp1) / ltp1 * 100
+    pct_23 = (ltp3 - ltp2) / ltp2 * 100 if ltp2 != 0 else np.nan
 
     high = float(sdf["Stock_High"].iloc[0])
     low = float(sdf["Stock_Low"].iloc[0])
@@ -206,7 +209,6 @@ if filtered_rows:
         high = row["Stock_High"]
         low = row["Stock_Low"]
 
-        # Base row color (unchanged)
         if strike == mp_map.get(stock):
             base = "background-color:#4E342E;color:white"
         elif strike in atm_map.get(stock, set()):
