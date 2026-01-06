@@ -171,6 +171,35 @@ st.dataframe(
     use_container_width=True
 )
 
+
+# ==================================================
+# ===== SINGLE STOCK TABLES (NEW) ==================
+# ==================================================
+st.subheader("🔎 Single Stock Views (from Table 1)")
+
+stocks = sorted(display_df1["Stock"].dropna().unique())
+
+s1, s2 = st.columns(2)
+stock_a = s1.selectbox("Select Stock A", [""] + stocks)
+stock_b = s2.selectbox("Select Stock B", [""] + stocks)
+
+def show_single_stock(stock_name, label):
+    sdf = display_df1[display_df1["Stock"] == stock_name]
+    if sdf.empty:
+        return
+    st.markdown(f"**{label}: {stock_name}**")
+    st.dataframe(
+        sdf.style.apply(highlight_table1, axis=None).format(fmt, na_rep=""),
+        use_container_width=True
+    )
+
+if stock_a:
+    show_single_stock(stock_a, "Stock A")
+
+if stock_b:
+    show_single_stock(stock_b, "Stock B")
+
+
 # ==================================================
 # ================= TABLE 2 ========================
 # ==================================================
