@@ -15,7 +15,33 @@ IST = pytz.timezone("Asia/Kolkata")
 API_KEY = "bkgv59vaazn56c42"
 ACCESS_TOKEN = "5J146sNIZ97FMIFLNvtNoZUgHoxKl6i4"
 
-STOCKS = ["360ONE","ABB","ABCAPITAL","ADANIENSOL","ADANIENT","ADANIGREEN","ADANIPORTS","ALKEM","AMBER","AMBUJACEM","ANGELONE","APLAPOLLO","APOLLOHOSP","ASHOKLEY","ASIANPAINT","ASTRAL","AUBANK","AUROPHARMA","AXISBANK","BAJAJ-AUTO","BAJAJFINSV","BAJAJHLDNG","BAJFINANCE","BANDHANBNK","BANKBARODA","BANKINDIA","BANKNIFTY","BDL","BEL","BHARATFORG","BHARTIARTL","BHEL","BIOCON","BLUESTARCO","BOSCHLTD","BPCL","BRITANNIA","BSE","CAMS","CANBK","CDSL","CGPOWER","CHOLAFIN","CIPLA","COALINDIA","COFORGE","COLPAL","CONCOR","CROMPTON","CUMMINSIND","DABUR","DALBHARAT","DELHIVERY","DIVISLAB","DIXON","DLF","DMART","DRREDDY","EICHERMOT","ETERNAL","EXIDEIND","FEDERALBNK","FINNIFTY","FORTIS","GAIL","GLENMARK","GMRAIRPORT","GODREJCP","GODREJPROP","GRASIM","HAL","HAVELLS","HCLTECH","HDFCAMC","HDFCBANK","HDFCLIFE","HEROMOTOCO","HINDALCO","HINDPETRO","HINDUNILVR","HINDZINC","HUDCO","ICICIBANK","ICICIGI","ICICIPRULI","IDEA","IDFCFIRSTB","IEX","IIFL","INDHOTEL","INDIANB","INDIGO","INDUSINDBK","INDUSTOWER","INFY","INOXWIND","IOC","IRCTC","IREDA","IRFC","ITC","JINDALSTEL","JIOFIN","JSWENERGY","JSWSTEEL","JUBLFOOD","KALYANKJIL","KAYNES","KEI","KFINTECH","KOTAKBANK","KPITTECH","LAURUSLABS","LICHSGFIN","LICI","LODHA","LT","LTF","LTIM","LUPIN","M&M","MANAPPURAM","MANKIND","MARICO","MARUTI","MAXHEALTH","MAZDOCK","MCX","MFSL","MIDCPNIFTY","MOTHERSON","MPHASIS","MUTHOOTFIN","NATIONALUM","NAUKRI","NBCC","NESTLEIND","NHPC","NIFTY","NIFTYNXT50","NMDC","NTPC","NUVAMA","NYKAA","OBEROIRLTY","OFSS","OIL","ONGC","PAGEIND","PATANJALI","PAYTM","PERSISTENT","PETRONET","PFC","PGEL","PHOENIXLTD","PIDILITIND","PIIND","PNB","PNBHOUSING","POLICYBZR","POLYCAB","POWERGRID","POWERINDIA","PPLPHARMA","PREMIERENE","PRESTIGE","RBLBANK","RECLTD","RELIANCE","RVNL","SAIL","SAMMAANCAP","SBICARD","SBILIFE","SBIN","SHREECEM","SHRIRAMFIN","SIEMENS","SOLARINDS","SONACOMS","SRF","SUNPHARMA","SUPREMEIND","SUZLON","SWIGGY","SYNGENE","TATACONSUM","TATAELXSI","TATAPOWER","TATASTEEL","TATATECH","TCS","TECHM","TIINDIA","TITAN","TMPV","TORNTPHARM","TORNTPOWER","TRENT","TVSMOTOR","ULTRACEMCO","UNIONBANK","UNITDSPR","UNOMINDA","UPL","VBL","VEDL","VOLTAS","WAAREEENER","WIPRO","YESBANK","ZYDUSLIFE"]
+STOCKS = [
+    "360ONE","ABB","ABCAPITAL","ADANIENSOL","ADANIENT","ADANIGREEN","ADANIPORTS","ALKEM",
+    "AMBER","AMBUJACEM","ANGELONE","APLAPOLLO","APOLLOHOSP","ASHOKLEY","ASIANPAINT","ASTRAL",
+    "AUBANK","AUROPHARMA","AXISBANK","BAJAJ-AUTO","BAJAJFINSV","BAJAJHLDNG","BAJFINANCE",
+    "BANDHANBNK","BANKBARODA","BANKINDIA","BANKNIFTY","BDL","BEL","BHARATFORG","BHARTIARTL",
+    "BHEL","BIOCON","BLUESTARCO","BOSCHLTD","BPCL","BRITANNIA","BSE","CAMS","CANBK","CDSL",
+    "CGPOWER","CHOLAFIN","CIPLA","COALINDIA","COFORGE","COLPAL","CONCOR","CROMPTON","CUMMINSIND",
+    "DABUR","DALBHARAT","DELHIVERY","DIVISLAB","DIXON","DLF","DMART","DRREDDY","EICHERMOT",
+    "ETERNAL","EXIDEIND","FEDERALBNK","FINNIFTY","FORTIS","GAIL","GLENMARK","GMRAIRPORT",
+    "GODREJCP","GODREJPROP","GRASIM","HAL","HAVELLS","HCLTECH","HDFCAMC","HDFCBANK","HDFCLIFE",
+    "HEROMOTOCO","HINDALCO","HINDPETRO","HINDUNILVR","HINDZINC","HUDCO","ICICIBANK","ICICIGI",
+    "ICICIPRULI","IDEA","IDFCFIRSTB","IEX","IIFL","INDHOTEL","INDIANB","INDIGO","INDUSINDBK",
+    "INDUSTOWER","INFY","INOXWIND","IOC","IRCTC","IREDA","IRFC","ITC","JINDALSTEL","JIOFIN",
+    "JSWENERGY","JSWSTEEL","JUBLFOOD","KALYANKJIL","KAYNES","KEI","KFINTECH","KOTAKBANK",
+    "KPITTECH","LAURUSLABS","LICHSGFIN","LICI","LODHA","LT","LTF","LTIM","LUPIN","M&M",
+    "MANAPPURAM","MANKIND","MARICO","MARUTI","MAXHEALTH","MAZDOCK","MCX","MFSL","MIDCPNIFTY",
+    "MOTHERSON","MPHASIS","MUTHOOTFIN","NATIONALUM","NAUKRI","NBCC","NESTLEIND","NHPC",
+    "NIFTY","NIFTYNXT50","NMDC","NTPC","NUVAMA","NYKAA","OBEROIRLTY","OFSS","OIL","ONGC",
+    "PAGEIND","PATANJALI","PAYTM","PERSISTENT","PETRONET","PFC","PGEL","PHOENIXLTD",
+    "PIDILITIND","PIIND","PNB","PNBHOUSING","POLICYBZR","POLYCAB","POWERGRID","POWERINDIA",
+    "PPLPHARMA","PREMIERENE","PRESTIGE","RBLBANK","RECLTD","RELIANCE","RVNL","SAIL",
+    "SAMMAANCAP","SBICARD","SBILIFE","SBIN","SHREECEM","SHRIRAMFIN","SIEMENS","SOLARINDS",
+    "SONACOMS","SRF","SUNPHARMA","SUPREMEIND","SUZLON","SWIGGY","SYNGENE","TATACONSUM",
+    "TATAELXSI","TATAPOWER","TATASTEEL","TATATECH","TCS","TECHM","TIINDIA","TITAN","TMPV",
+    "TORNTPHARM","TORNTPOWER","TRENT","TVSMOTOR","ULTRACEMCO","UNIONBANK","UNITDSPR",
+    "UNOMINDA","UPL","VBL","VEDL","VOLTAS","WAAREEENER","WIPRO","YESBANK","ZYDUSLIFE"
+]
 
 # ==================================================
 # DATA DIRECTORY
@@ -35,7 +61,7 @@ instruments = pd.DataFrame(kite.instruments("NFO"))
 # ==================================================
 # HELPERS
 # ==================================================
-def chunk(lst, size=200):  # FIXED LIMIT
+def chunk(lst, size=200):
     for i in range(0, len(lst), size):
         yield lst[i:i + size]
 
@@ -62,7 +88,6 @@ for stock in STOCKS:
 
     option_map[stock] = df
 
-    # ✅ FIXED SYMBOL COLLECTION
     all_option_symbols.extend(
         ["NFO:" + ts for ts in df["tradingsymbol"].tolist()]
     )
@@ -120,7 +145,6 @@ for stock, df in option_map.items():
     stock_high = spot.get("ohlc", {}).get("high")
     stock_low = spot.get("ohlc", {}).get("low")
 
-
     pct_change = (
         round(((stock_ltp - prev_close) / prev_close) * 100, 3)
         if stock_ltp and prev_close else None
@@ -130,28 +154,34 @@ for stock, df in option_map.items():
         ce = df[(df["strike"] == strike) & (df["instrument_type"] == "CE")]
         pe = df[(df["strike"] == strike) & (df["instrument_type"] == "PE")]
 
-        ce_q = option_quotes.get("NFO:" + ce.iloc[0]["tradingsymbol"], {}) if not ce.empty else {}
-        pe_q = option_quotes.get("NFO:" + pe.iloc[0]["tradingsymbol"], {}) if not pe.empty else {}
+        ce_q = option_quotes.get(
+            "NFO:" + ce.iloc[0]["tradingsymbol"], {}
+        ) if not ce.empty else {}
 
-  rows.append({
-    "Stock": stock,
-    "Expiry": df["expiry"].iloc[0].date(),
-    "Strike": strike,
-    "CE_LTP": ce_q.get("last_price"),
-    "CE_OI": ce_q.get("oi"),
-    "CE_VOL": ce_q.get("volume"),
-    "PE_LTP": pe_q.get("last_price"),
-    "PE_OI": pe_q.get("oi"),
-    "PE_VOL": pe_q.get("volume"),
-    "Stock_LTP": stock_ltp,
-    "Stock_High": stock_high,
-    "Stock_Low": stock_low,
-    "Stock_%_Change": pct_change,
-    "Stock_%_Change": pct_change,
-    "timestamp": now_ts,
-})
+        pe_q = option_quotes.get(
+            "NFO:" + pe.iloc[0]["tradingsymbol"], {}
+        ) if not pe.empty else {}
 
+        rows.append({
+            "Stock": stock,
+            "Expiry": df["expiry"].iloc[0].date(),
+            "Strike": strike,
 
+            "CE_LTP": ce_q.get("last_price"),
+            "CE_OI": ce_q.get("oi"),
+            "CE_Volume": ce_q.get("volume"),
+
+            "PE_LTP": pe_q.get("last_price"),
+            "PE_OI": pe_q.get("oi"),
+            "PE_Volume": pe_q.get("volume"),
+
+            "Stock_LTP": stock_ltp,
+            "Stock_High": stock_high,
+            "Stock_Low": stock_low,
+            "Stock_%_Change": pct_change,
+
+            "timestamp": now_ts,
+        })
 
     stock_df = pd.DataFrame(rows).sort_values("Strike")
     stock_df = compute_max_pain(stock_df)
