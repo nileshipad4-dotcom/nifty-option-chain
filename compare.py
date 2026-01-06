@@ -106,7 +106,7 @@ df["Δ MP TS1"] = df["MP_0"] - df["MP_1"]
 df["Δ MP TS2"] = df["MP_1"] - df["MP_2"]
 df["Δ MP TS3"] = df["MP_2"] - df["MP_3"]
 
-# ✅ YOUR DEFINITION
+# ✅ YOUR EXACT DEFINITION
 df["ΔΔ MP (TS2-TS3)"] = df["Δ MP TS2"] - df["Δ MP TS3"]
 
 # ==================================================
@@ -132,10 +132,7 @@ def filter_strikes(df, n=6):
         blocks.append(pd.DataFrame([{c: np.nan for c in g.columns}]))
     return pd.concat(blocks[:-1], ignore_index=True)
 
-display_df = filter_strikes(df)
-
-# 🔒 ABSOLUTE FIX
-display_df = display_df.reset_index(drop=True)
+display_df = filter_strikes(df).reset_index(drop=True)
 
 # ==================================================
 # HIGHLIGHTING (INDEX-SAFE)
@@ -150,23 +147,27 @@ def highlight(data):
 
         ltp = sdf["Stock_LTP"].iloc[0]
 
-        # ATM row
         atm_pos = (sdf["Strike"] - ltp).abs().idxmin()
         styles.iloc[atm_pos] = "background-color:#003366;color:white"
 
-        # Max |Δ MP TS1|
         mp_pos = sdf["Δ MP TS1"].abs().idxmax()
         styles.iloc[mp_pos] = "background-color:#8B0000;color:white"
 
     return styles
 
 # ==================================================
-# DISPLAY
+# SAFE FORMATTERS (NO GLOBAL FORMAT STRING)
+# ==================================================
+num_cols = display_df.select_dtypes(include="number").columns
+formatters = {c: "{:.0f}" for c in num_cols}
+
+# ==================================================
+# DISPLAY (STABLE)
 # ==================================================
 st.dataframe(
     display_df.style
     .apply(highlight, axis=None)
-    .format("{:.0f}", na_rep=""),
+    .format(formatters, na_rep=""),
     use_container_width=True
 )
 
