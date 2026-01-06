@@ -133,29 +133,24 @@ for stock, df in option_map.items():
         ce_q = option_quotes.get("NFO:" + ce.iloc[0]["tradingsymbol"], {}) if not ce.empty else {}
         pe_q = option_quotes.get("NFO:" + pe.iloc[0]["tradingsymbol"], {}) if not pe.empty else {}
 
-    rows.append({
+  rows.append({
     "Stock": stock,
     "Expiry": df["expiry"].iloc[0].date(),
     "Strike": strike,
-
-    # CALL
     "CE_LTP": ce_q.get("last_price"),
     "CE_OI": ce_q.get("oi"),
-    "CE_Volume": ce_q.get("volume"),
-
-    # PUT
+    "CE_VOL": ce_q.get("volume"),
     "PE_LTP": pe_q.get("last_price"),
     "PE_OI": pe_q.get("oi"),
-    "PE_Volume": pe_q.get("volume"),
-
-    # STOCK DATA
+    "PE_VOL": pe_q.get("volume"),
     "Stock_LTP": stock_ltp,
     "Stock_High": stock_high,
     "Stock_Low": stock_low,
     "Stock_%_Change": pct_change,
-
+    "Stock_%_Change": pct_change,
     "timestamp": now_ts,
 })
+
 
 
     stock_df = pd.DataFrame(rows).sort_values("Strike")
