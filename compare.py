@@ -27,8 +27,8 @@ def load_csv_files():
     return sorted(files, reverse=True)
 
 csv_files = load_csv_files()
-if len(csv_files) < 4:
-    st.error("Need at least 4 CSV files.")
+if len(csv_files) < 3:
+    st.error("Need at least 3 CSV files.")
     st.stop()
 
 timestamps_all = [ts for ts, _ in csv_files]
@@ -54,15 +54,14 @@ filtered_ts = [
 ]
 
 # ==================================================
-# TIMESTAMP SELECTORS (4)
+# TIMESTAMP SELECTORS (3 ONLY)
 # ==================================================
-cols = st.columns(4)
+cols = st.columns(3)
 t1 = cols[0].selectbox("Timestamp 1", filtered_ts, 0)
 t2 = cols[1].selectbox("Timestamp 2", filtered_ts, 1)
 t3 = cols[2].selectbox("Timestamp 3", filtered_ts, 2)
-t4 = cols[3].selectbox("Timestamp 4", filtered_ts, 3)
 
-t = [t1, t2, t3, t4]
+t = [t1, t2, t3]
 
 # ==================================================
 # LOAD TIME-VARYING DATA
@@ -87,7 +86,7 @@ for i, ts in enumerate(t):
 # MERGE
 # ==================================================
 df = dfs[0]
-for i in range(1, 4):
+for i in range(1, 3):
     df = df.merge(dfs[i], on=["Stock", "Strike"], how="inner")
 
 # ==================================================
@@ -110,11 +109,6 @@ for c in df.columns:
 # ==================================================
 df["Δ MP TS1-TS2"] = df["MP_0"] - df["MP_1"]
 df["Δ MP TS2-TS3"] = df["MP_1"] - df["MP_2"]
-df["Δ MP TS3-TS4"] = df["MP_2"] - df["MP_3"]
-
-df["ΔΔ MP (TS1-TS2 vs TS2-TS3)"] = (
-    df["Δ MP TS1-TS2"] - df["Δ MP TS2-TS3"]
-)
 
 # ==================================================
 # OI / VOLUME DELTAS (TS1–TS2)
@@ -138,8 +132,7 @@ df["Stock_LTP"] = df["LTP_0"]
 df = df[
     [
         "Stock", "Strike",
-        "Δ MP TS1-TS2", "Δ MP TS2-TS3", "Δ MP TS3-TS4",
-        "ΔΔ MP (TS1-TS2 vs TS2-TS3)",
+        "Δ MP TS1-TS2", "Δ MP TS2-TS3",
         "Δ CE OI TS1-TS2", "Δ PE OI TS1-TS2",
         "Δ CE Vol TS1-TS2", "Δ PE Vol TS1-TS2",
         "Stock_LTP", "Stock_%_Change",
