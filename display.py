@@ -23,8 +23,8 @@ def load_csv_files():
     return sorted(files, reverse=True)
 
 csv_files = load_csv_files()
-if len(csv_files) < 6:
-    st.error("Need at least 6 option chain CSV files")
+if len(csv_files) < 4:
+    st.error("Need at least 4 option chain CSV files")
     st.stop()
 
 timestamps = [ts for ts, _ in csv_files]
@@ -40,14 +40,12 @@ st.subheader("🕒 Timestamp Selection")
 
 t1 = st.selectbox("Base Timestamp (T1)", timestamps, index=0)
 
-c1, c2, c3, c4, c5 = st.columns(5)
+c1, c2, c3 = st.columns(3)
 with c1: t2 = st.selectbox("T2", timestamps, index=1)
 with c2: t3 = st.selectbox("T3", timestamps, index=2)
 with c3: t4 = st.selectbox("T4", timestamps, index=3)
-with c4: t5 = st.selectbox("T5", timestamps, index=4)
-with c5: t6 = st.selectbox("T6", timestamps, index=5)
 
-compare_ts = [t2, t3, t4, t5, t6]
+compare_ts = [t2, t3, t4]
 time_cols = sorted([short_ts(ts) for ts in compare_ts])
 
 # =====================================
@@ -55,9 +53,12 @@ time_cols = sorted([short_ts(ts) for ts in compare_ts])
 # =====================================
 df_base = pd.read_csv(file_map[t1])
 
-required_cols = {"Stock", "Strike", "Max_Pain", "Stock_LTP"}
+required_cols = {
+    "Stock", "Strike", "Max_Pain",
+    "Stock_LTP", "Stock_High", "Stock_Low"
+}
 if not required_cols.issubset(df_base.columns):
-    st.error("CSV must contain Stock, Strike, Max_Pain, Stock_LTP")
+    st.error("CSV must contain Stock, Strike, Max_Pain, Stock_LTP, Stock_High, Stock_Low")
     st.stop()
 
 df_base["Stock"] = df_base["Stock"].astype(str).str.upper().str.strip()
@@ -98,15 +99,11 @@ def compute_ddmp(df):
 # =====================================
 # MONOTONIC FILTER
 # =====================================
-def is_monotonic_4_of_5(values):
-    inc = 0
-    dec = 0
-    for i in range(4):
-        if values[i] <= values[i + 1]:
-            inc += 1
-        if values[i] >= values[i + 1]:
-            dec += 1
-    return inc >= 4 or dec >= 4
+def is_monotonic_3_of_3(values):
+    return (
+        values[0] <= values[1] <= values[2] or
+        values[0] >= values[1] >= values[2]
+    )
 
 # =====================================
 # FILTER PARAMETERS
@@ -152,6 +149,9 @@ for stock in all_stocks:
         continue
 
     ltp = float(sdf["Stock_LTP"].iloc[0])
+    high = float(sdf["Stock_High"].iloc[0])
+    low = float(sdf["Stock_Low"].iloc[0])
+
     if ltp <= 0:
         continue
 
@@ -160,7 +160,7 @@ for stock in all_stocks:
         if any(pd.isna(values)):
             continue
 
-        if not is_monotonic_4_of_5(values):
+        if not is_monotonic_3_of_3(values):
             continue
 
         if abs(values[-1] - values[0]) <= ddmp_diff_limit:
@@ -175,7 +175,9 @@ for stock in all_stocks:
             "Stock": stock,
             "Strike": int(strike),
             **{c: int(row[c]) for c in time_cols},
-            "Stock_LTP": round(ltp, 2)
+            "Stock_LTP": round(ltp, 2),
+            "Stock_High": round(high, 2),
+            "Stock_Low": round(low, 2),
         })
 
 # =====================================
@@ -188,15 +190,12 @@ if filtered_rows:
         stock = row["Stock"]
         strike = row["Strike"]
 
-        # 1️⃣ Max Pain – Dark Brown
         if strike == mp_map.get(stock):
             return ["background-color:#4E342E;color:white"] * len(row)
 
-        # 2️⃣ ATM – Dark Blue
         if strike in atm_map.get(stock, set()):
             return ["background-color:#003366;color:white"] * len(row)
 
-        # 3️⃣ Above / Below LTP
         if strike > row["Stock_LTP"]:
             return ["background-color:#004d00;color:white"] * len(row)
         else:
@@ -209,6 +208,8 @@ if filtered_rows:
             {
                 "Strike": "{:.0f}",
                 "Stock_LTP": "{:.2f}",
+                "Stock_High": "{:.2f}",
+                "Stock_Low": "{:.2f}",
                 **{c: "{:.0f}" for c in time_cols}
             }
         ),
