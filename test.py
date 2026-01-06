@@ -247,6 +247,13 @@ for stock in df_all["Stock"].unique():
     if ltp <= 0:
         continue
 
+    ltp2 = float(df_t2[df_t2["Stock"] == stock]["Stock_LTP"].iloc[0])
+    ltp3 = float(df_t3[df_t3["Stock"] == stock]["Stock_LTP"].iloc[0])
+    
+    pct_12 = (ltp2 - ltp) / ltp * 100
+    pct_23 = (ltp3 - ltp2) / ltp2 * 100 if ltp2 != 0 else np.nan
+
+    
     high = float(sdf["Stock_High"].iloc[0])
     low = float(sdf["Stock_Low"].iloc[0])
 
@@ -270,10 +277,13 @@ for stock in df_all["Stock"].unique():
             "Strike": int(strike),
             short_ts(t2): int(v1),
             short_ts(t3): int(v2),
+            "%Δ LTP TS1→TS2": round(pct_12, 2),
+            "%Δ LTP TS2→TS3": round(pct_23, 2),
             "Stock_LTP": round(ltp, 2),
             "Stock_High": round(high, 2),
             "Stock_Low": round(low, 2),
         })
+
 
 df2 = pd.DataFrame(rows)
 
@@ -313,12 +323,14 @@ if not df2.empty:
         .apply(color_table2, axis=1)
         .format({
             "Strike": "{:.0f}",
+            short_ts(t2): "{:.0f}",
+            short_ts(t3): "{:.0f}",
+            "%Δ LTP TS1→TS2": "{:.2f}",
+            "%Δ LTP TS2→TS3": "{:.2f}",
             "Stock_LTP": "{:.2f}",
             "Stock_High": "{:.2f}",
             "Stock_Low": "{:.2f}",
-            short_ts(t2): "{:.0f}",
-            short_ts(t3): "{:.0f}",
-        }),
+        })
         use_container_width=True
     )
 else:
