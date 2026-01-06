@@ -125,17 +125,28 @@ ltp_pct_cols = [
 dfs = []
 for i, ts in enumerate(t):
     d = pd.read_csv(file_map[ts])
-    d = d[["Stock", "Strike", "Max_Pain", "Stock_LTP"]].rename(
-        columns={
-            "Max_Pain": f"MP_{i}",
-            "Stock_LTP": f"LTP_{i}",
-        }
-    )
+    d = d[[
+        "Stock", "Strike", "Max_Pain", "Stock_LTP",
+        "CE_OI", "PE_OI", "CE_Volume", "PE_Volume"
+    ]].rename(columns={
+        "Max_Pain": f"MP_{i}",
+        "Stock_LTP": f"LTP_{i}",
+        "CE_OI": f"CE_OI_{i}",
+        "PE_OI": f"PE_OI_{i}",
+        "CE_Volume": f"CE_VOL_{i}",
+        "PE_Volume": f"PE_VOL_{i}",
+    })
     dfs.append(d)
 
+# =====================================
+# TIMESTAMP 1 EXTRA DATA
+# =====================================
 raw_t1 = pd.read_csv(file_map[t1])
 pct_col = f"% Ch ({labels[0]})"
-dfs[0][pct_col] = raw_t1["Stock_%_Change"] if "Stock_%_Change" in raw_t1.columns else np.nan
+
+dfs[0][pct_col] = raw_t1["Stock_%_Change"]
+dfs[0]["Stock_High"] = raw_t1["Stock_High"]
+dfs[0]["Stock_Low"] = raw_t1["Stock_Low"]
 
 # =====================================
 # MERGE
@@ -155,6 +166,21 @@ for idx, (a, b) in enumerate(pairs):
     ) * 100
 
 # =====================================
+# Δ(Δ MP T2 − T3)
+# =====================================
+df["Δ(Δ MP T2-T3)"] = delta_mp_cols and (
+    df[delta_mp_cols[1]] - df[delta_mp_cols[2]]
+)
+
+# =====================================
+# OI / VOLUME DIFF (T2 - T3)
+# =====================================
+df["Δ CE OI (T2-T3)"] = df["CE_OI_1"] - df["CE_OI_2"]
+df["Δ PE OI (T2-T3)"] = df["PE_OI_1"] - df["PE_OI_2"]
+df["Δ CE Vol (T2-T3)"] = df["CE_VOL_1"] - df["CE_VOL_2"]
+df["Δ PE Vol (T2-T3)"] = df["PE_VOL_1"] - df["PE_VOL_2"]
+
+# =====================================
 # CLEAN
 # =====================================
 df["Stock"] = df["Stock"].str.upper().str.strip()
@@ -162,14 +188,16 @@ EXCLUDE = {"NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"}
 df = df[~df["Stock"].isin(EXCLUDE)]
 
 df = df[
-    ["Stock", "Strike"]
+    ["Stock", "Strike", "Stock_High", "Stock_Low"]
     + delta_mp_cols
-    + ["LTP_0", pct_col]
+    + ["Δ(Δ MP T2-T3)", "LTP_0", pct_col]
     + ltp_pct_cols
+    + ["Δ CE OI (T2-T3)", "Δ PE OI (T2-T3)",
+       "Δ CE Vol (T2-T3)", "Δ PE Vol (T2-T3)"]
 ].rename(columns={"LTP_0": "Stock_LTP"})
 
 # =====================================
-# ±6 STRIKE FILTER
+# ± STRIKE FILTER
 # =====================================
 def filter_strikes_around_ltp(df, below=6, above=6):
     out = []
@@ -191,6 +219,8 @@ def filter_strikes_around_ltp(df, below=6, above=6):
 
     return pd.concat(out[:-1], ignore_index=True)
 
+display_df = filter_strikes_around_ltp(df)
+
 # =====================================
 # HIGHLIGHTING
 # =====================================
@@ -202,18 +232,22 @@ def highlight_rows(data):
         ltp = float(sdf["Stock_LTP"].iloc[0])
         strikes = sdf["Strike"].values
 
+        # ATM highlight
         for i in range(len(strikes) - 1):
             if strikes[i] <= ltp <= strikes[i + 1]:
                 styles.loc[sdf.index[i]] = "background-color:#003366;color:white"
                 styles.loc[sdf.index[i + 1]] = "background-color:#003366;color:white"
                 break
 
-        styles.loc[sdf[delta_mp_cols[0]].abs().idxmax()] = "background-color:#8B0000;color:white"
+        # Max Δ MP highlight
+        styles.loc[
+            sdf[delta_mp_cols[0]].abs().idxmax()
+        ] = "background-color:#8B0000;color:white"
 
     return styles
 
 # =====================================
-# STRIKE FORMATTER (NEW)
+# STRIKE FORMATTER
 # =====================================
 def format_strike(x):
     if pd.isna(x):
@@ -225,8 +259,6 @@ def format_strike(x):
 # =====================================
 # DISPLAY
 # =====================================
-display_df = filter_strikes_around_ltp(df)
-
 st.dataframe(
     display_df
     .style
@@ -234,9 +266,16 @@ st.dataframe(
     .format(
         {
             "Strike": format_strike,
-            **{c: "{:.0f}" for c in delta_mp_cols},
-            **{c: "{:.2f}" for c in ltp_pct_cols + ["Stock_LTP"]},
+            "Stock_LTP": "{:.2f}",
+            "Stock_High": "{:.2f}",
+            "Stock_Low": "{:.2f}",
             pct_col: "{:.3f}",
+            **{c: "{:.0f}" for c in delta_mp_cols},
+            "Δ(Δ MP T2-T3)": "{:.0f}",
+            **{c: "{:.0f}" for c in [
+                "Δ CE OI (T2-T3)", "Δ PE OI (T2-T3)",
+                "Δ CE Vol (T2-T3)", "Δ PE Vol (T2-T3)"
+            ]},
         },
         na_rep="",
     ),
@@ -249,6 +288,6 @@ st.dataframe(
 st.download_button(
     "⬇️ Download CSV",
     df.to_csv(index=False),
-    "max_pain_pairwise_time_filtered.csv",
+    "max_pain_with_highlight_and_delta_delta.csv",
     "text/csv",
 )
