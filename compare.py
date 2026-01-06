@@ -166,19 +166,16 @@ for idx, (a, b) in enumerate(pairs):
     ) * 100
 
 # =====================================
-# Δ(Δ MP T2 − T3)
+# FIXED: DYNAMIC OI / VOLUME DELTAS
 # =====================================
-df["Δ(Δ MP T2-T3)"] = delta_mp_cols and (
-    df[delta_mp_cols[1]] - df[delta_mp_cols[2]]
-)
+t_idx = {ts: i for i, ts in enumerate(t)}
+i_t2 = t_idx[t2]
+i_t3 = t_idx[t3]
 
-# =====================================
-# OI / VOLUME DIFF (T2 - T3)
-# =====================================
-df["Δ CE OI (T2-T3)"] = df["CE_OI_1"] - df["CE_OI_2"]
-df["Δ PE OI (T2-T3)"] = df["PE_OI_1"] - df["PE_OI_2"]
-df["Δ CE Vol (T2-T3)"] = df["CE_VOL_1"] - df["CE_VOL_2"]
-df["Δ PE Vol (T2-T3)"] = df["PE_VOL_1"] - df["PE_VOL_2"]
+df["Δ CE OI (T2-T3)"] = df[f"CE_OI_{i_t2}"] - df[f"CE_OI_{i_t3}"]
+df["Δ PE OI (T2-T3)"] = df[f"PE_OI_{i_t2}"] - df[f"PE_OI_{i_t3}"]
+df["Δ CE Vol (T2-T3)"] = df[f"CE_VOL_{i_t2}"] - df[f"CE_VOL_{i_t3}"]
+df["Δ PE Vol (T2-T3)"] = df[f"PE_VOL_{i_t2}"] - df[f"PE_VOL_{i_t3}"]
 
 # =====================================
 # CLEAN
@@ -190,14 +187,16 @@ df = df[~df["Stock"].isin(EXCLUDE)]
 df = df[
     ["Stock", "Strike", "Stock_High", "Stock_Low"]
     + delta_mp_cols
-    + ["Δ(Δ MP T2-T3)", "LTP_0", pct_col]
+    + ["LTP_0", pct_col]
     + ltp_pct_cols
-    + ["Δ CE OI (T2-T3)", "Δ PE OI (T2-T3)",
-       "Δ CE Vol (T2-T3)", "Δ PE Vol (T2-T3)"]
+    + [
+        "Δ CE OI (T2-T3)", "Δ PE OI (T2-T3)",
+        "Δ CE Vol (T2-T3)", "Δ PE Vol (T2-T3)"
+    ]
 ].rename(columns={"LTP_0": "Stock_LTP"})
 
 # =====================================
-# ± STRIKE FILTER
+# STRIKE FILTER
 # =====================================
 def filter_strikes_around_ltp(df, below=6, above=6):
     out = []
@@ -206,16 +205,11 @@ def filter_strikes_around_ltp(df, below=6, above=6):
         ltp = float(sdf["Stock_LTP"].iloc[0])
         strikes = sdf["Strike"].values
 
-        atm = None
         for i in range(len(strikes) - 1):
             if strikes[i] <= ltp <= strikes[i + 1]:
-                atm = i
+                out.append(sdf.iloc[max(0, i - below): i + 2 + above])
+                out.append(pd.DataFrame([{c: np.nan for c in df.columns}]))
                 break
-        if atm is None:
-            continue
-
-        out.append(sdf.iloc[max(0, atm - below): atm + 2 + above])
-        out.append(pd.DataFrame([{c: np.nan for c in df.columns}]))
 
     return pd.concat(out[:-1], ignore_index=True)
 
@@ -228,40 +222,25 @@ def highlight_rows(data):
     styles = pd.DataFrame("", index=data.index, columns=data.columns)
 
     for stock in data["Stock"].dropna().unique():
-        sdf = data[(data["Stock"] == stock) & data["Strike"].notna()].sort_values("Strike")
-        ltp = float(sdf["Stock_LTP"].iloc[0])
-        strikes = sdf["Strike"].values
-
-        # ATM highlight
-        for i in range(len(strikes) - 1):
-            if strikes[i] <= ltp <= strikes[i + 1]:
-                styles.loc[sdf.index[i]] = "background-color:#003366;color:white"
-                styles.loc[sdf.index[i + 1]] = "background-color:#003366;color:white"
-                break
-
-        # Max Δ MP highlight
-        styles.loc[
-            sdf[delta_mp_cols[0]].abs().idxmax()
-        ] = "background-color:#8B0000;color:white"
+        sdf = data[(data["Stock"] == stock) & data["Strike"].notna()]
+        styles.loc[sdf[delta_mp_cols[0]].abs().idxmax()] = \
+            "background-color:#8B0000;color:white"
 
     return styles
 
 # =====================================
-# STRIKE FORMATTER
+# FORMATTER
 # =====================================
 def format_strike(x):
     if pd.isna(x):
         return ""
-    if float(x).is_integer():
-        return f"{int(x)}"
-    return f"{x:.2f}"
+    return f"{int(x)}" if float(x).is_integer() else f"{x:.2f}"
 
 # =====================================
 # DISPLAY
 # =====================================
 st.dataframe(
-    display_df
-    .style
+    display_df.style
     .apply(highlight_rows, axis=None)
     .format(
         {
@@ -271,13 +250,12 @@ st.dataframe(
             "Stock_Low": "{:.2f}",
             pct_col: "{:.3f}",
             **{c: "{:.0f}" for c in delta_mp_cols},
-            "Δ(Δ MP T2-T3)": "{:.0f}",
             **{c: "{:.0f}" for c in [
                 "Δ CE OI (T2-T3)", "Δ PE OI (T2-T3)",
                 "Δ CE Vol (T2-T3)", "Δ PE Vol (T2-T3)"
             ]},
         },
-        na_rep="",
+        na_rep=""
     ),
     use_container_width=True,
 )
@@ -288,6 +266,6 @@ st.dataframe(
 st.download_button(
     "⬇️ Download CSV",
     df.to_csv(index=False),
-    "max_pain_with_highlight_and_delta_delta.csv",
+    "max_pain_fixed_oi_volume.csv",
     "text/csv",
 )
