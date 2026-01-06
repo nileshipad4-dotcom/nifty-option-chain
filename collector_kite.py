@@ -117,6 +117,9 @@ for stock, df in option_map.items():
     spot = spot_quotes.get(f"NSE:{stock}", {})
     stock_ltp = spot.get("last_price")
     prev_close = spot.get("ohlc", {}).get("close")
+    stock_high = spot.get("ohlc", {}).get("high")
+    stock_low = spot.get("ohlc", {}).get("low")
+
 
     pct_change = (
         round(((stock_ltp - prev_close) / prev_close) * 100, 3)
@@ -130,18 +133,30 @@ for stock, df in option_map.items():
         ce_q = option_quotes.get("NFO:" + ce.iloc[0]["tradingsymbol"], {}) if not ce.empty else {}
         pe_q = option_quotes.get("NFO:" + pe.iloc[0]["tradingsymbol"], {}) if not pe.empty else {}
 
-        rows.append({
-            "Stock": stock,
-            "Expiry": df["expiry"].iloc[0].date(),
-            "Strike": strike,
-            "CE_LTP": ce_q.get("last_price"),
-            "CE_OI": ce_q.get("oi"),
-            "PE_LTP": pe_q.get("last_price"),
-            "PE_OI": pe_q.get("oi"),
-            "Stock_LTP": stock_ltp,
-            "Stock_%_Change": pct_change,
-            "timestamp": now_ts,
-        })
+    rows.append({
+    "Stock": stock,
+    "Expiry": df["expiry"].iloc[0].date(),
+    "Strike": strike,
+
+    # CALL
+    "CE_LTP": ce_q.get("last_price"),
+    "CE_OI": ce_q.get("oi"),
+    "CE_Volume": ce_q.get("volume"),
+
+    # PUT
+    "PE_LTP": pe_q.get("last_price"),
+    "PE_OI": pe_q.get("oi"),
+    "PE_Volume": pe_q.get("volume"),
+
+    # STOCK DATA
+    "Stock_LTP": stock_ltp,
+    "Stock_High": stock_high,
+    "Stock_Low": stock_low,
+    "Stock_%_Change": pct_change,
+
+    "timestamp": now_ts,
+})
+
 
     stock_df = pd.DataFrame(rows).sort_values("Strike")
     stock_df = compute_max_pain(stock_df)
