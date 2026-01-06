@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import os
-from datetime import time
 
 # =====================================
 # CONFIG
@@ -23,19 +22,9 @@ def load_csv_files():
             files.append((ts, os.path.join(DATA_DIR, f)))
     return sorted(files, reverse=True)
 
-def ts_in_market_hours(ts):
-    try:
-        t = ts.split("_")[-1]
-        hh, mm, _ = t.split("-")
-        tt = time(int(hh), int(mm))
-        return time(0, 0) <= tt <= time(23, 59)
-    except:
-        return False
-
-csv_files = [(ts, path) for ts, path in load_csv_files() if ts_in_market_hours(ts)]
-
+csv_files = load_csv_files()
 if len(csv_files) < 3:
-    st.error("Need at least 3 option chain CSV files between 08:00 and 16:30")
+    st.error("Need at least 3 option chain CSV files")
     st.stop()
 
 timestamps = [ts for ts, _ in csv_files]
@@ -58,10 +47,10 @@ with c2:
     t3 = st.selectbox("T3", timestamps, index=2)
 
 compare_ts = [t2, t3]
-time_cols = sorted([short_ts(ts) for ts in compare_ts])
+time_cols = [short_ts(t2), short_ts(t3)]
 
 # =====================================
-# LOAD BASE DATA
+# LOAD BASE DATA (T1)
 # =====================================
 df_base = pd.read_csv(file_map[t1])
 
@@ -77,10 +66,12 @@ df_base["Stock"] = df_base["Stock"].astype(str).str.upper().str.strip()
 all_stocks = sorted(df_base["Stock"].unique())
 
 # =====================================
-# ΔΔ MP CALCULATION
+# ΔΔ MP CALCULATION (T1 vs T2, T2 vs T3)
 # =====================================
 def compute_ddmp(df):
     df = df.copy()
+
+    prev_mp_col = "Max_Pain"
 
     for ts in compare_ts:
         label = short_ts(ts)
@@ -89,27 +80,27 @@ def compute_ddmp(df):
         df_ts["Stock"] = df_ts["Stock"].astype(str).str.upper().str.strip()
 
         df = df.merge(
-            df_ts[["Stock", "Strike", "Max_Pain", "Stock_LTP"]],
+            df_ts[["Stock", "Strike", "Max_Pain"]],
             on=["Stock", "Strike"],
             suffixes=("", f"_{label}")
         )
 
-        delta_col = f"_delta_{label}"
-        df[delta_col] = df["Max_Pain"] - df[f"Max_Pain_{label}"]
+        curr_mp_col = f"Max_Pain_{label}"
         df[label] = np.nan
 
         for _, sdf in df.sort_values("Strike").groupby("Stock"):
-            vals = sdf[delta_col].astype(float).values
+            vals = (sdf[prev_mp_col] - sdf[curr_mp_col]).astype(float).values
             diff = vals - np.roll(vals, -1)
             diff[-1] = np.nan
             df.loc[sdf.index, label] = diff
 
-        df.drop(columns=[f"Max_Pain_{label}", delta_col], inplace=True)
+        df.drop(columns=[curr_mp_col], inplace=True)
+        prev_mp_col = "Max_Pain"
 
     return df
 
 # =====================================
-# MONOTONIC FILTER
+# MONOTONIC FILTER (2 of 2)
 # =====================================
 def is_monotonic_2_of_2(values):
     return values[0] <= values[1] or values[0] >= values[1]
@@ -123,17 +114,19 @@ p1, p2 = st.columns(2)
 with p1:
     ltp_pct_limit = st.number_input("Max % distance from LTP", 0.0, 50.0, 5.0, 0.5)
 with p2:
-    ddmp_diff_limit = st.number_input("Min |ΔΔ MP(last − first)|", 0.0, value=147.0, step=10.0)
+    ddmp_diff_limit = st.number_input(
+        "Min |ΔΔ MP(last − first)|", 0.0, value=147.0, step=10.0
+    )
 
 # =====================================
-# FILTERED TABLE
+# PREP DATA
 # =====================================
-st.subheader("🧩 Stocks & Strikes with Strong Consistent ΔΔ MP Trend")
-
-filtered_rows = []
 df_all = compute_ddmp(df_base)
 
-# Pre-compute ATM strikes & Max Pain per stock
+df_t2 = pd.read_csv(file_map[t2]).set_index("Stock")
+df_t3 = pd.read_csv(file_map[t3]).set_index("Stock")
+
+# Precompute ATM & Max Pain
 atm_map = {}
 mp_map = {}
 
@@ -152,9 +145,10 @@ for stock in all_stocks:
 
     mp_map[stock] = sdf.loc[sdf["Max_Pain"].idxmin(), "Strike"]
 
-# Load LTPs for % change
-df_t2 = pd.read_csv(file_map[t2]).set_index("Stock")
-df_t3 = pd.read_csv(file_map[t3]).set_index("Stock")
+# =====================================
+# FILTERED TABLE
+# =====================================
+filtered_rows = []
 
 for stock in all_stocks:
     sdf = df_all[df_all["Stock"] == stock].sort_values("Strike")
@@ -190,7 +184,8 @@ for stock in all_stocks:
         filtered_rows.append({
             "Stock": stock,
             "Strike": int(strike),
-            **{c: int(row[c]) for c in time_cols},
+            time_cols[0]: int(row[time_cols[0]]),
+            time_cols[1]: int(row[time_cols[1]]),
             "%Δ LTP T1→T2": round(pct_12, 2),
             "%Δ LTP T2→T3": round(pct_23, 2),
             "Stock_LTP": round(ltp1, 2),
@@ -199,10 +194,48 @@ for stock in all_stocks:
         })
 
 # =====================================
-# DISPLAY
+# DISPLAY WITH HIGHLIGHTS
 # =====================================
 if filtered_rows:
     filtered_df = pd.DataFrame(filtered_rows).sort_values(["Stock", "Strike"])
-    st.dataframe(filtered_df, use_container_width=True)
+
+    def color_row(row):
+        stock = row["Stock"]
+        strike = row["Strike"]
+        high = row["Stock_High"]
+        low = row["Stock_Low"]
+
+        # Base row color (unchanged)
+        if strike == mp_map.get(stock):
+            base = "background-color:#4E342E;color:white"
+        elif strike in atm_map.get(stock, set()):
+            base = "background-color:#003366;color:white"
+        elif strike > row["Stock_LTP"]:
+            base = "background-color:#004d00;color:white"
+        else:
+            base = "background-color:#660000;color:white"
+
+        styles = []
+        for col in row.index:
+            if col in ("Stock_High", "Stock_Low") and low <= strike <= high:
+                styles.append("")
+            else:
+                styles.append(base)
+        return styles
+
+    st.dataframe(
+        filtered_df.style
+        .apply(color_row, axis=1)
+        .format({
+            "Strike": "{:.0f}",
+            "Stock_LTP": "{:.2f}",
+            "Stock_High": "{:.2f}",
+            "Stock_Low": "{:.2f}",
+            "%Δ LTP T1→T2": "{:.2f}",
+            "%Δ LTP T2→T3": "{:.2f}",
+            **{c: "{:.0f}" for c in time_cols}
+        }),
+        use_container_width=True
+    )
 else:
     st.info("No strikes matched the current filter parameters.")
