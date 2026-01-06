@@ -28,7 +28,7 @@ def ts_in_market_hours(ts):
         t = ts.split("_")[-1]
         hh, mm, _ = t.split("-")
         tt = time(int(hh), int(mm))
-        return time(8, 0) <= tt <= time(16, 30)
+        return time(0, 0) <= tt <= time(23, 59)
     except:
         return False
 
