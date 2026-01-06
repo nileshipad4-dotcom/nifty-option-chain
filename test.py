@@ -17,7 +17,7 @@ st.set_page_config(page_title="FnO Max Pain Snapshot", layout="wide")
 st.title("📊 FnO Stock Max Pain Snapshot")
 
 DATA_DIR = "data"
-FNO_FILE = "FnO.csv"   # <-- Lot size file
+FNO_FILE = "FnO.csv"   # lot size file
 
 # =====================================
 # LOAD CSV FILES
@@ -90,11 +90,11 @@ for i, ts in enumerate(timestamps):
     dfs.append(d)
 
 # =====================================
-# LOAD TIMESTAMP 1 EXTRA DATA
+# LOAD TIMESTAMP 1 EXTRA DATA (CORRECT NAMES)
 # =====================================
 raw_t1 = pd.read_csv(file_map[t1])
 
-extra_cols = ["Stock_%_Change", "Stoch_High", "Stoch_Low"]
+extra_cols = ["Stock_%_Change", "Stock_High", "Stock_Low"]
 for col in extra_cols:
     dfs[0][col] = raw_t1[col] if col in raw_t1.columns else np.nan
 
@@ -109,7 +109,6 @@ for i in range(1, 3):
 # CLEAN STOCK NAMES
 # =====================================
 df["Stock"] = df["Stock"].str.upper().str.strip()
-
 EXCLUDE = {"NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"}
 df = df[~df["Stock"].isin(EXCLUDE)]
 
@@ -130,7 +129,7 @@ df = df.merge(
 )
 
 # =====================================
-# FINAL REQUIRED TABLE
+# FINAL TABLE
 # =====================================
 final_table = df[[
     "Stock",
@@ -141,8 +140,8 @@ final_table = df[[
     "MP_2",
     "LTP_0",
     "Stock_%_Change",
-    "Stoch_High",
-    "Stoch_Low"
+    "Stock_High",
+    "Stock_Low"
 ]].rename(columns={
     "lot_size": "Lot_Size",
     "MP_0": f"Max Pain ({labels[0]})",
@@ -164,15 +163,15 @@ def format_strike(x):
 # =====================================
 # DISPLAY
 # =====================================
-st.subheader("📌 Max Pain Snapshot (with FnO Lot Size)")
+st.subheader("📌 Max Pain Snapshot (Timestamp-1 Based Indicators)")
 
 st.dataframe(
     final_table.style.format({
         "Strike": format_strike,
         "Stock_LTP": "{:.2f}",
         "Stock_%_Change": "{:.3f}",
-        "Stoch_High": "{:.2f}",
-        "Stoch_Low": "{:.2f}",
+        "Stock_High": "{:.2f}",
+        "Stock_Low": "{:.2f}",
         "Lot_Size": "{:.0f}",
         **{c: "{:.0f}" for c in final_table.columns if "Max Pain" in c},
     }),
