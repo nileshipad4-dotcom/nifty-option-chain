@@ -7,9 +7,6 @@ from streamlit_autorefresh import st_autorefresh
 
 st_autorefresh(interval=360_000, key="auto_refresh")
 
-# =====================================
-# STREAMLIT CONFIG
-# =====================================
 st.set_page_config(page_title="Max Pain Comparison", layout="wide")
 st.title("📊 FnO STOCKS")
 
@@ -60,12 +57,16 @@ t6 = cols[5].selectbox("Timestamp 6", timestamps_all, 0)
 t = [t1, t2, t3, t4, t5, t6]
 
 # =====================================
-# LOAD DATA
+# LOAD DATA (TIME-VARYING ONLY)
 # =====================================
 dfs = []
 for i, ts in enumerate(t):
     d = pd.read_csv(file_map[ts])
-    d = d.rename(columns={
+    d = d[[
+        "Stock", "Strike",
+        "Max_Pain", "Stock_LTP",
+        "CE_OI", "PE_OI", "CE_Volume", "PE_Volume"
+    ]].rename(columns={
         "Max_Pain": f"MP_{i}",
         "Stock_LTP": f"LTP_{i}",
         "CE_OI": f"CE_OI_{i}",
@@ -76,22 +77,23 @@ for i, ts in enumerate(t):
     dfs.append(d)
 
 # =====================================
-# EXTRA FROM TIMESTAMP 1
-# =====================================
-raw_t1 = pd.read_csv(file_map[t1])
-dfs[0]["Stock_%_Change"] = raw_t1["Stock_%_Change"]
-dfs[0]["Stock_High"] = raw_t1["Stock_High"]
-dfs[0]["Stock_Low"] = raw_t1["Stock_Low"]
-
-# =====================================
-# MERGE
+# MERGE (SAFE – NO DUPLICATES)
 # =====================================
 df = dfs[0]
 for i in range(1, 6):
-    df = df.merge(dfs[i], on=["Stock", "Strike"])
+    df = df.merge(dfs[i], on=["Stock", "Strike"], how="inner")
 
 # =====================================
-# NUMERIC COERCION (CRITICAL FIX)
+# ATTACH TIMESTAMP-1 STATIC DATA (ONCE)
+# =====================================
+raw_t1 = pd.read_csv(file_map[t1])[
+    ["Stock", "Strike", "Stock_%_Change", "Stock_High", "Stock_Low"]
+]
+
+df = df.merge(raw_t1, on=["Stock", "Strike"], how="left")
+
+# =====================================
+# NUMERIC COERCION (CRITICAL)
 # =====================================
 for c in df.columns:
     if any(x in c for x in ["MP_", "LTP_", "OI_", "VOL_"]):
@@ -104,34 +106,18 @@ df["Δ MP TS1"] = df["MP_0"] - df["MP_1"]
 df["Δ MP TS2"] = df["MP_1"] - df["MP_2"]
 df["Δ MP TS3"] = df["MP_2"] - df["MP_3"]
 
-# ✅ DELTA–DELTA MP (YOUR EXACT DEFINITION)
+# ✅ DELTA-DELTA MP (YOUR DEFINITION)
 df["ΔΔ MP (TS2-TS3)"] = df["Δ MP TS2"] - df["Δ MP TS3"]
 
 # =====================================
-# OI / VOLUME DELTAS (TS2 - TS3)
+# OI / VOLUME DELTAS
 # =====================================
 df["Δ CE OI (TS2-TS3)"] = df["CE_OI_1"] - df["CE_OI_2"]
 df["Δ PE OI (TS2-TS3)"] = df["PE_OI_1"] - df["PE_OI_2"]
 df["Δ CE Vol (TS2-TS3)"] = df["CE_VOL_1"] - df["CE_VOL_2"]
 df["Δ PE Vol (TS2-TS3)"] = df["PE_VOL_1"] - df["PE_VOL_2"]
 
-# =====================================
-# CLEAN & FINAL COLUMNS
-# =====================================
 df["Stock_LTP"] = df["LTP_0"]
-
-EXCLUDE = {"NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"}
-df = df[~df["Stock"].isin(EXCLUDE)]
-
-df = df[
-    [
-        "Stock", "Strike", "Stock_High", "Stock_Low",
-        "Δ MP TS1", "Δ MP TS2", "Δ MP TS3", "ΔΔ MP (TS2-TS3)",
-        "Stock_LTP", "Stock_%_Change",
-        "Δ CE OI (TS2-TS3)", "Δ PE OI (TS2-TS3)",
-        "Δ CE Vol (TS2-TS3)", "Δ PE Vol (TS2-TS3)"
-    ]
-]
 
 # =====================================
 # STRIKE FILTER (±6)
@@ -150,18 +136,16 @@ def filter_strikes(df, n=6):
 display_df = filter_strikes(df)
 
 # =====================================
-# HIGHLIGHTING (RESTORED)
+# HIGHLIGHTING
 # =====================================
 def highlight(data):
     styles = pd.DataFrame("", index=data.index, columns=data.columns)
     for stock in data["Stock"].dropna().unique():
         sdf = data[data["Stock"] == stock]
 
-        # ATM
         atm = sdf["Strike"].sub(sdf["Stock_LTP"].iloc[0]).abs().idxmin()
         styles.loc[atm] = "background-color:#003366;color:white"
 
-        # Max |Δ MP TS1|
         styles.loc[sdf["Δ MP TS1"].abs().idxmax()] = \
             "background-color:#8B0000;color:white"
     return styles
@@ -182,6 +166,6 @@ st.dataframe(
 st.download_button(
     "⬇️ Download CSV",
     df.to_csv(index=False),
-    "max_pain_final_correct.csv",
+    "max_pain_final_fixed.csv",
     "text/csv",
 )
