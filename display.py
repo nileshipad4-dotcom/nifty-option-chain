@@ -41,9 +41,12 @@ st.subheader("🕒 Timestamp Selection")
 t1 = st.selectbox("Base Timestamp (T1)", timestamps, index=0)
 
 c1, c2, c3 = st.columns(3)
-with c1: t2 = st.selectbox("T2", timestamps, index=1)
-with c2: t3 = st.selectbox("T3", timestamps, index=2)
-with c3: t4 = st.selectbox("T4", timestamps, index=3)
+with c1:
+    t2 = st.selectbox("T2", timestamps, index=1)
+with c2:
+    t3 = st.selectbox("T3", timestamps, index=2)
+with c3:
+    t4 = st.selectbox("T4", timestamps, index=3)
 
 compare_ts = [t2, t3, t4]
 time_cols = sorted([short_ts(ts) for ts in compare_ts])
@@ -186,36 +189,33 @@ for stock in all_stocks:
 if filtered_rows:
     filtered_df = pd.DataFrame(filtered_rows).sort_values(["Stock", "Strike"])
 
-def color_row(row):
-    stock = row["Stock"]
-    strike = row["Strike"]
-    high = row["Stock_High"]
-    low = row["Stock_Low"]
+    def color_row(row):
+        stock = row["Stock"]
+        strike = row["Strike"]
+        high = row["Stock_High"]
+        low = row["Stock_Low"]
 
-    # Determine base row color (unchanged logic)
-    if strike == mp_map.get(stock):
-        base_style = "background-color:#4E342E;color:white"
-    elif strike in atm_map.get(stock, set()):
-        base_style = "background-color:#003366;color:white"
-    elif strike > row["Stock_LTP"]:
-        base_style = "background-color:#004d00;color:white"
-    else:
-        base_style = "background-color:#660000;color:white"
+        # Base row color (unchanged logic)
+        if strike == mp_map.get(stock):
+            base_style = "background-color:#4E342E;color:white"
+        elif strike in atm_map.get(stock, set()):
+            base_style = "background-color:#003366;color:white"
+        elif strike > row["Stock_LTP"]:
+            base_style = "background-color:#004d00;color:white"
+        else:
+            base_style = "background-color:#660000;color:white"
 
-    styles = []
-
-    for col in row.index:
-        # Special rule ONLY for Stock_High & Stock_Low
-        if col in ("Stock_High", "Stock_Low"):
-            if low <= strike <= high:
-                styles.append("")  # no highlight
+        styles = []
+        for col in row.index:
+            if col in ("Stock_High", "Stock_Low"):
+                if low <= strike <= high:
+                    styles.append("")  # no highlight
+                else:
+                    styles.append(base_style)
             else:
                 styles.append(base_style)
-        else:
-            styles.append(base_style)
 
-    return styles
-
+        return styles
 
     st.dataframe(
         filtered_df.style
