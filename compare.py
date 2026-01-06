@@ -7,9 +7,6 @@ from streamlit_autorefresh import st_autorefresh
 
 st_autorefresh(interval=360_000, key="auto_refresh")
 
-# ==================================================
-# STREAMLIT CONFIG
-# ==================================================
 st.set_page_config(page_title="Max Pain Comparison", layout="wide")
 st.title("📊 FnO STOCKS")
 
@@ -81,7 +78,7 @@ for i, ts in enumerate(t):
     dfs.append(d)
 
 # ==================================================
-# MERGE (SAFE)
+# MERGE
 # ==================================================
 df = dfs[0]
 for i in range(1, 6):
@@ -96,7 +93,7 @@ raw_t1 = pd.read_csv(file_map[t1])[
 df = df.merge(raw_t1, on=["Stock", "Strike"], how="left")
 
 # ==================================================
-# NUMERIC COERCION (CRITICAL)
+# NUMERIC COERCION
 # ==================================================
 for c in df.columns:
     if any(x in c for x in ["MP_", "LTP_", "OI_", "VOL_"]):
@@ -109,11 +106,11 @@ df["Δ MP TS1"] = df["MP_0"] - df["MP_1"]
 df["Δ MP TS2"] = df["MP_1"] - df["MP_2"]
 df["Δ MP TS3"] = df["MP_2"] - df["MP_3"]
 
-# ✅ EXACT DEFINITION YOU ASKED FOR
+# ✅ YOUR DEFINITION
 df["ΔΔ MP (TS2-TS3)"] = df["Δ MP TS2"] - df["Δ MP TS3"]
 
 # ==================================================
-# OI / VOLUME DELTAS (TS2-TS3)
+# OI / VOLUME DELTAS
 # ==================================================
 df["Δ CE OI"] = df["CE_OI_1"] - df["CE_OI_2"]
 df["Δ PE OI"] = df["PE_OI_1"] - df["PE_OI_2"]
@@ -126,20 +123,22 @@ df["Stock_LTP"] = df["LTP_0"]
 # STRIKE FILTER ±6
 # ==================================================
 def filter_strikes(df, n=6):
-    out = []
+    blocks = []
     for _, g in df.groupby("Stock"):
-        g = g.sort_values("Strike")
+        g = g.sort_values("Strike").reset_index(drop=True)
         ltp = g["Stock_LTP"].iloc[0]
-        atm_idx = (g["Strike"] - ltp).abs().idxmin()
-        pos = g.index.get_loc(atm_idx)
-        out.append(g.iloc[max(0, pos-n):pos+n+1])
-        out.append(pd.DataFrame([{c: np.nan for c in df.columns}]))
-    return pd.concat(out[:-1])
+        atm_pos = (g["Strike"] - ltp).abs().idxmin()
+        blocks.append(g.iloc[max(0, atm_pos-n):atm_pos+n+1])
+        blocks.append(pd.DataFrame([{c: np.nan for c in g.columns}]))
+    return pd.concat(blocks[:-1], ignore_index=True)
 
 display_df = filter_strikes(df)
 
+# 🔒 ABSOLUTE FIX
+display_df = display_df.reset_index(drop=True)
+
 # ==================================================
-# HIGHLIGHTING (STREAMLIT-SAFE)
+# HIGHLIGHTING (INDEX-SAFE)
 # ==================================================
 def highlight(data):
     styles = pd.DataFrame("", index=data.index, columns=data.columns)
@@ -151,13 +150,13 @@ def highlight(data):
 
         ltp = sdf["Stock_LTP"].iloc[0]
 
-        atm = (sdf["Strike"] - ltp).abs().idxmin()
-        if atm in styles.index:
-            styles.loc[atm] = "background-color:#003366;color:white"
+        # ATM row
+        atm_pos = (sdf["Strike"] - ltp).abs().idxmin()
+        styles.iloc[atm_pos] = "background-color:#003366;color:white"
 
-        mp_idx = sdf["Δ MP TS1"].abs().idxmax()
-        if mp_idx in styles.index:
-            styles.loc[mp_idx] = "background-color:#8B0000;color:white"
+        # Max |Δ MP TS1|
+        mp_pos = sdf["Δ MP TS1"].abs().idxmax()
+        styles.iloc[mp_pos] = "background-color:#8B0000;color:white"
 
     return styles
 
