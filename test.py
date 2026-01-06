@@ -229,8 +229,8 @@ for stock in df_all["Stock"].unique():
     ltp2 = float(df_t2[df_t2["Stock"] == stock]["Stock_LTP"].iloc[0])
     ltp3 = float(df_t3[df_t3["Stock"] == stock]["Stock_LTP"].iloc[0])
 
-    pct_12 = (ltp2 - ltp) / ltp * 100
-    pct_23 = (ltp3 - ltp2) / ltp2 * 100 if ltp2 != 0 else np.nan
+    pct_12 = (ltp - ltp2) / ltp2 * 100
+    pct_23 = (ltp2 - ltp3) / ltp3 * 100 if ltp2 != 0 else np.nan
 
     high = float(sdf["Stock_High"].iloc[0])
     low = float(sdf["Stock_Low"].iloc[0])
