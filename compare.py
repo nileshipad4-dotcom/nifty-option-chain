@@ -7,8 +7,11 @@ from streamlit_autorefresh import st_autorefresh
 
 st_autorefresh(interval=360_000, key="auto_refresh")
 
-st.set_page_config(page_title="Max Pain Comparison", layout="wide")
-st.title("📊 FnO STOCKS")
+# ==================================================
+# STREAMLIT CONFIG
+# ==================================================
+st.set_page_config(page_title="FnO MP Delta Dashboard", layout="wide")
+st.title("📊 FnO STOCKS – Max Pain Delta View")
 
 DATA_DIR = "data"
 
@@ -24,8 +27,8 @@ def load_csv_files():
     return sorted(files, reverse=True)
 
 csv_files = load_csv_files()
-if len(csv_files) < 6:
-    st.error("Need at least 6 CSV files")
+if len(csv_files) < 4:
+    st.error("Need at least 4 CSV files.")
     st.stop()
 
 timestamps_all = [ts for ts, _ in csv_files]
@@ -44,30 +47,26 @@ def extract_time(ts):
 filtered_ts = [ts for ts in timestamps_all if extract_time(ts)]
 
 # ==================================================
-# TIMESTAMP SELECTORS
+# TIMESTAMP SELECTORS (ONLY 4)
 # ==================================================
-cols = st.columns(6)
-t1 = cols[0].selectbox("TS1", filtered_ts, 0)
-t2 = cols[1].selectbox("TS2", filtered_ts, 1)
-t3 = cols[2].selectbox("TS3", filtered_ts, 2)
-t4 = cols[3].selectbox("TS4", filtered_ts, 3)
-t5 = cols[4].selectbox("TS5", filtered_ts, 4)
-t6 = cols[5].selectbox("TS6", timestamps_all, 0)
+cols = st.columns(4)
+t1 = cols[0].selectbox("Timestamp 1", filtered_ts, 0)
+t2 = cols[1].selectbox("Timestamp 2", filtered_ts, 1)
+t3 = cols[2].selectbox("Timestamp 3", filtered_ts, 2)
+t4 = cols[3].selectbox("Timestamp 4", filtered_ts, 3)
 
-t = [t1, t2, t3, t4, t5, t6]
+t = [t1, t2, t3, t4]
 
 # ==================================================
-# LOAD DATA (TIME-VARYING ONLY)
+# LOAD TIME-VARYING DATA
 # ==================================================
 dfs = []
 for i, ts in enumerate(t):
     d = pd.read_csv(file_map[ts])
-    d = d[[
-        "Stock", "Strike",
-        "Max_Pain", "Stock_LTP",
-        "CE_OI", "PE_OI",
-        "CE_Volume", "PE_Volume"
-    ]].rename(columns={
+    d = d[
+        ["Stock", "Strike", "Max_Pain", "Stock_LTP",
+         "CE_OI", "PE_OI", "CE_Volume", "PE_Volume"]
+    ].rename(columns={
         "Max_Pain": f"MP_{i}",
         "Stock_LTP": f"LTP_{i}",
         "CE_OI": f"CE_OI_{i}",
@@ -81,7 +80,7 @@ for i, ts in enumerate(t):
 # MERGE
 # ==================================================
 df = dfs[0]
-for i in range(1, 6):
+for i in range(1, 4):
     df = df.merge(dfs[i], on=["Stock", "Strike"], how="inner")
 
 # ==================================================
@@ -102,22 +101,39 @@ for c in df.columns:
 # ==================================================
 # MAX PAIN DELTAS
 # ==================================================
-df["Δ MP TS1"] = df["MP_0"] - df["MP_1"]
-df["Δ MP TS2"] = df["MP_1"] - df["MP_2"]
-df["Δ MP TS3"] = df["MP_2"] - df["MP_3"]
+df["Δ MP TS1-TS2"] = df["MP_0"] - df["MP_1"]
+df["Δ MP TS2-TS3"] = df["MP_1"] - df["MP_2"]
+df["Δ MP TS3-TS4"] = df["MP_2"] - df["MP_3"]
 
-# ✅ YOUR EXACT DEFINITION
-df["ΔΔ MP (TS2-TS3)"] = df["Δ MP TS2"] - df["Δ MP TS3"]
+# ✅ DELTA–DELTA MP (YOUR DEFINITION)
+df["ΔΔ MP (TS1-TS2 vs TS2-TS3)"] = (
+    df["Δ MP TS1-TS2"] - df["Δ MP TS2-TS3"]
+)
 
 # ==================================================
-# OI / VOLUME DELTAS
+# OI / VOLUME DELTAS (TS1–TS2 ONLY)
 # ==================================================
-df["Δ CE OI"] = df["CE_OI_1"] - df["CE_OI_2"]
-df["Δ PE OI"] = df["PE_OI_1"] - df["PE_OI_2"]
-df["Δ CE Vol"] = df["CE_VOL_1"] - df["CE_VOL_2"]
-df["Δ PE Vol"] = df["PE_VOL_1"] - df["PE_VOL_2"]
+df["Δ CE OI TS1-TS2"] = df["CE_OI_0"] - df["CE_OI_1"]
+df["Δ PE OI TS1-TS2"] = df["PE_OI_0"] - df["PE_OI_1"]
+df["Δ CE Vol TS1-TS2"] = df["CE_VOL_0"] - df["CE_VOL_1"]
+df["Δ PE Vol TS1-TS2"] = df["PE_VOL_0"] - df["PE_VOL_1"]
 
 df["Stock_LTP"] = df["LTP_0"]
+
+# ==================================================
+# FINAL COLUMN SELECTION (ONLY WHAT YOU ASKED)
+# ==================================================
+df = df[
+    [
+        "Stock", "Strike",
+        "Δ MP TS1-TS2", "Δ MP TS2-TS3", "Δ MP TS3-TS4",
+        "ΔΔ MP (TS1-TS2 vs TS2-TS3)",
+        "Δ CE OI TS1-TS2", "Δ PE OI TS1-TS2",
+        "Δ CE Vol TS1-TS2", "Δ PE Vol TS1-TS2",
+        "Stock_LTP", "Stock_%_Change",
+        "Stock_High", "Stock_Low",
+    ]
+]
 
 # ==================================================
 # STRIKE FILTER ±6
@@ -132,10 +148,10 @@ def filter_strikes(df, n=6):
         blocks.append(pd.DataFrame([{c: np.nan for c in g.columns}]))
     return pd.concat(blocks[:-1], ignore_index=True)
 
-display_df = filter_strikes(df).reset_index(drop=True)
+display_df = filter_strikes(df)
 
 # ==================================================
-# HIGHLIGHTING (INDEX-SAFE)
+# HIGHLIGHTING (ATM + MAX ΔMP TS1-TS2)
 # ==================================================
 def highlight(data):
     styles = pd.DataFrame("", index=data.index, columns=data.columns)
@@ -150,19 +166,19 @@ def highlight(data):
         atm_pos = (sdf["Strike"] - ltp).abs().idxmin()
         styles.iloc[atm_pos] = "background-color:#003366;color:white"
 
-        mp_pos = sdf["Δ MP TS1"].abs().idxmax()
+        mp_pos = sdf["Δ MP TS1-TS2"].abs().idxmax()
         styles.iloc[mp_pos] = "background-color:#8B0000;color:white"
 
     return styles
 
 # ==================================================
-# SAFE FORMATTERS (NO GLOBAL FORMAT STRING)
+# SAFE FORMATTERS
 # ==================================================
 num_cols = display_df.select_dtypes(include="number").columns
 formatters = {c: "{:.0f}" for c in num_cols}
 
 # ==================================================
-# DISPLAY (STABLE)
+# DISPLAY
 # ==================================================
 st.dataframe(
     display_df.style
@@ -177,6 +193,6 @@ st.dataframe(
 st.download_button(
     "⬇️ Download CSV",
     df.to_csv(index=False),
-    "max_pain_final_stable.csv",
+    "mp_delta_clean_view.csv",
     "text/csv",
 )
