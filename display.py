@@ -156,8 +156,9 @@ for stock in all_stocks:
         continue
 
     ltp1 = float(sdf["Stock_LTP"].iloc[0])
-    ltp2 = float(df_t2.loc[stock, "Stock_LTP"])
-    ltp3 = float(df_t3.loc[stock, "Stock_LTP"])
+    ltp2 = float(df_t2.loc[stock, "Stock_LTP"].iloc[0])
+    ltp3 = float(df_t3.loc[stock, "Stock_LTP"].iloc[0])
+
 
     pct_12 = (ltp2 - ltp1) / ltp1 * 100 if ltp1 else np.nan
     pct_23 = (ltp3 - ltp2) / ltp2 * 100 if ltp2 else np.nan
