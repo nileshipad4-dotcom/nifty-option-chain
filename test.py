@@ -172,13 +172,14 @@ st.dataframe(
 # ==================================================
 # ===== SINGLE STOCK TABLES (FROM TABLE 1) =========
 # ==================================================
-st.subheader("🔎 Single Stock Views (from Table 1)")
+st.subheader("🔎 Selected Stock ")
 
 stocks = sorted(display_df1["Stock"].dropna().unique())
 
-a, b = st.columns(2)
+a, b, c= st.columns(3)
 stock_a = a.selectbox("Select Stock A", [""] + stocks)
 stock_b = b.selectbox("Select Stock B", [""] + stocks)
+stock_c = c.selectbox("Select Stock C", [""] + stocks)
 
 def show_single_stock(stock_name, label):
     sdf = display_df1[display_df1["Stock"] == stock_name]
@@ -195,6 +196,9 @@ if stock_a:
 
 if stock_b:
     show_single_stock(stock_b, "Stock B")
+
+if stock_c:
+    show_single_stock(stock_c, "Stock C")
 
 # ==================================================
 # ================= TABLE 2 ========================
