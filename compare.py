@@ -35,7 +35,7 @@ timestamps_all = [ts for ts, _ in csv_files]
 file_map = dict(csv_files)
 
 # ==================================================
-# TIME FILTER
+# TIME FILTER (08:00 to 16:30)
 # ==================================================
 def extract_time(ts):
     try:
@@ -44,7 +44,14 @@ def extract_time(ts):
     except:
         return None
 
-filtered_ts = [ts for ts in timestamps_all if extract_time(ts)]
+START_TIME = time(8, 0)
+END_TIME = time(16, 30)
+
+filtered_ts = [
+    ts for ts in timestamps_all
+    if extract_time(ts)
+    and START_TIME <= extract_time(ts) <= END_TIME
+]
 
 # ==================================================
 # TIMESTAMP SELECTORS (4)
