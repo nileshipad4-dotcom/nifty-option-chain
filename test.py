@@ -35,7 +35,7 @@ timestamps_all = [ts for ts, _ in csv_files]
 file_map = dict(csv_files)
 
 # ==================================================
-# TIME FILTER (08:00 to 16:30) – USED BY BOTH TABLES
+# TIME FILTER (08:00 to 16:30)
 # ==================================================
 def extract_time(ts):
     try:
@@ -54,17 +54,17 @@ filtered_ts = [
 ]
 
 # ==================================================
-# COMMON TIMESTAMP SELECTORS (USED BY BOTH)
+# TIMESTAMP SELECTION
 # ==================================================
 st.subheader("🕒 Timestamp Selection")
 
-cols = st.columns(3)
-t1 = cols[0].selectbox("Timestamp 1", filtered_ts, 0)
-t2 = cols[1].selectbox("Timestamp 2", filtered_ts, 1)
-t3 = cols[2].selectbox("Timestamp 3", filtered_ts, 2)
+c1, c2, c3 = st.columns(3)
+t1 = c1.selectbox("Timestamp 1", filtered_ts, 0)
+t2 = c2.selectbox("Timestamp 2", filtered_ts, 1)
+t3 = c3.selectbox("Timestamp 3", filtered_ts, 2)
 
 # ==================================================
-# LOAD CSVs ONCE (REUSED)
+# LOAD CSVs ONCE
 # ==================================================
 df_t1 = pd.read_csv(file_map[t1])
 df_t2 = pd.read_csv(file_map[t2])
@@ -72,7 +72,6 @@ df_t3 = pd.read_csv(file_map[t3])
 
 # ==================================================
 # ================= TABLE 1 ========================
-# FnO MP Delta Dashboard (CODE 1)
 # ==================================================
 st.subheader("📘 Table 1 – FnO MP Delta Dashboard")
 
@@ -93,8 +92,8 @@ for i, d in enumerate([df_t1, df_t2, df_t3]):
     )
 
 df1 = dfs[0]
-for i in range(1, 3):
-    df1 = df1.merge(dfs[i], on=["Stock", "Strike"], how="inner")
+df1 = df1.merge(dfs[1], on=["Stock", "Strike"], how="inner")
+df1 = df1.merge(dfs[2], on=["Stock", "Strike"], how="inner")
 
 df1 = df1.merge(
     df_t1[["Stock", "Strike", "Stock_%_Change", "Stock_High", "Stock_Low"]],
@@ -102,9 +101,9 @@ df1 = df1.merge(
     how="left"
 )
 
-for c in df1.columns:
-    if any(x in c for x in ["MP_", "LTP_", "OI_", "VOL_"]):
-        df1[c] = pd.to_numeric(df1[c], errors="coerce").fillna(0)
+for col in df1.columns:
+    if any(x in col for x in ["MP_", "LTP_", "OI_", "VOL_"]):
+        df1[col] = pd.to_numeric(df1[col], errors="coerce").fillna(0)
 
 df1["Δ MP TS1-TS2"] = df1["MP_0"] - df1["MP_1"]
 df1["Δ MP TS2-TS3"] = df1["MP_1"] - df1["MP_2"]
@@ -131,13 +130,14 @@ df1 = df1[
 ]
 
 def filter_strikes(df, n=6):
-    out = []
+    blocks = []
     for _, g in df.groupby("Stock"):
         g = g.sort_values("Strike").reset_index(drop=True)
-        atm = (g["Strike"] - g["Stock_LTP"].iloc[0]).abs().idxmin()
-        out.append(g.iloc[max(0, atm-n):atm+n+1])
-        out.append(pd.DataFrame([{c: np.nan for c in g.columns}]))
-    return pd.concat(out[:-1], ignore_index=True)
+        ltp = g["Stock_LTP"].iloc[0]
+        atm = (g["Strike"] - ltp).abs().idxmin()
+        blocks.append(g.iloc[max(0, atm-n):atm+n+1])
+        blocks.append(pd.DataFrame([{c: np.nan for c in g.columns}]))
+    return pd.concat(blocks[:-1], ignore_index=True)
 
 display_df1 = filter_strikes(df1)
 
@@ -147,11 +147,13 @@ def highlight_table1(data):
         sdf = data[(data["Stock"] == stock) & data["Strike"].notna()]
         ltp = sdf["Stock_LTP"].iloc[0]
         strikes = sdf["Strike"].values
+
         for i in range(len(strikes)-1):
             if strikes[i] <= ltp <= strikes[i+1]:
                 styles.loc[sdf.index[i]] = "background-color:#003366;color:white"
                 styles.loc[sdf.index[i+1]] = "background-color:#003366;color:white"
                 break
+
         mp_idx = sdf["Δ MP TS1-TS2"].abs().idxmax()
         styles.loc[mp_idx] = "background-color:#8B0000;color:white"
     return styles
@@ -171,34 +173,23 @@ st.dataframe(
 
 # ==================================================
 # ================= TABLE 2 ========================
-# ΔΔ Max Pain Viewer (RESTORED FILTERS + HIGHLIGHTS)
 # ==================================================
 st.subheader("📕 Table 2 – ΔΔ Max Pain Viewer")
 
-# -------------------------------
-# FILTER CONTROLS (RESTORED)
-# -------------------------------
 p1, p2 = st.columns(2)
 with p1:
-    ltp_pct_limit = st.number_input(
-        "Max % distance from LTP (Table 2)", 0.0, 50.0, 5.0, 0.5
-    )
+    ltp_pct_limit = st.number_input("Max % distance from LTP (Table 2)", 0.0, 50.0, 5.0, 0.5)
 with p2:
-    ddmp_diff_limit = st.number_input(
-        "Min |Δ MP(T2 − T3)| (Table 2)", 0.0, value=147.0, step=10.0
-    )
+    ddmp_diff_limit = st.number_input("Min |Δ MP(T2 − T3)| (Table 2)", 0.0, value=147.0, step=10.0)
 
 def short_ts(ts):
     return ts.split("_")[-1].replace("-", ":")
 
-# -------------------------------
-# Δ MP CALCULATION
-# -------------------------------
 df_base = df_t1.copy()
 df_base["Stock"] = df_base["Stock"].astype(str).str.upper().str.strip()
 
 df_all = df_base.merge(
-    df_t2[["Stock", "Strike", "Max_Pain"]],
+    df_t2[["Stock", "Strike", "Max_Pain", "Stock_LTP"]],
     on=["Stock", "Strike"],
     suffixes=("", "_T2"),
 )
@@ -212,48 +203,35 @@ df_all = df_all.merge(
 df_all[short_ts(t2)] = df_all["Max_Pain"] - df_all["Max_Pain_T2"]
 df_all[short_ts(t3)] = df_all["Max_Pain_T2"] - df_all["Max_Pain_T3"]
 
-# -------------------------------
-# PRE-COMPUTE ATM & MAX PAIN
-# -------------------------------
 atm_map = {}
 mp_map = {}
 
 for stock in df_all["Stock"].unique():
     sdf = df_all[df_all["Stock"] == stock].sort_values("Strike")
-    if sdf.empty:
-        continue
-
     ltp = sdf["Stock_LTP"].iloc[0]
     strikes = sdf["Strike"].values
 
-    for i in range(len(strikes) - 1):
-        if strikes[i] <= ltp <= strikes[i + 1]:
-            atm_map[stock] = {strikes[i], strikes[i + 1]}
+    for i in range(len(strikes)-1):
+        if strikes[i] <= ltp <= strikes[i+1]:
+            atm_map[stock] = {strikes[i], strikes[i+1]}
             break
 
     mp_map[stock] = sdf.loc[sdf["Max_Pain"].idxmin(), "Strike"]
 
-# -------------------------------
-# FILTERED ROWS (RESTORED LOGIC)
-# -------------------------------
 rows = []
 
 for stock in df_all["Stock"].unique():
     sdf = df_all[df_all["Stock"] == stock].sort_values("Strike")
-    if sdf.empty:
-        continue
-
     ltp = float(sdf["Stock_LTP"].iloc[0])
     if ltp <= 0:
         continue
 
     ltp2 = float(df_t2[df_t2["Stock"] == stock]["Stock_LTP"].iloc[0])
     ltp3 = float(df_t3[df_t3["Stock"] == stock]["Stock_LTP"].iloc[0])
-    
+
     pct_12 = (ltp2 - ltp) / ltp * 100
     pct_23 = (ltp3 - ltp2) / ltp2 * 100 if ltp2 != 0 else np.nan
 
-    
     high = float(sdf["Stock_High"].iloc[0])
     low = float(sdf["Stock_Low"].iloc[0])
 
@@ -261,15 +239,11 @@ for stock in df_all["Stock"].unique():
         v1 = r[short_ts(t2)]
         v2 = r[short_ts(t3)]
 
-        if pd.isna(v1) or pd.isna(v2):
-            continue
-
         if abs(v2 - v1) <= ddmp_diff_limit:
             continue
 
         strike = float(r["Strike"])
-        pct_diff = abs(strike - ltp) / ltp * 100
-        if pct_diff > ltp_pct_limit:
+        if abs(strike - ltp) / ltp * 100 > ltp_pct_limit:
             continue
 
         rows.append({
@@ -284,12 +258,8 @@ for stock in df_all["Stock"].unique():
             "Stock_Low": round(low, 2),
         })
 
-
 df2 = pd.DataFrame(rows)
 
-# -------------------------------
-# HIGHLIGHTING (RESTORED)
-# -------------------------------
 def color_table2(row):
     stock = row["Stock"]
     strike = row["Strike"]
@@ -313,9 +283,6 @@ def color_table2(row):
             styles.append(base)
     return styles
 
-# -------------------------------
-# DISPLAY TABLE 2
-# -------------------------------
 if not df2.empty:
     st.dataframe(
         df2.sort_values(["Stock", "Strike"])
@@ -330,7 +297,7 @@ if not df2.empty:
             "Stock_LTP": "{:.2f}",
             "Stock_High": "{:.2f}",
             "Stock_Low": "{:.2f}",
-        })
+        }),
         use_container_width=True
     )
 else:
