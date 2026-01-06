@@ -47,7 +47,7 @@ def extract_time(ts):
 filtered_ts = [ts for ts in timestamps_all if extract_time(ts)]
 
 # ==================================================
-# TIMESTAMP SELECTORS (ONLY 4)
+# TIMESTAMP SELECTORS (4)
 # ==================================================
 cols = st.columns(4)
 t1 = cols[0].selectbox("Timestamp 1", filtered_ts, 0)
@@ -105,23 +105,28 @@ df["Δ MP TS1-TS2"] = df["MP_0"] - df["MP_1"]
 df["Δ MP TS2-TS3"] = df["MP_1"] - df["MP_2"]
 df["Δ MP TS3-TS4"] = df["MP_2"] - df["MP_3"]
 
-# ✅ DELTA–DELTA MP (YOUR DEFINITION)
 df["ΔΔ MP (TS1-TS2 vs TS2-TS3)"] = (
     df["Δ MP TS1-TS2"] - df["Δ MP TS2-TS3"]
 )
 
 # ==================================================
-# OI / VOLUME DELTAS (TS1–TS2 ONLY)
+# OI / VOLUME DELTAS (TS1–TS2)
 # ==================================================
 df["Δ CE OI TS1-TS2"] = df["CE_OI_0"] - df["CE_OI_1"]
 df["Δ PE OI TS1-TS2"] = df["PE_OI_0"] - df["PE_OI_1"]
 df["Δ CE Vol TS1-TS2"] = df["CE_VOL_0"] - df["CE_VOL_1"]
 df["Δ PE Vol TS1-TS2"] = df["PE_VOL_0"] - df["PE_VOL_1"]
 
+# ==================================================
+# STOCK % CHANGE BETWEEN TIMESTAMPS
+# ==================================================
+df["% Stock Ch TS1-TS2"] = ((df["LTP_0"] - df["LTP_1"]) / df["LTP_1"]) * 100
+df["% Stock Ch TS2-TS3"] = ((df["LTP_1"] - df["LTP_2"]) / df["LTP_2"]) * 100
+
 df["Stock_LTP"] = df["LTP_0"]
 
 # ==================================================
-# FINAL COLUMN SELECTION (ONLY WHAT YOU ASKED)
+# FINAL COLUMNS
 # ==================================================
 df = df[
     [
@@ -131,6 +136,7 @@ df = df[
         "Δ CE OI TS1-TS2", "Δ PE OI TS1-TS2",
         "Δ CE Vol TS1-TS2", "Δ PE Vol TS1-TS2",
         "Stock_LTP", "Stock_%_Change",
+        "% Stock Ch TS1-TS2", "% Stock Ch TS2-TS3",
         "Stock_High", "Stock_Low",
     ]
 ]
@@ -151,7 +157,7 @@ def filter_strikes(df, n=6):
 display_df = filter_strikes(df)
 
 # ==================================================
-# HIGHLIGHTING (ATM + MAX ΔMP TS1-TS2)
+# HIGHLIGHTING (ATM BAND + MAX ΔMP)
 # ==================================================
 def highlight(data):
     styles = pd.DataFrame("", index=data.index, columns=data.columns)
@@ -162,20 +168,29 @@ def highlight(data):
             continue
 
         ltp = sdf["Stock_LTP"].iloc[0]
+        strikes = sdf["Strike"].values
 
-        atm_pos = (sdf["Strike"] - ltp).abs().idxmin()
-        styles.iloc[atm_pos] = "background-color:#003366;color:white"
+        for i in range(len(strikes) - 1):
+            if strikes[i] <= ltp <= strikes[i + 1]:
+                styles.iloc[sdf.index[i]] = "background-color:#003366;color:white"
+                styles.iloc[sdf.index[i + 1]] = "background-color:#003366;color:white"
+                break
 
         mp_pos = sdf["Δ MP TS1-TS2"].abs().idxmax()
-        styles.iloc[mp_pos] = "background-color:#8B0000;color:white"
+        styles.loc[mp_pos] = "background-color:#8B0000;color:white"
 
     return styles
 
 # ==================================================
-# SAFE FORMATTERS
+# FORMATTERS
 # ==================================================
 num_cols = display_df.select_dtypes(include="number").columns
 formatters = {c: "{:.0f}" for c in num_cols}
+
+formatters["Stock_LTP"] = "{:.2f}"
+formatters["Stock_%_Change"] = "{:.2f}"
+formatters["% Stock Ch TS1-TS2"] = "{:.2f}"
+formatters["% Stock Ch TS2-TS3"] = "{:.2f}"
 
 # ==================================================
 # DISPLAY
@@ -193,6 +208,6 @@ st.dataframe(
 st.download_button(
     "⬇️ Download CSV",
     df.to_csv(index=False),
-    "mp_delta_clean_view.csv",
+    "mp_delta_final_clean.csv",
     "text/csv",
 )
