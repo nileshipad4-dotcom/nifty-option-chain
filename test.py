@@ -44,13 +44,10 @@ def extract_time(ts):
     except:
         return None
 
-START_TIME = time(8, 0)
-END_TIME = time(16, 30)
-
 filtered_ts = [
     ts for ts in timestamps_all
     if extract_time(ts)
-    and START_TIME <= extract_time(ts) <= END_TIME
+    and time(8, 0) <= extract_time(ts) <= time(16, 30)
 ]
 
 # ==================================================
@@ -156,10 +153,11 @@ def highlight_table1(data):
 
         mp_idx = sdf["Δ MP TS1-TS2"].abs().idxmax()
         styles.loc[mp_idx] = "background-color:#8B0000;color:white"
+
     return styles
 
-fmt1 = {c: "{:.0f}" for c in display_df1.select_dtypes("number").columns}
-fmt1.update({
+fmt = {c: "{:.0f}" for c in display_df1.select_dtypes("number").columns}
+fmt.update({
     "Stock_LTP": "{:.2f}",
     "Stock_%_Change": "{:.2f}",
     "% Stock Ch TS1-TS2": "{:.2f}",
@@ -167,21 +165,20 @@ fmt1.update({
 })
 
 st.dataframe(
-    display_df1.style.apply(highlight_table1, axis=None).format(fmt1, na_rep=""),
+    display_df1.style.apply(highlight_table1, axis=None).format(fmt, na_rep=""),
     use_container_width=True
 )
 
-
 # ==================================================
-# ===== SINGLE STOCK TABLES (NEW) ==================
+# ===== SINGLE STOCK TABLES (FROM TABLE 1) =========
 # ==================================================
 st.subheader("🔎 Single Stock Views (from Table 1)")
 
 stocks = sorted(display_df1["Stock"].dropna().unique())
 
-s1, s2 = st.columns(2)
-stock_a = s1.selectbox("Select Stock A", [""] + stocks)
-stock_b = s2.selectbox("Select Stock B", [""] + stocks)
+a, b = st.columns(2)
+stock_a = a.selectbox("Select Stock A", [""] + stocks)
+stock_b = b.selectbox("Select Stock B", [""] + stocks)
 
 def show_single_stock(stock_name, label):
     sdf = display_df1[display_df1["Stock"] == stock_name]
@@ -198,7 +195,6 @@ if stock_a:
 
 if stock_b:
     show_single_stock(stock_b, "Stock B")
-
 
 # ==================================================
 # ================= TABLE 2 ========================
@@ -218,7 +214,7 @@ df_base = df_t1.copy()
 df_base["Stock"] = df_base["Stock"].astype(str).str.upper().str.strip()
 
 df_all = df_base.merge(
-    df_t2[["Stock", "Strike", "Max_Pain", "Stock_LTP"]],
+    df_t2[["Stock", "Strike", "Max_Pain"]],
     on=["Stock", "Strike"],
     suffixes=("", "_T2"),
 )
