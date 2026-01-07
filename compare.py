@@ -128,7 +128,7 @@ df1 = df1[[
     "% Stock Ch TS2-TS3",
 ]]
 
-def filter_strikes(df, n=6):
+def filter_strikes(df, n=4):
     blocks = []
     for _, g in df.groupby("Stock"):
         g = g.sort_values("Strike").reset_index(drop=True)
@@ -163,6 +163,10 @@ fmt.update({
 
 st.dataframe(display_df1.style.apply(highlight_table1, axis=None).format(fmt, na_rep=""),
              use_container_width=True)
+
+
+
+
 
 # ==================================================
 # FILTERED DOWNTREND
