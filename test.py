@@ -114,17 +114,22 @@ df1["% Stock Ch TS1-TS2"] = ((df1["LTP_0"] - df1["LTP_1"]) / df1["LTP_1"]) * 100
 df1["% Stock Ch TS2-TS3"] = ((df1["LTP_1"] - df1["LTP_2"]) / df1["LTP_2"]) * 100
 df1["Stock_LTP"] = df1["LTP_0"]
 
-df1 = df1[
+df = df[
     [
         "Stock", "Strike",
-        "Δ MP TS1-TS2", "Δ MP TS2-TS3",
+        "Δ MP TS1-TS2",
         "Δ CE OI TS1-TS2", "Δ PE OI TS1-TS2",
         "Δ CE Vol TS1-TS2", "Δ PE Vol TS1-TS2",
         "Stock_LTP", "Stock_%_Change",
-        "% Stock Ch TS1-TS2", "% Stock Ch TS2-TS3",
+        "% Stock Ch TS1-TS2",
         "Stock_High", "Stock_Low",
+
+        # ---- TS3 DATA AT THE END ----
+        "Δ MP TS2-TS3",
+        "% Stock Ch TS2-TS3",
     ]
 ]
+
 
 def filter_strikes(df, n=6):
     blocks = []
@@ -289,6 +294,18 @@ for stock in df_all["Stock"].unique():
 
 df2 = pd.DataFrame(rows)
 
+# --------------------------------------------------
+# MOVE TS3 COLUMNS TO THE END (TABLE 2)
+# --------------------------------------------------
+ts3_cols = [
+    short_ts(t3),
+    "%Δ LTP TS2→TS3",
+]
+
+base_cols = [c for c in df2.columns if c not in ts3_cols]
+
+df2 = df2[base_cols + ts3_cols]
+##--------------
 def color_table2(row):
     stock = row["Stock"]
     strike = row["Strike"]
