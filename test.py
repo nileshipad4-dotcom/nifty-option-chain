@@ -242,8 +242,12 @@ rows = []
 for stock in df_all["Stock"].unique():
     sdf = df_all[df_all["Stock"] == stock].sort_values("Strike")
 
-    ltp1 = float(sdf["Stock_LTP"].iloc[0])
-    ltp2 = float(sdf["Stock_LTP_T2"].iloc[0])
+    ltp1 = pd.to_numeric(sdf["Stock_LTP"].iloc[0], errors="coerce")
+    ltp2 = pd.to_numeric(sdf["Stock_LTP_T2"].iloc[0], errors="coerce")
+    
+    if pd.isna(ltp1) or ltp1 <= 0 or pd.isna(ltp2):
+        continue
+
 
     pct_ltp_12 = ((ltp1 - ltp2) / ltp2 * 100) if ltp2 != 0 else np.nan
 
