@@ -13,7 +13,7 @@ IST = pytz.timezone("Asia/Kolkata")
 # CONFIG
 # ==================================================
 API_KEY = "bkgv59vaazn56c42"
-ACCESS_TOKEN = "5J146sNIZ97FMIFLNvtNoZUgHoxKl6i4"
+ACCESS_TOKEN = "QcPcQ6r4mFdL253BIj3H7Vpg5l8JUXti"
 
 STOCKS = [
     "360ONE","ABB","ABCAPITAL","ADANIENSOL","ADANIENT","ADANIGREEN","ADANIPORTS","ALKEM",
