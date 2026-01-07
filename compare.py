@@ -112,13 +112,20 @@ df1["Stock_LTP"] = df1["LTP_0"]
 
 # ---- TS3 COLUMNS MOVED TO END ----
 df1 = df1[[
-    "Stock", "Strike",
+    "Stock", 
+    "Strike",
     "Δ MP TS1-TS2",
-    "Δ CE OI TS1-TS2", "Δ PE OI TS1-TS2",
-    "Δ CE Vol TS1-TS2", "Δ PE Vol TS1-TS2",
-    "Stock_LTP", "Stock_%_Change", "% Stock Ch TS1-TS2",
-    "Stock_High", "Stock_Low",
-    "Δ MP TS2-TS3", "% Stock Ch TS2-TS3",
+    "Δ CE OI TS1-TS2", 
+    "Δ PE OI TS1-TS2",
+    "Δ CE Vol TS1-TS2", 
+    "Δ PE Vol TS1-TS2",
+    "Stock_LTP", 
+    "Stock_%_Change", 
+    "% Stock Ch TS1-TS2",
+    "Stock_High", 
+    "Stock_Low",
+    "Δ MP TS2-TS3", 
+    "% Stock Ch TS2-TS3",
 ]]
 
 def filter_strikes(df, n=6):
@@ -156,6 +163,92 @@ fmt.update({
 
 st.dataframe(display_df1.style.apply(highlight_table1, axis=None).format(fmt, na_rep=""),
              use_container_width=True)
+
+# ==================================================
+# FILTERED DOWNTREND
+# ==================================================
+def get_ltp_strikes(sdf):
+    sdf = sdf.sort_values("Strike").reset_index(drop=True)
+    ltp = sdf["Stock_LTP"].iloc[0]
+
+    below = sdf[sdf["Strike"] <= ltp].iloc[-1]
+    above = sdf[sdf["Strike"] > ltp].iloc[0]
+
+    idx = sdf.index[sdf["Strike"] == below["Strike"]][0]
+    window = sdf.iloc[max(0, idx-2): idx+4]   # 6 strikes window
+
+    return below, above, window
+
+
+# DOWNTREND LOGIC
+def is_downtrend_stock(sdf):
+    below, above, window = get_ltp_strikes(sdf)
+
+    # ---------- CONDITION 1 ----------
+    cond1 = (
+        above["Δ CE OI TS1-TS2"] > above["Δ PE OI TS1-TS2"] and
+        above["Δ CE Vol TS1-TS2"] > above["Δ PE Vol TS1-TS2"] and
+        below["Δ CE OI TS1-TS2"] > below["Δ PE OI TS1-TS2"] and
+        below["Δ CE Vol TS1-TS2"] > below["Δ PE Vol TS1-TS2"]
+    )
+
+    # ---------- CONDITION 2 ----------
+    pe_neg = (window["Δ PE OI TS1-TS2"] < 0).sum() >= 4
+    ce_pos = (window["Δ CE OI TS1-TS2"] > 0).sum() >= 4
+
+    cond2 = (
+        pe_neg and ce_pos and
+        above["Δ CE Vol TS1-TS2"] > above["Δ PE Vol TS1-TS2"]
+    )
+
+    # ---------- CONDITION 3 ----------
+    cond3 = (
+        sdf["% Stock Ch TS2-TS3"].iloc[0] > 0.7 and
+        above["Δ CE Vol TS1-TS2"] > above["Δ PE Vol TS1-TS2"] and
+        above["Δ CE OI TS1-TS2"] > above["Δ PE OI TS1-TS2"] and
+        below["Δ CE OI TS1-TS2"] > 0
+    )
+
+    return cond1 or cond2 or cond3
+
+# DOWNTREND DATAFRAME
+downtrend_blocks = []
+
+for stock in display_df1["Stock"].dropna().unique():
+    sdf = display_df1[display_df1["Stock"] == stock].dropna(subset=["Strike"])
+    if len(sdf) < 6:
+        continue
+
+    try:
+        if is_downtrend_stock(sdf):
+            downtrend_blocks.append(sdf)
+            downtrend_blocks.append(
+                pd.DataFrame([{c: np.nan for c in sdf.columns}])
+            )
+    except:
+        pass
+
+df_downtrend = (
+    pd.concat(downtrend_blocks[:-1], ignore_index=True)
+    if downtrend_blocks else pd.DataFrame()
+)
+
+# DOWNTREND DISPLAY
+st.subheader("📉 DOWNTREND – CE Dominance & Price Confirmation")
+
+if not df_downtrend.empty:
+    st.dataframe(
+        df_downtrend
+        .style
+        .apply(highlight_table1, axis=None)
+        .format(fmt, na_rep=""),
+        use_container_width=True
+    )
+else:
+    st.info("No stocks matched DOWNTREND conditions.")
+
+
+
 
 # ==================================================
 # SINGLE STOCK TABLES (A / B / C)
