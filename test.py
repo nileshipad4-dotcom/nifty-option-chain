@@ -186,50 +186,140 @@ show_stock(stock_c, "C")
 st.subheader("📕 Table 2 – ΔΔ Max Pain Viewer")
 
 p1, p2 = st.columns(2)
-ltp_pct_limit = p1.number_input("Max % distance from LTP", 0.0, 50.0, 5.0, 0.5)
-ddmp_diff_limit = p2.number_input("Min |Δ MP(T2−T3)|", 0.0, 147.0, 10.0)
+with p1:
+    ltp_pct_limit = st.number_input(
+        "Max % distance from LTP (Table 2)", 0.0, 50.0, 5.0, 0.5
+    )
+with p2:
+    ddmp_diff_limit = st.number_input(
+        "Min |Δ MP(T2 − T3)| (Table 2)", 0.0, value=147.0, step=10.0
+    )
 
-def short_ts(ts): return ts.split("_")[-1].replace("-", ":")
+def short_ts(ts):
+    return ts.split("_")[-1].replace("-", ":")
 
-df_all = df_t1.merge(df_t2[["Stock","Strike","Max_Pain"]], on=["Stock","Strike"], suffixes=("", "_T2"))
-df_all = df_all.merge(df_t3[["Stock","Strike","Max_Pain"]], on=["Stock","Strike"], suffixes=("", "_T3"))
+# --------------------------------------------------
+# BUILD BASE DF
+# --------------------------------------------------
+df_all = df_t1.merge(
+    df_t2[["Stock", "Strike", "Max_Pain", "Stock_LTP"]],
+    on=["Stock", "Strike"],
+    suffixes=("", "_T2"),
+)
+
+df_all = df_all.merge(
+    df_t3[["Stock", "Strike", "Max_Pain", "Stock_LTP"]],
+    on=["Stock", "Strike"],
+    suffixes=("", "_T3"),
+)
 
 df_all[short_ts(t2)] = df_all["Max_Pain"] - df_all["Max_Pain_T2"]
 df_all[short_ts(t3)] = df_all["Max_Pain_T2"] - df_all["Max_Pain_T3"]
 
-rows = []
+# --------------------------------------------------
+# PRE-COMPUTE ATM & MAX PAIN
+# --------------------------------------------------
+atm_map = {}
+mp_map = {}
+
 for stock in df_all["Stock"].unique():
     sdf = df_all[df_all["Stock"] == stock].sort_values("Strike")
     ltp = sdf["Stock_LTP"].iloc[0]
+    strikes = sdf["Strike"].values
+
+    for i in range(len(strikes) - 1):
+        if strikes[i] <= ltp <= strikes[i + 1]:
+            atm_map[stock] = {strikes[i], strikes[i + 1]}
+            break
+
+    mp_map[stock] = sdf.loc[sdf["Max_Pain"].idxmin(), "Strike"]
+
+# --------------------------------------------------
+# FILTERED ROWS
+# --------------------------------------------------
+rows = []
+
+for stock in df_all["Stock"].unique():
+    sdf = df_all[df_all["Stock"] == stock].sort_values("Strike")
+
+    ltp1 = float(sdf["Stock_LTP"].iloc[0])
+    ltp2 = float(sdf["Stock_LTP_T2"].iloc[0])
+
+    pct_ltp_12 = ((ltp1 - ltp2) / ltp2 * 100) if ltp2 != 0 else np.nan
+
+    high = float(sdf["Stock_High"].iloc[0])
+    low = float(sdf["Stock_Low"].iloc[0])
+
     for _, r in sdf.iterrows():
-        if abs(r[short_ts(t3)] - r[short_ts(t2)]) <= ddmp_diff_limit:
+        v1 = r[short_ts(t2)]
+        v2 = r[short_ts(t3)]
+
+        if abs(v2 - v1) <= ddmp_diff_limit:
             continue
-        if abs(r["Strike"] - ltp)/ltp*100 > ltp_pct_limit:
+
+        strike = float(r["Strike"])
+        if abs(strike - ltp1) / ltp1 * 100 > ltp_pct_limit:
             continue
+
         rows.append({
             "Stock": stock,
-            "Strike": int(r["Strike"]),
-            short_ts(t2): int(r[short_ts(t2)]),
-            "Stock_LTP": round(ltp,2),
-            "Stock_High": round(r["Stock_High"],2),
-            "Stock_Low": round(r["Stock_Low"],2),
-            short_ts(t3): int(r[short_ts(t3)]),
+            "Strike": int(strike),
+            short_ts(t2): int(v1),
+            "%Δ LTP TS1→TS2": round(pct_ltp_12, 2),
+            "Stock_LTP": round(ltp1, 2),
+            "Stock_High": round(high, 2),
+            "Stock_Low": round(low, 2),
+
+            # ---- TS3 AT END ----
+            short_ts(t3): int(v2),
         })
 
 df2 = pd.DataFrame(rows)
 
+# --------------------------------------------------
+# HIGHLIGHTING (RESTORED CORRECT LOGIC)
+# --------------------------------------------------
 def color_table2(row):
-    if row["Strike"] > row["Stock_LTP"]:
+    stock = row["Stock"]
+    strike = row["Strike"]
+    high = row["Stock_High"]
+    low = row["Stock_Low"]
+
+    if strike == mp_map.get(stock):
+        base = "background-color:#4E342E;color:white"
+    elif strike in atm_map.get(stock, set()):
+        base = "background-color:#003366;color:white"
+    elif strike > row["Stock_LTP"]:
         base = "background-color:#004d00;color:white"
     else:
         base = "background-color:#660000;color:white"
-    return [base if c not in ("Stock_High","Stock_Low") else "" for c in row.index]
 
+    styles = []
+    for col in row.index:
+        if col in ("Stock_High", "Stock_Low") and low <= strike <= high:
+            styles.append("")     # ✅ NO highlight between High–Low
+        else:
+            styles.append(base)
+    return styles
+
+# --------------------------------------------------
+# DISPLAY TABLE 2
+# --------------------------------------------------
 if not df2.empty:
     st.dataframe(
-        df2.sort_values(["Stock","Strike"])
-        .style.apply(color_table2, axis=1),
+        df2.sort_values(["Stock", "Strike"])
+        .style
+        .apply(color_table2, axis=1)
+        .format({
+            "Strike": "{:.0f}",
+            short_ts(t2): "{:.0f}",
+            short_ts(t3): "{:.0f}",
+            "%Δ LTP TS1→TS2": "{:.2f}",
+            "Stock_LTP": "{:.2f}",
+            "Stock_High": "{:.2f}",
+            "Stock_Low": "{:.2f}",
+        }),
         use_container_width=True
     )
 else:
-    st.info("No rows matched Table-2 criteria.")
+    st.info("No rows matched Table-2 filter criteria.")
