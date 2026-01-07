@@ -132,14 +132,19 @@ df["Stock_LTP"] = df["LTP_0"]
 df = df[
     [
         "Stock", "Strike",
-        "Δ MP TS1-TS2", "Δ MP TS2-TS3",
+        "Δ MP TS1-TS2",
         "Δ CE OI TS1-TS2", "Δ PE OI TS1-TS2",
         "Δ CE Vol TS1-TS2", "Δ PE Vol TS1-TS2",
         "Stock_LTP", "Stock_%_Change",
-        "% Stock Ch TS1-TS2", "% Stock Ch TS2-TS3",
+        "% Stock Ch TS1-TS2",
         "Stock_High", "Stock_Low",
+
+        # ---- TS3 DATA AT THE END ----
+        "Δ MP TS2-TS3",
+        "% Stock Ch TS2-TS3",
     ]
 ]
+
 
 # ==================================================
 # STRIKE FILTER ±6
