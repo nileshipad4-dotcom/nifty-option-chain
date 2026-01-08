@@ -105,6 +105,15 @@ df1["Δ CE OI TS1-TS2"] = df1["CE_OI_0"] - df1["CE_OI_1"]
 df1["Δ PE OI TS1-TS2"] = df1["PE_OI_0"] - df1["PE_OI_1"]
 df1["Δ CE Vol TS1-TS2"] = df1["CE_VOL_0"] - df1["CE_VOL_1"]
 df1["Δ PE Vol TS1-TS2"] = df1["PE_VOL_0"] - df1["PE_VOL_1"]
+# ---- PE vs CE DIFFERENCE COLUMNS ----
+df1["Δ (PE-CE) OI TS1-TS2"] = (
+    df1["Δ PE OI TS1-TS2"] - df1["Δ CE OI TS1-TS2"]
+)
+
+df1["Δ (PE-CE) Vol TS1-TS2"] = (
+    df1["Δ PE Vol TS1-TS2"] - df1["Δ CE Vol TS1-TS2"]
+)
+
 
 df1["% Stock Ch TS1-TS2"] = ((df1["LTP_0"] - df1["LTP_1"]) / df1["LTP_1"]) * 100
 df1["% Stock Ch TS2-TS3"] = ((df1["LTP_1"] - df1["LTP_2"]) / df1["LTP_2"]) * 100
@@ -124,6 +133,8 @@ df1 = df1[[
     "% Stock Ch TS1-TS2",
     "Stock_High", 
     "Stock_Low",
+    "Δ (PE-CE) OI TS1-TS2",
+    "Δ (PE-CE) Vol TS1-TS2",
     "Δ MP TS2-TS3", 
     "% Stock Ch TS2-TS3",
 ]]
@@ -295,6 +306,124 @@ if not df_downtrend.empty:
     )
 else:
     st.info("No stocks matched DOWNTREND conditions.")
+
+
+
+
+
+
+
+
+
+
+# ==================================================
+# UPTREND
+# ==================================================
+
+st.subheader("📈 UPTREND Filters")
+
+uc1, uc2 = st.columns(2)
+
+with uc1:
+    stock_chg_ts23_down = st.number_input(
+        "% Stock Change TS2→TS3 (UPTREND, negative)",
+        min_value=0.1,
+        max_value=5.0,
+        value=0.7,
+        step=0.1
+    )
+
+with uc2:
+    above_strike_dist_pct = st.number_input(
+        "Min % distance of ABOVE strike from LTP",
+        min_value=0.1,
+        max_value=5.0,
+        value=0.7,
+        step=0.1
+    )
+
+def is_uptrend_stock(sdf):
+    below, above, window = get_ltp_strikes(sdf)
+    ltp = sdf["Stock_LTP"].iloc[0]
+
+    # ---- COMMON CONDITIONS ----
+    above_dist_ok = (
+        abs((above["Strike"] - ltp) / ltp) * 100
+        >= above_strike_dist_pct
+    )
+
+    pe_oi_common = (
+        below["Δ PE OI TS1-TS2"] > 0 and
+        above["Δ PE OI TS1-TS2"] > 0
+    )
+
+    if not (above_dist_ok and pe_oi_common):
+        return False
+
+    # ---------- CONDITION 1 ----------
+    cond1 = (
+        above["Δ CE OI TS1-TS2"] < above["Δ PE OI TS1-TS2"] and
+        above["Δ CE Vol TS1-TS2"] < above["Δ PE Vol TS1-TS2"] and
+        below["Δ CE OI TS1-TS2"] < below["Δ PE OI TS1-TS2"] and
+        below["Δ CE Vol TS1-TS2"] < below["Δ PE Vol TS1-TS2"]
+    )
+
+    # ---------- CONDITION 2 ----------
+    pe_pos = (window["Δ PE OI TS1-TS2"] > 0).sum() >= 4
+    ce_neg = (window["Δ CE OI TS1-TS2"] < 0).sum() >= 4
+
+    cond2 = (
+        pe_pos and ce_neg and
+        below["Δ CE Vol TS1-TS2"] < below["Δ PE Vol TS1-TS2"]
+    )
+
+    # ---------- CONDITION 3 ----------
+    cond3 = (
+        sdf["% Stock Ch TS2-TS3"].iloc[0] < -stock_chg_ts23_down and
+        below["Δ CE Vol TS1-TS2"] < below["Δ PE Vol TS1-TS2"] and
+        below["Δ CE OI TS1-TS2"] < below["Δ PE OI TS1-TS2"] and
+        above["Δ PE OI TS1-TS2"] > 0
+    )
+
+    return cond1 or cond2 or cond3
+
+uptrend_blocks = []
+
+for stock in display_df1["Stock"].dropna().unique():
+    sdf = display_df1[display_df1["Stock"] == stock].dropna(subset=["Strike"])
+    if len(sdf) < 6:
+        continue
+
+    try:
+        if is_uptrend_stock(sdf):
+            uptrend_blocks.append(sdf)
+            uptrend_blocks.append(
+                pd.DataFrame([{c: np.nan for c in sdf.columns}])
+            )
+    except:
+        pass
+
+df_uptrend = (
+    pd.concat(uptrend_blocks[:-1], ignore_index=True)
+    if uptrend_blocks else pd.DataFrame()
+)
+
+st.subheader("📈 UPTREND – PE Dominance & Price Weakness")
+
+if not df_uptrend.empty:
+    st.dataframe(
+        df_uptrend
+        .style
+        .apply(highlight_table1, axis=None)
+        .format(fmt, na_rep=""),
+        use_container_width=True
+    )
+else:
+    st.info("No stocks matched UPTREND conditions.")
+
+
+
+
 
 
 
