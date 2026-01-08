@@ -259,7 +259,12 @@ def highlight_table1(data):
     return styles
 
 
-fmt = {c: "{:.0f}" for c in display_df1.select_dtypes("number").columns}
+fmt = {
+    c: "{:.0f}"
+    for c in display_df1.select_dtypes("number").columns
+    if c != "Δ PE/CE Vol"
+}
+
 fmt.update({
     "Stock_LTP": "{:.2f}",
     "Stock_%_Change": "{:.2f}",
