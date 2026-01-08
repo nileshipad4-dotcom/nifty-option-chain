@@ -181,8 +181,13 @@ df1 = df1.rename(columns={
     "Δ PE Vol TS1-TS2": "Δ PE Vol",
     "Δ (PE-CE) OI TS1-TS2": "Δ (PE-CE) OI",
     "Δ (PE-CE) Vol TS1-TS2": "Δ (PE-CE) Vol",
-
+    "% Stock Ch TS1-TS2": "% Ch TS1-TS2",
+    "Stock_LTP": "S_LTP",
+    "Stock_%_Change": "S_%_Change",
+    "Stock_High": "S_High",
+    "Stock_Low": "S_Low",
 })
+
 
 
 
@@ -190,7 +195,7 @@ def filter_strikes(df, n=4):
     blocks = []
     for _, g in df.groupby("Stock"):
         g = g.sort_values("Strike").reset_index(drop=True)
-        atm = (g["Strike"] - g["Stock_LTP"].iloc[0]).abs().idxmin()
+        atm = (g["Strike"] - g["S_LTP"].iloc[0]).abs().idxmin()
         blocks.append(g.iloc[max(0, atm-n):atm+n+1])
         blocks.append(pd.DataFrame([{c: np.nan for c in g.columns}]))
     return pd.concat(blocks[:-1], ignore_index=True)
