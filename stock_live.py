@@ -104,9 +104,15 @@ def fetch_kite_full():
 
     out = []
     for s,df in option_map.items():
-        ohlc = spot[f"NSE:{s}"]["ohlc"]
-        ltp = spot[f"NSE:{s}"]["last_price"]
+        spot_q = spot.get(f"NSE:{s}", {})
+        
+        ohlc = spot_q.get("ohlc", {})
+        ltp = spot_q.get("last_price")
+        
         pc = ohlc.get("close")
+        high = ohlc.get("high")
+        low = ohlc.get("low")
+
         pct = ((ltp-pc)/pc*100) if ltp and pc else None
 
         rows=[]
@@ -197,18 +203,26 @@ for sym,cfg in UNDERLYINGS.items():
     for k,v in oc.items():
         ce,pe=v.get("ce",{}),v.get("pe",{})
         rows.append({
-            "Strike":int(float(k)),
-            "CE LTP":ce.get("last_price"),"CE OI":ce.get("oi"),"CE Volume":ce.get("volume"),
-            "CE IV":ce.get("implied_volatility"),
-            "CE Delta":ce.get("greeks",{}).get("delta"),
-            "CE Gamma":ce.get("greeks",{}).get("gamma"),
-            "CE Vega":ce.get("greeks",{}).get("vega"),
-            "PE LTP":pe.get("last_price"),"PE OI":pe.get("oi"),"PE Volume":pe.get("volume"),
-            "PE IV":pe.get("implied_volatility"),
-            "PE Delta":pe.get("greeks",{}).get("delta"),
-            "PE Gamma":pe.get("greeks",{}).get("gamma"),
-            "PE Vega":pe.get("greeks",{}).get("vega"),
-            "timestamp":ts,"Max Pain":None
+            "Stock": s,
+            "Expiry": df["expiry"].iloc[0].date(),
+            "Strike": k,
+        
+            "CE_LTP": ceq.get("last_price"),
+            "CE_OI": ceq.get("oi"),
+            "CE_Volume": ceq.get("volume"),
+        
+            "PE_LTP": peq.get("last_price"),
+            "PE_OI": peq.get("oi"),
+            "PE_Volume": peq.get("volume"),
+        
+            "Stock_LTP": ltp,
+            "Stock_High": high,
+            "Stock_Low": low,
+            "Stock_%_Change": ((ltp - pc) / pc * 100) if ltp and pc else None,
+        
+            "timestamp": ts
+        })
+
         })
     df=pd.DataFrame(rows)[BASE_COLS]
     append_to_github(sym, df)
