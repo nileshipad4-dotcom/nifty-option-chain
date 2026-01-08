@@ -199,9 +199,11 @@ def is_downtrend_stock(sdf):
     # ---------- CONDITION 2 ----------
     pe_neg = (window["Δ PE OI TS1-TS2"] < 0).sum() >= 4
     ce_pos = (window["Δ CE OI TS1-TS2"] > 0).sum() >= 4
+    oi_above = above["Δ CE OI TS1-TS2"] > above["Δ PE OI TS1-TS2"]
+    oi_below = below["Δ CE OI TS1-TS2"] > below["Δ PE OI TS1-TS2"]
 
     cond2 = (
-        pe_neg and ce_pos and
+        pe_neg and ce_pos and oi_above and oi_below and
         above["Δ CE Vol TS1-TS2"] > above["Δ PE Vol TS1-TS2"]
     )
 
