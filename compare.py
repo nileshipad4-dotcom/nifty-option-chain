@@ -105,14 +105,39 @@ df1["Δ CE OI TS1-TS2"] = df1["CE_OI_0"] - df1["CE_OI_1"]
 df1["Δ PE OI TS1-TS2"] = df1["PE_OI_0"] - df1["PE_OI_1"]
 df1["Δ CE Vol TS1-TS2"] = df1["CE_VOL_0"] - df1["CE_VOL_1"]
 df1["Δ PE Vol TS1-TS2"] = df1["PE_VOL_0"] - df1["PE_VOL_1"]
-# ---- PE vs CE DIFFERENCE COLUMNS ----
-df1["Δ (PE-CE) OI TS1-TS2"] = (
-    df1["Δ PE OI TS1-TS2"] - df1["Δ CE OI TS1-TS2"]
-)
+# ---- ATM PAIR (BELOW + ABOVE LTP) PE–CE DIFFERENCE ----
 
-df1["Δ (PE-CE) Vol TS1-TS2"] = (
-    df1["Δ PE Vol TS1-TS2"] - df1["Δ CE Vol TS1-TS2"]
-)
+df1["Δ (PE-CE) OI TS1-TS2"] = np.nan
+df1["Δ (PE-CE) Vol TS1-TS2"] = np.nan
+
+for stock, g in df1.groupby("Stock"):
+    g = g.sort_values("Strike")
+    ltp = g["Stock_LTP"].iloc[0]
+
+    below = g[g["Strike"] <= ltp].iloc[-1]
+    above = g[g["Strike"] > ltp].iloc[0]
+
+    pe_oi_sum = (
+        below["Δ PE OI TS1-TS2"] +
+        above["Δ PE OI TS1-TS2"]
+    )
+    ce_oi_sum = (
+        below["Δ CE OI TS1-TS2"] +
+        above["Δ CE OI TS1-TS2"]
+    )
+
+    pe_vol_sum = (
+        below["Δ PE Vol TS1-TS2"] +
+        above["Δ PE Vol TS1-TS2"]
+    )
+    ce_vol_sum = (
+        below["Δ CE Vol TS1-TS2"] +
+        above["Δ CE Vol TS1-TS2"]
+    )
+
+    df1.loc[g.index, "Δ (PE-CE) OI TS1-TS2"] = pe_oi_sum - ce_oi_sum
+    df1.loc[g.index, "Δ (PE-CE) Vol TS1-TS2"] = pe_vol_sum - ce_vol_sum
+
 
 
 df1["% Stock Ch TS1-TS2"] = ((df1["LTP_0"] - df1["LTP_1"]) / df1["LTP_1"]) * 100
