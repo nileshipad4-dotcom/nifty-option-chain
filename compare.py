@@ -270,7 +270,7 @@ fmt.update({
     "Stock_%_Change": "{:.2f}",
     "% Stock Ch TS1-TS2": "{:.2f}",
     "% Stock Ch TS2-TS3": "{:.2f}",
-    "PE/CE Vol": "{:.2f}",
+    "Δ PE/CE Vol": "{:.2f}",   # ✅ CORRECT NAME
 })
 
 # ==================================================
