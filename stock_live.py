@@ -5,7 +5,7 @@ import os
 from datetime import time
 from streamlit_autorefresh import st_autorefresh
 
-st_autorefresh(interval=360_000, key="auto_refresh")
+
 
 # ==================================================
 # STREAMLIT CONFIG
@@ -14,6 +14,29 @@ st.set_page_config(page_title="FnO MP Delta Dashboard", layout="wide")
 st.title("📊 FnO STOCKS – Max Pain Delta View")
 
 DATA_DIR = "data"
+
+# ==================================================
+# DATA MODE TOGGLE
+# ==================================================
+st.subheader("⚙️ Data Mode")
+
+mode = st.radio(
+    "Select Data Mode",
+    ["SNAPSHOT", "LIVE"],
+    index=0,   # ✅ SNAPSHOT default
+    horizontal=True
+)
+
+refresh_count = st_autorefresh(
+    interval=360_000 if mode == "LIVE" else None,
+    key="auto_refresh"
+)
+
+if "live_df" not in st.session_state:
+    st.session_state.live_df = None
+
+if "last_refresh" not in st.session_state:
+    st.session_state.last_refresh = -1
 
 # ==================================================
 # LOAD CSV FILES
@@ -61,9 +84,35 @@ t3 = c3.selectbox("Timestamp 3", filtered_ts, 2)
 # ==================================================
 # LOAD CSVs ONCE
 # ==================================================
-df_t1 = pd.read_csv(file_map[t1])
+
+# LOAD DATA (SNAPSHOT vs LIVE)
+
+if mode == "LIVE":
+
+    # Fetch ONLY on 360-sec tick
+    if refresh_count != st.session_state.last_refresh or st.session_state.live_df is None:
+        with st.spinner("📡 Fetching LIVE market data..."):
+            try:
+                st.session_state.live_df = load_live_data()
+                st.session_state.last_refresh = refresh_count
+            except Exception as e:
+                st.error("LIVE fetch failed. Using last cached data.")
+
+    df_t1 = st.session_state.live_df
+
+else:
+    # SNAPSHOT → timestamp change allowed
+    df_t1 = pd.read_csv(file_map[t1])
+
 df_t2 = pd.read_csv(file_map[t2])
 df_t3 = pd.read_csv(file_map[t3])
+
+# ==================================================
+# SAFETY CHECK
+# ==================================================
+if df_t1 is None or df_t2 is None or df_t3 is None:
+    st.warning("⏳ Data not available yet. Waiting for LIVE refresh.")
+    st.stop()
 
 # ==================================================
 # ================= TABLE 1 ========================
