@@ -181,8 +181,7 @@ df1 = df1.rename(columns={
     "Δ PE Vol TS1-TS2": "Δ PE Vol",
     "Δ (PE-CE) OI TS1-TS2": "Δ (PE-CE) OI",
     "Δ (PE-CE) Vol TS1-TS2": "Δ (PE-CE) Vol",
-    "% Stock Ch TS1-TS2": "% Ch TS1-TS2",
-    "Stock_%_Change": "S_%_Change",
+
 })
 
 
