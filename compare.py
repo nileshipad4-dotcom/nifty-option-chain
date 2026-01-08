@@ -196,12 +196,13 @@ df1 = df1[[
     "Δ (PE-CE) Vol TS1-TS2",
     "PE/CE Vol Ratio",
     "% Stock Ch TS1-TS2",
+    "% Stock Ch TS2-TS3",
     "Stock_LTP", 
     "Stock_%_Change", 
     "Stock_High", 
     "Stock_Low",
     "Δ MP TS2-TS3", 
-    "% Stock Ch TS2-TS3",
+
 ]]
 
 # ---- RENAME DELTA COLUMNS (DISPLAY ONLY) ----
@@ -213,6 +214,7 @@ df1 = df1.rename(columns={
     "Δ PE Vol TS1-TS2": "Δ PE Vol",
     "PE/CE Vol Ratio":  "Δ PE/CE Vol",
     "% Stock Ch TS1-TS2": "% Ch 1-2",
+    "% Stock Ch TS2-TS3": "% Ch 2-3",
     "Stock_%_Change": "% Ch",
     "Δ (PE-CE) OI TS1-TS2": "Δ (PE-CE) OI",
     "Δ (PE-CE) Vol TS1-TS2": "Δ (PE-CE) Vol",
