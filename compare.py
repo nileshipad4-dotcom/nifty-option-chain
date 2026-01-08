@@ -105,6 +105,37 @@ df1["Δ CE OI TS1-TS2"] = df1["CE_OI_0"] - df1["CE_OI_1"]
 df1["Δ PE OI TS1-TS2"] = df1["PE_OI_0"] - df1["PE_OI_1"]
 df1["Δ CE Vol TS1-TS2"] = df1["CE_VOL_0"] - df1["CE_VOL_1"]
 df1["Δ PE Vol TS1-TS2"] = df1["PE_VOL_0"] - df1["PE_VOL_1"]
+
+# ==================================================
+# PE / CE VOL RATIO (ATM WINDOW)
+# ==================================================
+
+df1["PE/CE Vol Ratio"] = np.nan
+
+for stock, g in df1.groupby("Stock"):
+    g = g.sort_values("Strike").reset_index()
+
+    ltp = g["Stock_LTP"].iloc[0]
+
+    # ATM strike index
+    atm_idx = (g["Strike"] - ltp).abs().idxmin()
+
+    # Define windows safely
+    pe_idx = g.loc[
+        max(0, atm_idx-2) : min(len(g)-1, atm_idx+1)
+    ].index
+
+    ce_idx = g.loc[
+        atm_idx : min(len(g)-1, atm_idx+3)
+    ].index
+
+    pe_sum = g.loc[pe_idx, "Δ PE Vol TS1-TS2"].sum()
+    ce_sum = g.loc[ce_idx, "Δ CE Vol TS1-TS2"].sum()
+
+    ratio = pe_sum / ce_sum if ce_sum != 0 else np.nan
+
+    df1.loc[g["index"], "PE/CE Vol Ratio"] = round(ratio, 2)
+
 # ---- ATM PAIR (BELOW + ABOVE LTP) PE–CE DIFFERENCE ----
 
 df1["Δ (PE-CE) OI TS1-TS2"] = np.nan
@@ -163,6 +194,7 @@ df1 = df1[[
     "Δ PE Vol TS1-TS2",
     "Δ (PE-CE) OI TS1-TS2",
     "Δ (PE-CE) Vol TS1-TS2",
+    "PE/CE Vol Ratio",
     "% Stock Ch TS1-TS2",
     "Stock_LTP", 
     "Stock_%_Change", 
@@ -179,6 +211,7 @@ df1 = df1.rename(columns={
     "Δ PE OI TS1-TS2": "Δ PE OI",
     "Δ CE Vol TS1-TS2": "Δ CE Vol",
     "Δ PE Vol TS1-TS2": "Δ PE Vol",
+    "PE/CE Vol Ratio":  "Δ PE/CE Vol",
     "Δ (PE-CE) OI TS1-TS2": "Δ (PE-CE) OI",
     "Δ (PE-CE) Vol TS1-TS2": "Δ (PE-CE) Vol",
 })
@@ -232,7 +265,49 @@ fmt.update({
     "Stock_%_Change": "{:.2f}",
     "% Stock Ch TS1-TS2": "{:.2f}",
     "% Stock Ch TS2-TS3": "{:.2f}",
+    "PE/CE Vol Ratio": "{:.2f}",
 })
+
+# ==================================================
+# RATIO COUNT CONTROL (NON-FILTERING)
+# ==================================================
+
+st.subheader("📊 PE/CE Volume Ratio – Count")
+
+rc1, rc2 = st.columns(2)
+
+with rc1:
+    ratio_operator = st.selectbox(
+        "Ratio Condition",
+        [">=", "<="],
+        index=0
+    )
+
+with rc2:
+    ratio_threshold = st.number_input(
+        "Ratio Value",
+        min_value=0.1,
+        max_value=10.0,
+        value=1.0,
+        step=0.1
+    )
+
+# ---- COUNT (STOCK-LEVEL, NOT STRIKE-LEVEL) ----
+ratio_df = (
+    df1.groupby("Stock")["PE/CE Vol Ratio"]
+    .first()
+    .dropna()
+)
+
+if ratio_operator == ">=":
+    ratio_count = (ratio_df >= ratio_threshold).sum()
+else:
+    ratio_count = (ratio_df <= ratio_threshold).sum()
+
+st.metric(
+    label=f"Stocks with PE/CE Vol Ratio {ratio_operator} {ratio_threshold}",
+    value=int(ratio_count)
+)
 
 st.dataframe(display_df1.style.apply(highlight_table1, axis=None).format(fmt, na_rep=""),
              use_container_width=True)
