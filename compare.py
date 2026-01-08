@@ -200,17 +200,32 @@ display_df1 = filter_strikes(df1)
 
 def highlight_table1(data):
     styles = pd.DataFrame("", index=data.index, columns=data.columns)
+
     for stock in data["Stock"].dropna().unique():
         sdf = data[(data["Stock"] == stock) & data["Strike"].notna()]
-        ltp = sdf["Stock_LTP"].iloc[0] if "Stock_LTP" in sdf.columns else sdf["LTP_0"].iloc[0]
+        if sdf.empty:
+            continue
+
+        # ✅ ALWAYS SAFE: LTP_0 exists for Table-1
+        ltp = sdf["LTP_0"].iloc[0]
+
         strikes = sdf["Strike"].values
-        for i in range(len(strikes)-1):
-            if strikes[i] <= ltp <= strikes[i+1]:
-                styles.loc[sdf.index[i]] = "background-color:#003366;color:white"
-                styles.loc[sdf.index[i+1]] = "background-color:#003366;color:white"
+        idxs = sdf.index.to_list()
+
+        # Highlight ATM pair
+        for i in range(len(strikes) - 1):
+            if strikes[i] <= ltp <= strikes[i + 1]:
+                styles.loc[idxs[i]] = "background-color:#003366;color:white"
+                styles.loc[idxs[i + 1]] = "background-color:#003366;color:white"
                 break
-        styles.loc[sdf["Δ MP TS1-TS2"].abs().idxmax()] = "background-color:#8B0000;color:white"
+
+        # Highlight max |Δ MP|
+        if "Δ MP TS1-TS2" in sdf.columns:
+            max_idx = sdf["Δ MP TS1-TS2"].abs().idxmax()
+            styles.loc[max_idx] = "background-color:#8B0000;color:white"
+
     return styles
+
 
 fmt = {c: "{:.0f}" for c in display_df1.select_dtypes("number").columns}
 fmt.update({
