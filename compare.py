@@ -223,7 +223,6 @@ def filter_strikes(df, n=4):
         g = g.sort_values("Strike").reset_index(drop=True)
         atm = (g["Strike"] - g["Stock_LTP"].iloc[0]).abs().idxmin()
         blocks.append(g.iloc[max(0, atm-n):atm+n])
-        blocks.append(pd.DataFrame([{c: np.nan for c in g.columns}]))
     return pd.concat(blocks[:-1], ignore_index=True)
 
 display_df1 = filter_strikes(df1)
