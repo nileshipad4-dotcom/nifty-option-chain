@@ -20,9 +20,11 @@ st.subheader("⚙️ Data Mode")
 
 mode = st.radio(
     "Select Data Mode",
-    ["SNAPSHOT", "LIVE"],
+    ["LIVE", "SNAPSHOT"],
+    index=1,            # ✅ SNAPSHOT default
     horizontal=True
 )
+
 
 if mode == "LIVE":
     st_autorefresh(interval=60_000, key="auto_refresh")   # 1 min
