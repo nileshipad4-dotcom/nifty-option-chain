@@ -185,16 +185,34 @@ display_df1 = filter_strikes(df1)
 
 def highlight_table1(data):
     styles = pd.DataFrame("", index=data.index, columns=data.columns)
+
+    # ❗ Guard clause: required columns must exist
+    required_cols = {"Stock", "Strike", "Stock_LTP", "Δ MP TS1-TS2"}
+    if not required_cols.issubset(data.columns):
+        return styles
+
     for stock in data["Stock"].dropna().unique():
         sdf = data[(data["Stock"] == stock) & data["Strike"].notna()]
+
+        # ❗ Skip empty / malformed blocks
+        if sdf.empty or "Stock_LTP" not in sdf.columns:
+            continue
+
         ltp = sdf["Stock_LTP"].iloc[0]
+
         strikes = sdf["Strike"].values
-        for i in range(len(strikes)-1):
-            if strikes[i] <= ltp <= strikes[i+1]:
+        for i in range(len(strikes) - 1):
+            if strikes[i] <= ltp <= strikes[i + 1]:
                 styles.loc[sdf.index[i]] = "background-color:#003366;color:white"
-                styles.loc[sdf.index[i+1]] = "background-color:#003366;color:white"
+                styles.loc[sdf.index[i + 1]] = "background-color:#003366;color:white"
                 break
-        styles.loc[sdf["Δ MP TS1-TS2"].abs().idxmax()] = "background-color:#8B0000;color:white"
+
+        # Highlight max Δ MP safely
+        mp_col = "Δ MP TS1-TS2"
+        if mp_col in sdf.columns:
+            idx = sdf[mp_col].abs().idxmax()
+            styles.loc[idx] = "background-color:#8B0000;color:white"
+
     return styles
 
 fmt = {c: "{:.0f}" for c in display_df1.select_dtypes("number").columns}
