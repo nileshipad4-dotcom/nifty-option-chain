@@ -8,13 +8,25 @@ from kiteconnect import KiteConnect
 import pytz
 from datetime import datetime
 
-st_autorefresh(interval=360_000, key="auto_refresh")
+if mode == "LIVE":
+    st_autorefresh(interval=60_000, key="auto_refresh")   # 1 min
+else:
+    st_autorefresh(interval=0, key="auto_refresh")        # disabled
+
 
 # ==================================================
 # STREAMLIT CONFIG
 # ==================================================
 st.set_page_config(page_title="FnO MP Delta Dashboard", layout="wide")
 st.title("📊 FnO STOCKS – Max Pain Delta View")
+
+st.subheader("⚙️ Data Mode")
+
+mode = st.radio(
+    "Select Data Mode",
+    ["LIVE", "SNAPSHOT"],
+    horizontal=True
+)
 
 DATA_DIR = "data"
 
@@ -169,18 +181,29 @@ filtered_ts = [
 # ==================================================
 st.subheader("🕒 Timestamp Selection")
 c1, c2, c3 = st.columns(3)
-t1 = "LIVE" 
-st.markdown("**Timestamp 1: LIVE DATA**")
+
+if mode == "LIVE":
+    c1.markdown("**Timestamp 1: LIVE**")
+    t1 = "LIVE"
+else:
+    t1 = c1.selectbox("Timestamp 1", filtered_ts, 0)
+
 t2 = c2.selectbox("Timestamp 2", filtered_ts, 1)
 t3 = c3.selectbox("Timestamp 3", filtered_ts, 2)
+
 
 # ==================================================
 # LOAD CSVs ONCE
 # ==================================================
-with st.spinner("Fetching LIVE market data..."):     
-    df_t1 = load_live_data()  
+if mode == "LIVE":
+    with st.spinner("📡 Fetching LIVE market data..."):
+        df_t1 = load_live_data()
+else:
+    df_t1 = pd.read_csv(file_map[t1])
+
 df_t2 = pd.read_csv(file_map[t2])
 df_t3 = pd.read_csv(file_map[t3])
+
 
 # ==================================================
 # ================= TABLE 1 ========================
