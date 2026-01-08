@@ -4,11 +4,8 @@ import numpy as np
 import os
 from datetime import time
 from streamlit_autorefresh import st_autorefresh
-from kiteconnect import KiteConnect
-import pytz
-from datetime import datetime
 
-
+st_autorefresh(interval=360_000, key="auto_refresh")
 
 # ==================================================
 # STREAMLIT CONFIG
@@ -16,162 +13,7 @@ from datetime import datetime
 st.set_page_config(page_title="FnO MP Delta Dashboard", layout="wide")
 st.title("📊 FnO STOCKS – Max Pain Delta View")
 
-# ==================================================
-# MODE SELECTOR (SNAPSHOT DEFAULT)
-# ==================================================
-st.subheader("⚙️ Data Mode")
-
-mode = st.radio(
-    "Select Data Mode",
-    ["SNAPSHOT", "LIVE"],
-    index=0,            # ✅ SNAPSHOT default
-    horizontal=True
-)
-
-# ==================================================
-# AUTO REFRESH (CALL ONLY ONCE)
-# ==================================================
-refresh_count = st_autorefresh(
-    interval=360_000 if mode == "LIVE" else None,
-    key="auto_refresh"
-)
-
-# ==================================================
-# SESSION STATE INIT
-# ==================================================
-if "live_df" not in st.session_state:
-    st.session_state.live_df = None
-
-if "last_refresh" not in st.session_state:
-    st.session_state.last_refresh = -1
-
-if "force_live_refresh" not in st.session_state:
-    st.session_state.force_live_refresh = False
-
-# ==================================================
-# DATA DIRECTORY & TIME
-# ==================================================
 DATA_DIR = "data"
-
-IST = pytz.timezone("Asia/Kolkata")
-now = datetime.now(IST).time()
-
-if mode == "LIVE" and not time(9, 15) <= now <= time(15, 30):
-    st.warning("Market closed — showing last available LIVE snapshot")
-
-# ==================================================
-# CONFIG
-# ==================================================
-API_KEY = "bkgv59vaazn56c42"
-ACCESS_TOKEN = "um1gYW2GgQ94kdg2G1C9vu3cWfdFF00X"
-
-STOCKS = [
-    "360ONE","ABB","ABCAPITAL","ADANIENSOL","ADANIENT","ADANIGREEN","ADANIPORTS","ALKEM",
-    "AMBER","AMBUJACEM","ANGELONE","APLAPOLLO","APOLLOHOSP","ASHOKLEY","ASIANPAINT","ASTRAL",
-    "AUBANK","AUROPHARMA","AXISBANK","BAJAJ-AUTO","BAJAJFINSV","BAJAJHLDNG","BAJFINANCE",
-    "BANDHANBNK","BANKBARODA","BANKINDIA","BANKNIFTY","BDL","BEL","BHARATFORG","BHARTIARTL",
-    "BHEL","BIOCON","BLUESTARCO","BOSCHLTD","BPCL","BRITANNIA","BSE","CAMS","CANBK","CDSL",
-    "CGPOWER","CHOLAFIN","CIPLA","COALINDIA","COFORGE","COLPAL","CONCOR","CROMPTON","CUMMINSIND",
-    "DABUR","DALBHARAT","DELHIVERY","DIVISLAB","DIXON","DLF","DMART","DRREDDY","EICHERMOT",
-    "ETERNAL","EXIDEIND","FEDERALBNK","FINNIFTY","FORTIS","GAIL","GLENMARK","GMRAIRPORT",
-    "GODREJCP","GODREJPROP","GRASIM","HAL","HAVELLS","HCLTECH","HDFCAMC","HDFCBANK","HDFCLIFE",
-    "HEROMOTOCO","HINDALCO","HINDPETRO","HINDUNILVR","HINDZINC","HUDCO","ICICIBANK","ICICIGI",
-    "ICICIPRULI","IDEA","IDFCFIRSTB","IEX","IIFL","INDHOTEL","INDIANB","INDIGO","INDUSINDBK",
-    "INDUSTOWER","INFY","INOXWIND","IOC","IRCTC","IREDA","IRFC","ITC","JINDALSTEL","JIOFIN",
-    "JSWENERGY","JSWSTEEL","JUBLFOOD","KALYANKJIL","KAYNES","KEI","KFINTECH","KOTAKBANK",
-    "KPITTECH","LAURUSLABS","LICHSGFIN","LICI","LODHA","LT","LTF","LTIM","LUPIN","M&M",
-    "MANAPPURAM","MANKIND","MARICO","MARUTI","MAXHEALTH","MAZDOCK","MCX","MFSL","MIDCPNIFTY",
-    "MOTHERSON","MPHASIS","MUTHOOTFIN","NATIONALUM","NAUKRI","NBCC","NESTLEIND","NHPC",
-    "NIFTY","NIFTYNXT50","NMDC","NTPC","NUVAMA","NYKAA","OBEROIRLTY","OFSS","OIL","ONGC",
-    "PAGEIND","PATANJALI","PAYTM","PERSISTENT","PETRONET","PFC","PGEL","PHOENIXLTD",
-    "PIDILITIND","PIIND","PNB","PNBHOUSING","POLICYBZR","POLYCAB","POWERGRID","POWERINDIA",
-    "PPLPHARMA","PREMIERENE","PRESTIGE","RBLBANK","RECLTD","RELIANCE","RVNL","SAIL",
-    "SAMMAANCAP","SBICARD","SBILIFE","SBIN","SHREECEM","SHRIRAMFIN","SIEMENS","SOLARINDS",
-    "SONACOMS","SRF","SUNPHARMA","SUPREMEIND","SUZLON","SWIGGY","SYNGENE","TATACONSUM",
-    "TATAELXSI","TATAPOWER","TATASTEEL","TATATECH","TCS","TECHM","TIINDIA","TITAN","TMPV",
-    "TORNTPHARM","TORNTPOWER","TRENT","TVSMOTOR","ULTRACEMCO","UNIONBANK","UNITDSPR",
-    "UNOMINDA","UPL","VBL","VEDL","VOLTAS","WAAREEENER","WIPRO","YESBANK","ZYDUSLIFE"
-]
-
-# ==================================================
-# MANUAL LIVE REFRESH BUTTON
-# ==================================================
-if mode == "LIVE":
-    if st.button("🔄 Refresh LIVE now"):
-        st.session_state.force_live_refresh = True
-
-# ==================================================
-# LIVE DATA LOADER
-# ==================================================
-def load_live_data():
-    kite = KiteConnect(api_key=API_KEY)
-    kite.set_access_token(ACCESS_TOKEN)
-
-    instruments = pd.DataFrame(kite.instruments("NFO"))
-
-    option_map = {}
-    all_option_symbols = []
-
-    for stock in STOCKS:
-        df = instruments[
-            (instruments["name"] == stock) &
-            (instruments["segment"] == "NFO-OPT")
-        ].copy()
-
-        if df.empty:
-            continue
-
-        df["expiry"] = pd.to_datetime(df["expiry"])
-        expiry = df["expiry"].min()
-        df = df[df["expiry"] == expiry]
-
-        option_map[stock] = df
-        all_option_symbols.extend(["NFO:" + ts for ts in df["tradingsymbol"]])
-
-    # ---- OPTION QUOTES (CHUNKED)
-    option_quotes = {}
-    for i in range(0, len(all_option_symbols), 200):
-        option_quotes.update(kite.quote(all_option_symbols[i:i + 200]))
-
-    # ---- SPOT QUOTES
-    spot_quotes = kite.quote([f"NSE:{s}" for s in STOCKS])
-
-    rows = []
-
-    for stock, df in option_map.items():
-        spot = spot_quotes.get(f"NSE:{stock}", {})
-        stock_ltp = spot.get("last_price")
-        ohlc = spot.get("ohlc", {})
-
-        prev_close = ohlc.get("close")
-        pct_change = (
-            ((stock_ltp - prev_close) / prev_close) * 100
-            if stock_ltp and prev_close else np.nan
-        )
-
-        for strike in sorted(df["strike"].unique()):
-            ce = df[(df["strike"] == strike) & (df["instrument_type"] == "CE")]
-            pe = df[(df["strike"] == strike) & (df["instrument_type"] == "PE")]
-
-            ce_q = option_quotes.get("NFO:" + ce.iloc[0]["tradingsymbol"], {}) if not ce.empty else {}
-            pe_q = option_quotes.get("NFO:" + pe.iloc[0]["tradingsymbol"], {}) if not pe.empty else {}
-
-            rows.append({
-                "Stock": stock,
-                "Strike": strike,
-                "CE_OI": ce_q.get("oi"),
-                "PE_OI": pe_q.get("oi"),
-                "CE_Volume": ce_q.get("volume"),
-                "PE_Volume": pe_q.get("volume"),
-                "Stock_LTP": stock_ltp,
-                "Stock_High": ohlc.get("high"),
-                "Stock_Low": ohlc.get("low"),
-                "Stock_%_Change": pct_change,
-            })
-
-    df_live = pd.DataFrame(rows)
-    df_live["Max_Pain"] = 0   # placeholder (computed later)
-    return df_live
 
 # ==================================================
 # LOAD CSV FILES
@@ -193,7 +35,7 @@ timestamps_all = [ts for ts, _ in csv_files]
 file_map = dict(csv_files)
 
 # ==================================================
-# TIME FILTER (08:00–16:30)
+# TIME FILTER (08:00 to 16:30)
 # ==================================================
 def extract_time(ts):
     try:
@@ -212,57 +54,16 @@ filtered_ts = [
 # ==================================================
 st.subheader("🕒 Timestamp Selection")
 c1, c2, c3 = st.columns(3)
-
-if mode == "LIVE":
-    c1.markdown("**Timestamp 1: LIVE**")
-    t1 = "LIVE"
-else:
-    t1 = c1.selectbox("Timestamp 1", filtered_ts, 0)
-
+t1 = c1.selectbox("Timestamp 1", filtered_ts, 0)
 t2 = c2.selectbox("Timestamp 2", filtered_ts, 1)
 t3 = c3.selectbox("Timestamp 3", filtered_ts, 2)
 
 # ==================================================
-# LOAD DATA (LIVE vs SNAPSHOT)
+# LOAD CSVs ONCE
 # ==================================================
-if mode == "LIVE":
-    if (
-        st.session_state.live_df is None or
-        refresh_count != st.session_state.last_refresh or
-        st.session_state.force_live_refresh
-    ):
-        with st.spinner("📡 Updating LIVE market data..."):
-            try:
-                st.session_state.live_df = load_live_data()
-                st.session_state.last_refresh = refresh_count
-                st.session_state.force_live_refresh = False
-            except Exception:
-                st.error("LIVE data fetch failed. Using last cached snapshot.")
-
-    df_t1 = st.session_state.live_df
-else:
-    df_t1 = pd.read_csv(file_map[t1])
-
+df_t1 = pd.read_csv(file_map[t1])
 df_t2 = pd.read_csv(file_map[t2])
 df_t3 = pd.read_csv(file_map[t3])
-
-# ==================================================
-# SAFETY CHECK (CRITICAL)
-# ==================================================
-if df_t1 is None or df_t2 is None or df_t3 is None:
-    st.error("Data not available yet. Waiting for LIVE refresh or CSV load.")
-    st.stop()
-
-# ==================================================
-# MODE STATUS
-# ==================================================
-if mode == "LIVE":
-    st.caption(
-        f"🟢 LIVE mode — last update: "
-        f"{datetime.now(IST).strftime('%H:%M:%S')}"
-    )
-else:
-    st.caption("📁 SNAPSHOT mode — static CSV data")
 
 # ==================================================
 # ================= TABLE 1 ========================
@@ -426,12 +227,7 @@ def filter_strikes(df, n=4):
         g = g.sort_values("Strike").reset_index(drop=True)
         atm = (g["Strike"] - g["Stock_LTP"].iloc[0]).abs().idxmin()
         blocks.append(g.iloc[max(0, atm-n):atm+n])
-
-    if not blocks:
-        return pd.DataFrame()
-
-    return pd.concat(blocks, ignore_index=True)
-
+    return pd.concat(blocks[:-1], ignore_index=True)
 
 display_df1 = filter_strikes(df1)
 
