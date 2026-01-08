@@ -166,7 +166,31 @@ st.dataframe(display_df1.style.apply(highlight_table1, axis=None).format(fmt, na
 
 
 
+# ==================================================
+# FILTERED DOWNTREND
+# ==================================================
 
+st.subheader("📉 DOWNTREND Filters")
+
+dc1, dc2 = st.columns(2)
+
+with dc1:
+    ltp_strike_dist_pct = st.number_input(
+        "Max % distance of BELOW strike from LTP",
+        min_value=0.1,
+        max_value=5.0,
+        value=0.6,
+        step=0.1
+    )
+
+with dc2:
+    stock_chg_ts23_limit = st.number_input(
+        "% Stock Change TS2→TS3 threshold",
+        min_value=0.1,
+        max_value=5.0,
+        value=0.7,
+        step=0.1
+    )
 
 # ==================================================
 # FILTERED DOWNTREND
@@ -188,6 +212,17 @@ def get_ltp_strikes(sdf):
 def is_downtrend_stock(sdf):
     below, above, window = get_ltp_strikes(sdf)
 
+    ltp = sdf["Stock_LTP"].iloc[0]
+
+    # ---- BELOW STRIKE DISTANCE CHECK (COMMON FOR ALL CONDITIONS)
+    below_dist_ok = (
+        abs((below["Strike"] - ltp) / ltp) * 100
+        <= ltp_strike_dist_pct
+    )
+
+    if not below_dist_ok:
+        return False
+
     # ---------- CONDITION 1 ----------
     cond1 = (
         above["Δ CE OI TS1-TS2"] > above["Δ PE OI TS1-TS2"] and
@@ -203,19 +238,27 @@ def is_downtrend_stock(sdf):
     oi_below = below["Δ CE OI TS1-TS2"] > below["Δ PE OI TS1-TS2"]
 
     cond2 = (
-        pe_neg and ce_pos and oi_above and oi_below and
+        pe_neg and ce_pos and  oi_above and oi_below and
         above["Δ CE Vol TS1-TS2"] > above["Δ PE Vol TS1-TS2"]
     )
 
     # ---------- CONDITION 3 ----------
     cond3 = (
-        sdf["% Stock Ch TS2-TS3"].iloc[0] > 0.7 and
+        sdf["% Stock Ch TS2-TS3"].iloc[0] > stock_chg_ts23_limit and
         above["Δ CE Vol TS1-TS2"] > above["Δ PE Vol TS1-TS2"] and
         above["Δ CE OI TS1-TS2"] > above["Δ PE OI TS1-TS2"] and
         below["Δ CE OI TS1-TS2"] > 0
     )
 
     return cond1 or cond2 or cond3
+
+
+
+
+
+
+
+
 
 # DOWNTREND DATAFRAME
 downtrend_blocks = []
