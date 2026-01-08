@@ -172,26 +172,11 @@ df1 = df1[[
     "% Stock Ch TS2-TS3",
 ]]
 
-# ---- RENAME DELTA COLUMNS (DISPLAY ONLY) ----
-df1 = df1.rename(columns={
-    "Δ MP TS1-TS2": "Δ MP",
-    "Δ CE OI TS1-TS2": "Δ CE OI",
-    "Δ PE OI TS1-TS2": "Δ PE OI",
-    "Δ CE Vol TS1-TS2": "Δ CE Vol",
-    "Δ PE Vol TS1-TS2": "Δ PE Vol",
-    "Δ (PE-CE) OI TS1-TS2": "Δ (PE-CE) OI",
-    "Δ (PE-CE) Vol TS1-TS2": "Δ (PE-CE) Vol",
-})
-
-
-
-
-
 def filter_strikes(df, n=4):
     blocks = []
     for _, g in df.groupby("Stock"):
         g = g.sort_values("Strike").reset_index(drop=True)
-        atm = (g["Strike"] - g["S_LTP"].iloc[0]).abs().idxmin()
+        atm = (g["Strike"] - g["Stock_LTP"].iloc[0]).abs().idxmin()
         blocks.append(g.iloc[max(0, atm-n):atm+n+1])
         blocks.append(pd.DataFrame([{c: np.nan for c in g.columns}]))
     return pd.concat(blocks[:-1], ignore_index=True)
@@ -200,32 +185,17 @@ display_df1 = filter_strikes(df1)
 
 def highlight_table1(data):
     styles = pd.DataFrame("", index=data.index, columns=data.columns)
-
     for stock in data["Stock"].dropna().unique():
         sdf = data[(data["Stock"] == stock) & data["Strike"].notna()]
-        if sdf.empty:
-            continue
-
-        # ✅ ALWAYS SAFE: LTP_0 exists for Table-1
-        ltp = sdf["LTP_0"].iloc[0]
-
+        ltp = sdf["Stock_LTP"].iloc[0]
         strikes = sdf["Strike"].values
-        idxs = sdf.index.to_list()
-
-        # Highlight ATM pair
-        for i in range(len(strikes) - 1):
-            if strikes[i] <= ltp <= strikes[i + 1]:
-                styles.loc[idxs[i]] = "background-color:#003366;color:white"
-                styles.loc[idxs[i + 1]] = "background-color:#003366;color:white"
+        for i in range(len(strikes)-1):
+            if strikes[i] <= ltp <= strikes[i+1]:
+                styles.loc[sdf.index[i]] = "background-color:#003366;color:white"
+                styles.loc[sdf.index[i+1]] = "background-color:#003366;color:white"
                 break
-
-        # Highlight max |Δ MP|
-        if "Δ MP TS1-TS2" in sdf.columns:
-            max_idx = sdf["Δ MP TS1-TS2"].abs().idxmax()
-            styles.loc[max_idx] = "background-color:#8B0000;color:white"
-
+        styles.loc[sdf["Δ MP TS1-TS2"].abs().idxmax()] = "background-color:#8B0000;color:white"
     return styles
-
 
 fmt = {c: "{:.0f}" for c in display_df1.select_dtypes("number").columns}
 fmt.update({
@@ -271,7 +241,7 @@ with dc2:
 # ==================================================
 def get_ltp_strikes(sdf):
     sdf = sdf.sort_values("Strike").reset_index(drop=True)
-    ltp = sdf["Stock_LTP"].iloc[0] if "Stock_LTP" in sdf.columns else sdf["LTP_0"].iloc[0]
+    ltp = sdf["Stock_LTP"].iloc[0]
 
     below = sdf[sdf["Strike"] <= ltp].iloc[-1]
     above = sdf[sdf["Strike"] > ltp].iloc[0]
@@ -286,7 +256,7 @@ def get_ltp_strikes(sdf):
 def is_downtrend_stock(sdf):
     below, above, window = get_ltp_strikes(sdf)
 
-    ltp = sdf["Stock_LTP"].iloc[0] if "Stock_LTP" in sdf.columns else sdf["LTP_0"].iloc[0]
+    ltp = sdf["Stock_LTP"].iloc[0]
 
     # ---- BELOW STRIKE DISTANCE CHECK (COMMON FOR ALL CONDITIONS)
     below_dist_ok = (
@@ -407,7 +377,7 @@ with uc2:
 
 def is_uptrend_stock(sdf):
     below, above, window = get_ltp_strikes(sdf)
-    ltp = sdf["Stock_LTP"].iloc[0] if "Stock_LTP" in sdf.columns else sdf["LTP_0"].iloc[0]
+    ltp = sdf["Stock_LTP"].iloc[0]
 
     # ---- COMMON CONDITIONS ----
     above_dist_ok = (
@@ -558,7 +528,7 @@ mp_map = {}
 
 for stock in df_all["Stock"].unique():
     sdf = df_all[df_all["Stock"] == stock].sort_values("Strike")
-    ltp = sdf["Stock_LTP"].iloc[0] if "Stock_LTP" in sdf.columns else sdf["LTP_0"].iloc[0]
+    ltp = sdf["Stock_LTP"].iloc[0]
     strikes = sdf["Strike"].values
 
     for i in range(len(strikes) - 1):
