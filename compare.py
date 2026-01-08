@@ -202,7 +202,7 @@ def highlight_table1(data):
     styles = pd.DataFrame("", index=data.index, columns=data.columns)
     for stock in data["Stock"].dropna().unique():
         sdf = data[(data["Stock"] == stock) & data["Strike"].notna()]
-        ltp = sdf["Stock_LTP"].iloc[0]
+        ltp = sdf["Stock_LTP"].iloc[0] if "Stock_LTP" in sdf.columns else sdf["LTP_0"].iloc[0]
         strikes = sdf["Strike"].values
         for i in range(len(strikes)-1):
             if strikes[i] <= ltp <= strikes[i+1]:
@@ -256,7 +256,7 @@ with dc2:
 # ==================================================
 def get_ltp_strikes(sdf):
     sdf = sdf.sort_values("Strike").reset_index(drop=True)
-    ltp = sdf["Stock_LTP"].iloc[0]
+    ltp = sdf["Stock_LTP"].iloc[0] if "Stock_LTP" in sdf.columns else sdf["LTP_0"].iloc[0]
 
     below = sdf[sdf["Strike"] <= ltp].iloc[-1]
     above = sdf[sdf["Strike"] > ltp].iloc[0]
@@ -271,7 +271,7 @@ def get_ltp_strikes(sdf):
 def is_downtrend_stock(sdf):
     below, above, window = get_ltp_strikes(sdf)
 
-    ltp = sdf["Stock_LTP"].iloc[0]
+    ltp = sdf["Stock_LTP"].iloc[0] if "Stock_LTP" in sdf.columns else sdf["LTP_0"].iloc[0]
 
     # ---- BELOW STRIKE DISTANCE CHECK (COMMON FOR ALL CONDITIONS)
     below_dist_ok = (
@@ -392,7 +392,7 @@ with uc2:
 
 def is_uptrend_stock(sdf):
     below, above, window = get_ltp_strikes(sdf)
-    ltp = sdf["Stock_LTP"].iloc[0]
+    ltp = sdf["Stock_LTP"].iloc[0] if "Stock_LTP" in sdf.columns else sdf["LTP_0"].iloc[0]
 
     # ---- COMMON CONDITIONS ----
     above_dist_ok = (
@@ -543,7 +543,7 @@ mp_map = {}
 
 for stock in df_all["Stock"].unique():
     sdf = df_all[df_all["Stock"] == stock].sort_values("Strike")
-    ltp = sdf["Stock_LTP"].iloc[0]
+    ltp = sdf["Stock_LTP"].iloc[0] if "Stock_LTP" in sdf.columns else sdf["LTP_0"].iloc[0]
     strikes = sdf["Strike"].values
 
     for i in range(len(strikes) - 1):
