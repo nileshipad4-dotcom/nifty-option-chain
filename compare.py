@@ -74,11 +74,11 @@ dfs = []
 for i, d in enumerate([df_t1, df_t2, df_t3]):
     dfs.append(
         d[[
-            "Stock", "Strike", "Max_Pain", "S_LTP",
+            "Stock", "Strike", "Max_Pain", "Stock_LTP",
             "CE_OI", "PE_OI", "CE_Volume", "PE_Volume"
         ]].rename(columns={
             "Max_Pain": f"MP_{i}",
-            "S_LTP": f"LTP_{i}",
+            "Stock_LTP": f"LTP_{i}",
             "CE_OI": f"CE_OI_{i}",
             "PE_OI": f"PE_OI_{i}",
             "CE_Volume": f"CE_VOL_{i}",
@@ -89,7 +89,7 @@ for i, d in enumerate([df_t1, df_t2, df_t3]):
 df1 = dfs[0].merge(dfs[1], on=["Stock", "Strike"]).merge(dfs[2], on=["Stock", "Strike"])
 
 df1 = df1.merge(
-    df_t1[["Stock", "Strike",  "S_%_Change", "S_High", "S_Low"]],
+    df_t1[["Stock", "Strike", "Stock_%_Change", "Stock_High", "Stock_Low"]],
     on=["Stock", "Strike"],
     how="left"
 )
@@ -98,17 +98,17 @@ for c in df1.columns:
     if any(x in c for x in ["MP_", "LTP_", "OI_", "VOL_"]):
         df1[c] = pd.to_numeric(df1[c], errors="coerce").fillna(0)
 
-df1["Δ MP"] = df1["MP_0"] - df1["MP_1"]
+df1["Δ MP TS1-TS2"] = df1["MP_0"] - df1["MP_1"]
 df1["Δ MP TS2-TS3"] = df1["MP_1"] - df1["MP_2"]
 
-df1["Δ CE OI"] = df1["CE_OI_0"] - df1["CE_OI_1"]
+df1["Δ CE OI TS1-TS2"] = df1["CE_OI_0"] - df1["CE_OI_1"]
 df1["Δ PE OI TS1-TS2"] = df1["PE_OI_0"] - df1["PE_OI_1"]
-df1["Δ CE Vol"] = df1["CE_VOL_0"] - df1["CE_VOL_1"]
-df1["Δ PE Vol"] = df1["PE_VOL_0"] - df1["PE_VOL_1"]
+df1["Δ CE Vol TS1-TS2"] = df1["CE_VOL_0"] - df1["CE_VOL_1"]
+df1["Δ PE Vol TS1-TS2"] = df1["PE_VOL_0"] - df1["PE_VOL_1"]
 # ---- ATM PAIR (BELOW + ABOVE LTP) PE–CE DIFFERENCE ----
 
-df1["Δ (PE-CE) OI"] = np.nan
-df1["Δ (PE-CE) Vol"] = np.nan
+df1["Δ (PE-CE) OI TS1-TS2"] = np.nan
+df1["Δ (PE-CE) Vol TS1-TS2"] = np.nan
 
 for stock, g in df1.groupby("Stock"):
     g = g.sort_values("Strike")
@@ -130,44 +130,44 @@ for stock, g in df1.groupby("Stock"):
         above["Δ PE OI TS1-TS2"]
     )
     ce_oi_sum = (
-        below["Δ CE OI"] +
-        above["Δ CE OI"]
+        below["Δ CE OI TS1-TS2"] +
+        above["Δ CE OI TS1-TS2"]
     )
 
     pe_vol_sum = (
-        below["Δ PE Vol"] +
-        above["Δ PE Vol"]
+        below["Δ PE Vol TS1-TS2"] +
+        above["Δ PE Vol TS1-TS2"]
     )
     ce_vol_sum = (
-        below["Δ CE Vol"] +
-        above["Δ CE Vol"]
+        below["Δ CE Vol TS1-TS2"] +
+        above["Δ CE Vol TS1-TS2"]
     )
 
-    df1.loc[g.index, "Δ (PE-CE) OI"] = pe_oi_sum - ce_oi_sum
-    df1.loc[g.index, "Δ (PE-CE) Vol"] = pe_vol_sum - ce_vol_sum
+    df1.loc[g.index, "Δ (PE-CE) OI TS1-TS2"] = pe_oi_sum - ce_oi_sum
+    df1.loc[g.index, "Δ (PE-CE) Vol TS1-TS2"] = pe_vol_sum - ce_vol_sum
 
 
 
-df1["% Ch TS1-TS2"] = ((df1["LTP_0"] - df1["LTP_1"]) / df1["LTP_1"]) * 100
+df1["% Stock Ch TS1-TS2"] = ((df1["LTP_0"] - df1["LTP_1"]) / df1["LTP_1"]) * 100
 df1["% Stock Ch TS2-TS3"] = ((df1["LTP_1"] - df1["LTP_2"]) / df1["LTP_2"]) * 100
-df1["S_LTP"] = df1["LTP_0"]
+df1["Stock_LTP"] = df1["LTP_0"]
 
 # ---- TS3 COLUMNS MOVED TO END ----
 df1 = df1[[
     "Stock", 
     "Strike",
-    "Δ MP",
-    "Δ CE OI", 
-    "Δ PE OI",
-    "Δ CE Vol", 
-    "Δ PE Vol",
-    "Δ (PE-CE) OI",
-    "Δ (PE-CE) Vol",
-    "% Ch TS1-TS2",
-    "S_LTP", 
-    "S_%_Change", 
-    "S_High", 
-    "S_Low",
+    "Δ MP TS1-TS2",
+    "Δ CE OI TS1-TS2", 
+    "Δ PE OI TS1-TS2",
+    "Δ CE Vol TS1-TS2", 
+    "Δ PE Vol TS1-TS2",
+    "Δ (PE-CE) OI TS1-TS2",
+    "Δ (PE-CE) Vol TS1-TS2",
+    "% Stock Ch TS1-TS2",
+    "Stock_LTP", 
+    "Stock_%_Change", 
+    "Stock_High", 
+    "Stock_Low",
     "Δ MP TS2-TS3", 
     "% Stock Ch TS2-TS3",
 ]]
@@ -176,7 +176,7 @@ def filter_strikes(df, n=4):
     blocks = []
     for _, g in df.groupby("Stock"):
         g = g.sort_values("Strike").reset_index(drop=True)
-        atm = (g["Strike"] - g["S_LTP"].iloc[0]).abs().idxmin()
+        atm = (g["Strike"] - g["Stock_LTP"].iloc[0]).abs().idxmin()
         blocks.append(g.iloc[max(0, atm-n):atm+n+1])
         blocks.append(pd.DataFrame([{c: np.nan for c in g.columns}]))
     return pd.concat(blocks[:-1], ignore_index=True)
@@ -187,21 +187,21 @@ def highlight_table1(data):
     styles = pd.DataFrame("", index=data.index, columns=data.columns)
     for stock in data["Stock"].dropna().unique():
         sdf = data[(data["Stock"] == stock) & data["Strike"].notna()]
-        ltp = sdf["S_LTP"].iloc[0]
+        ltp = sdf["Stock_LTP"].iloc[0]
         strikes = sdf["Strike"].values
         for i in range(len(strikes)-1):
             if strikes[i] <= ltp <= strikes[i+1]:
                 styles.loc[sdf.index[i]] = "background-color:#003366;color:white"
                 styles.loc[sdf.index[i+1]] = "background-color:#003366;color:white"
                 break
-        styles.loc[sdf["Δ MP"].abs().idxmax()] = "background-color:#8B0000;color:white"
+        styles.loc[sdf["Δ MP TS1-TS2"].abs().idxmax()] = "background-color:#8B0000;color:white"
     return styles
 
 fmt = {c: "{:.0f}" for c in display_df1.select_dtypes("number").columns}
 fmt.update({
-    "S_LTP": "{:.2f}",
-     "S_%_Change": "{:.2f}",
-    "% Ch TS1-TS2": "{:.2f}",
+    "Stock_LTP": "{:.2f}",
+    "Stock_%_Change": "{:.2f}",
+    "% Stock Ch TS1-TS2": "{:.2f}",
     "% Stock Ch TS2-TS3": "{:.2f}",
 })
 
@@ -241,7 +241,7 @@ with dc2:
 # ==================================================
 def get_ltp_strikes(sdf):
     sdf = sdf.sort_values("Strike").reset_index(drop=True)
-    ltp = sdf["S_LTP"].iloc[0]
+    ltp = sdf["Stock_LTP"].iloc[0]
 
     below = sdf[sdf["Strike"] <= ltp].iloc[-1]
     above = sdf[sdf["Strike"] > ltp].iloc[0]
@@ -256,7 +256,7 @@ def get_ltp_strikes(sdf):
 def is_downtrend_stock(sdf):
     below, above, window = get_ltp_strikes(sdf)
 
-    ltp = sdf["S_LTP"].iloc[0]
+    ltp = sdf["Stock_LTP"].iloc[0]
 
     # ---- BELOW STRIKE DISTANCE CHECK (COMMON FOR ALL CONDITIONS)
     below_dist_ok = (
@@ -269,29 +269,29 @@ def is_downtrend_stock(sdf):
 
     # ---------- CONDITION 1 ----------
     cond1 = (
-        above["Δ CE OI"] > above["Δ PE OI TS1-TS2"] and
-        above["Δ CE Vol"] > above["Δ PE Vol"] and
-        below["Δ CE OI"] > below["Δ PE OI TS1-TS2"] and
-        below["Δ CE Vol"] > below["Δ PE Vol"]
+        above["Δ CE OI TS1-TS2"] > above["Δ PE OI TS1-TS2"] and
+        above["Δ CE Vol TS1-TS2"] > above["Δ PE Vol TS1-TS2"] and
+        below["Δ CE OI TS1-TS2"] > below["Δ PE OI TS1-TS2"] and
+        below["Δ CE Vol TS1-TS2"] > below["Δ PE Vol TS1-TS2"]
     )
 
     # ---------- CONDITION 2 ----------
     pe_neg = (window["Δ PE OI TS1-TS2"] < 0).sum() >= 4
-    ce_pos = (window["Δ CE OI"] > 0).sum() >= 4
-    oi_above = above["Δ CE OI"] > above["Δ PE OI TS1-TS2"]
-    oi_below = below["Δ CE OI"] > below["Δ PE OI TS1-TS2"]
+    ce_pos = (window["Δ CE OI TS1-TS2"] > 0).sum() >= 4
+    oi_above = above["Δ CE OI TS1-TS2"] > above["Δ PE OI TS1-TS2"]
+    oi_below = below["Δ CE OI TS1-TS2"] > below["Δ PE OI TS1-TS2"]
 
     cond2 = (
         pe_neg and ce_pos and  oi_above and oi_below and
-        above["Δ CE Vol"] > above["Δ PE Vol"]
+        above["Δ CE Vol TS1-TS2"] > above["Δ PE Vol TS1-TS2"]
     )
 
     # ---------- CONDITION 3 ----------
     cond3 = (
         sdf["% Stock Ch TS2-TS3"].iloc[0] > stock_chg_ts23_limit and
-        above["Δ CE Vol"] > above["Δ PE Vol"] and
-        above["Δ CE OI"] > above["Δ PE OI TS1-TS2"] and
-        below["Δ CE OI"] > 0
+        above["Δ CE Vol TS1-TS2"] > above["Δ PE Vol TS1-TS2"] and
+        above["Δ CE OI TS1-TS2"] > above["Δ PE OI TS1-TS2"] and
+        below["Δ CE OI TS1-TS2"] > 0
     )
 
     return cond1 or cond2 or cond3
@@ -377,7 +377,7 @@ with uc2:
 
 def is_uptrend_stock(sdf):
     below, above, window = get_ltp_strikes(sdf)
-    ltp = sdf["S_LTP"].iloc[0]
+    ltp = sdf["Stock_LTP"].iloc[0]
 
     # ---- COMMON CONDITIONS ----
     above_dist_ok = (
@@ -395,26 +395,26 @@ def is_uptrend_stock(sdf):
 
     # ---------- CONDITION 1 ----------
     cond1 = (
-        above["Δ CE OI"] < above["Δ PE OI TS1-TS2"] and
-        above["Δ CE Vol"] < above["Δ PE Vol"] and
-        below["Δ CE OI"] < below["Δ PE OI TS1-TS2"] and
-        below["Δ CE Vol"] < below["Δ PE Vol"]
+        above["Δ CE OI TS1-TS2"] < above["Δ PE OI TS1-TS2"] and
+        above["Δ CE Vol TS1-TS2"] < above["Δ PE Vol TS1-TS2"] and
+        below["Δ CE OI TS1-TS2"] < below["Δ PE OI TS1-TS2"] and
+        below["Δ CE Vol TS1-TS2"] < below["Δ PE Vol TS1-TS2"]
     )
 
     # ---------- CONDITION 2 ----------
     pe_pos = (window["Δ PE OI TS1-TS2"] > 0).sum() >= 4
-    ce_neg = (window["Δ CE OI"] < 0).sum() >= 4
+    ce_neg = (window["Δ CE OI TS1-TS2"] < 0).sum() >= 4
 
     cond2 = (
         pe_pos and ce_neg and
-        below["Δ CE Vol"] < below["Δ PE Vol"]
+        below["Δ CE Vol TS1-TS2"] < below["Δ PE Vol TS1-TS2"]
     )
 
     # ---------- CONDITION 3 ----------
     cond3 = (
         sdf["% Stock Ch TS2-TS3"].iloc[0] < -stock_chg_ts23_down and
-        below["Δ CE Vol"] < below["Δ PE Vol"] and
-        below["Δ CE OI"] < below["Δ PE OI TS1-TS2"] and
+        below["Δ CE Vol TS1-TS2"] < below["Δ PE Vol TS1-TS2"] and
+        below["Δ CE OI TS1-TS2"] < below["Δ PE OI TS1-TS2"] and
         above["Δ PE OI TS1-TS2"] > 0
     )
 
@@ -506,13 +506,13 @@ def short_ts(ts):
 # BUILD BASE DF
 # --------------------------------------------------
 df_all = df_t1.merge(
-    df_t2[["Stock", "Strike", "Max_Pain", "S_LTP"]],
+    df_t2[["Stock", "Strike", "Max_Pain", "Stock_LTP"]],
     on=["Stock", "Strike"],
     suffixes=("", "_T2"),
 )
 
 df_all = df_all.merge(
-    df_t3[["Stock", "Strike", "Max_Pain", "S_LTP"]],
+    df_t3[["Stock", "Strike", "Max_Pain", "Stock_LTP"]],
     on=["Stock", "Strike"],
     suffixes=("", "_T3"),
 )
@@ -528,7 +528,7 @@ mp_map = {}
 
 for stock in df_all["Stock"].unique():
     sdf = df_all[df_all["Stock"] == stock].sort_values("Strike")
-    ltp = sdf["S_LTP"].iloc[0]
+    ltp = sdf["Stock_LTP"].iloc[0]
     strikes = sdf["Strike"].values
 
     for i in range(len(strikes) - 1):
@@ -546,7 +546,7 @@ rows = []
 for stock in df_all["Stock"].unique():
     sdf = df_all[df_all["Stock"] == stock].sort_values("Strike")
 
-    ltp1 = pd.to_numeric(sdf["S_LTP"].iloc[0], errors="coerce")
+    ltp1 = pd.to_numeric(sdf["Stock_LTP"].iloc[0], errors="coerce")
     ltp2 = pd.to_numeric(sdf["Stock_LTP_T2"].iloc[0], errors="coerce")
     
     if pd.isna(ltp1) or ltp1 <= 0 or pd.isna(ltp2):
@@ -555,8 +555,8 @@ for stock in df_all["Stock"].unique():
 
     pct_ltp_12 = ((ltp1 - ltp2) / ltp2 * 100) if ltp2 != 0 else np.nan
 
-    high = float(sdf["S_High"].iloc[0])
-    low = float(sdf["S_Low"].iloc[0])
+    high = float(sdf["Stock_High"].iloc[0])
+    low = float(sdf["Stock_Low"].iloc[0])
 
     for _, r in sdf.iterrows():
         v1 = r[short_ts(t2)]
@@ -574,9 +574,9 @@ for stock in df_all["Stock"].unique():
             "Strike": int(strike),
             short_ts(t2): int(v1),
             "%Δ LTP TS1→TS2": round(pct_ltp_12, 2),
-            "S_LTP": round(ltp1, 2),
-            "S_High": round(high, 2),
-            "S_Low": round(low, 2),
+            "Stock_LTP": round(ltp1, 2),
+            "Stock_High": round(high, 2),
+            "Stock_Low": round(low, 2),
 
             # ---- TS3 AT END ----
             short_ts(t3): int(v2),
@@ -590,21 +590,21 @@ df2 = pd.DataFrame(rows)
 def color_table2(row):
     stock = row["Stock"]
     strike = row["Strike"]
-    high = row["S_High"]
-    low = row["S_Low"]
+    high = row["Stock_High"]
+    low = row["Stock_Low"]
 
     if strike == mp_map.get(stock):
         base = "background-color:#4E342E;color:white"
     elif strike in atm_map.get(stock, set()):
         base = "background-color:#003366;color:white"
-    elif strike > row["S_LTP"]:
+    elif strike > row["Stock_LTP"]:
         base = "background-color:#004d00;color:white"
     else:
         base = "background-color:#660000;color:white"
 
     styles = []
     for col in row.index:
-        if col in ("S_High", "S_Low") and low <= strike <= high:
+        if col in ("Stock_High", "Stock_Low") and low <= strike <= high:
             styles.append("")     # ✅ NO highlight between High–Low
         else:
             styles.append(base)
@@ -623,9 +623,9 @@ if not df2.empty:
             short_ts(t2): "{:.0f}",
             short_ts(t3): "{:.0f}",
             "%Δ LTP TS1→TS2": "{:.2f}",
-            "S_LTP": "{:.2f}",
-            "S_High": "{:.2f}",
-            "S_Low": "{:.2f}",
+            "Stock_LTP": "{:.2f}",
+            "Stock_High": "{:.2f}",
+            "Stock_Low": "{:.2f}",
         }),
         use_container_width=True
     )
