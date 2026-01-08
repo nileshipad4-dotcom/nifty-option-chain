@@ -16,41 +16,48 @@ from datetime import datetime
 st.set_page_config(page_title="FnO MP Delta Dashboard", layout="wide")
 st.title("📊 FnO STOCKS – Max Pain Delta View")
 
+# ==================================================
+# MODE SELECTOR (SNAPSHOT DEFAULT)
+# ==================================================
 st.subheader("⚙️ Data Mode")
 
 mode = st.radio(
     "Select Data Mode",
-    ["LIVE", "SNAPSHOT"],
-    index=1,            # ✅ SNAPSHOT default
+    ["SNAPSHOT", "LIVE"],
+    index=0,            # ✅ SNAPSHOT default
     horizontal=True
 )
 
+# ==================================================
+# AUTO REFRESH (CALL ONLY ONCE)
+# ==================================================
 refresh_count = st_autorefresh(
-    interval=60_000 if mode == "LIVE" else 0,
+    interval=60_000 if mode == "LIVE" else None,
     key="auto_refresh"
 )
 
+# ==================================================
+# SESSION STATE INIT
+# ==================================================
 if "live_df" not in st.session_state:
     st.session_state.live_df = None
 
 if "last_refresh" not in st.session_state:
     st.session_state.last_refresh = -1
 
+if "force_live_refresh" not in st.session_state:
+    st.session_state.force_live_refresh = False
 
-if mode == "LIVE":
-    st_autorefresh(interval=60_000, key="auto_refresh")   # 1 min
-else:
-    st_autorefresh(interval=0, key="auto_refresh")        # disabled
-
-
-
+# ==================================================
+# DATA DIRECTORY & TIME
+# ==================================================
 DATA_DIR = "data"
 
 IST = pytz.timezone("Asia/Kolkata")
-
 now = datetime.now(IST).time()
-if not time(9,15) <= now <= time(15,30):
-    st.warning("Market closed — showing last available live snapshot")
+
+if mode == "LIVE" and not time(9, 15) <= now <= time(15, 30):
+    st.warning("Market closed — showing last available LIVE snapshot")
 
 # ==================================================
 # CONFIG
@@ -86,6 +93,16 @@ STOCKS = [
     "UNOMINDA","UPL","VBL","VEDL","VOLTAS","WAAREEENER","WIPRO","YESBANK","ZYDUSLIFE"
 ]
 
+# ==================================================
+# MANUAL LIVE REFRESH BUTTON
+# ==================================================
+if mode == "LIVE":
+    if st.button("🔄 Refresh LIVE now"):
+        st.session_state.force_live_refresh = True
+
+# ==================================================
+# LIVE DATA LOADER
+# ==================================================
 def load_live_data():
     kite = KiteConnect(api_key=API_KEY)
     kite.set_access_token(ACCESS_TOKEN)
@@ -109,15 +126,14 @@ def load_live_data():
         df = df[df["expiry"] == expiry]
 
         option_map[stock] = df
-        all_option_symbols.extend(
-            ["NFO:" + ts for ts in df["tradingsymbol"]]
-        )
+        all_option_symbols.extend(["NFO:" + ts for ts in df["tradingsymbol"]])
 
-    # Quotes
+    # ---- OPTION QUOTES (CHUNKED)
     option_quotes = {}
     for i in range(0, len(all_option_symbols), 200):
-        option_quotes.update(kite.quote(all_option_symbols[i:i+200]))
+        option_quotes.update(kite.quote(all_option_symbols[i:i + 200]))
 
+    # ---- SPOT QUOTES
     spot_quotes = kite.quote([f"NSE:{s}" for s in STOCKS])
 
     rows = []
@@ -143,12 +159,10 @@ def load_live_data():
             rows.append({
                 "Stock": stock,
                 "Strike": strike,
-
                 "CE_OI": ce_q.get("oi"),
                 "PE_OI": pe_q.get("oi"),
                 "CE_Volume": ce_q.get("volume"),
                 "PE_Volume": pe_q.get("volume"),
-
                 "Stock_LTP": stock_ltp,
                 "Stock_High": ohlc.get("high"),
                 "Stock_Low": ohlc.get("low"),
@@ -156,8 +170,9 @@ def load_live_data():
             })
 
     df_live = pd.DataFrame(rows)
-    df_live["Max_Pain"] = 0   # placeholder, calculated later in your pipeline
+    df_live["Max_Pain"] = 0   # placeholder (computed later)
     return df_live
+
 # ==================================================
 # LOAD CSV FILES
 # ==================================================
@@ -178,7 +193,7 @@ timestamps_all = [ts for ts, _ in csv_files]
 file_map = dict(csv_files)
 
 # ==================================================
-# TIME FILTER (08:00 to 16:30)
+# TIME FILTER (08:00–16:30)
 # ==================================================
 def extract_time(ts):
     try:
@@ -207,30 +222,33 @@ else:
 t2 = c2.selectbox("Timestamp 2", filtered_ts, 1)
 t3 = c3.selectbox("Timestamp 3", filtered_ts, 2)
 
-
-# ==================================================
-# LOAD CSVs ONCE
-# ==================================================
 # ==================================================
 # LOAD DATA (LIVE vs SNAPSHOT)
 # ==================================================
-
 if mode == "LIVE":
-    # Load LIVE data ONLY on autorefresh tick
-    if refresh_count != st.session_state.last_refresh:
+    if (
+        st.session_state.live_df is None or
+        refresh_count != st.session_state.last_refresh or
+        st.session_state.force_live_refresh
+    ):
         with st.spinner("📡 Updating LIVE market data..."):
-            st.session_state.live_df = load_live_data()
-            st.session_state.last_refresh = refresh_count
+            try:
+                st.session_state.live_df = load_live_data()
+                st.session_state.last_refresh = refresh_count
+                st.session_state.force_live_refresh = False
+            except Exception:
+                st.error("LIVE data fetch failed. Using last cached snapshot.")
 
     df_t1 = st.session_state.live_df
-
 else:
     df_t1 = pd.read_csv(file_map[t1])
 
-# Snapshot timestamps always load from CSV
 df_t2 = pd.read_csv(file_map[t2])
 df_t3 = pd.read_csv(file_map[t3])
 
+# ==================================================
+# MODE STATUS
+# ==================================================
 if mode == "LIVE":
     st.caption(
         f"🟢 LIVE mode — last update: "
@@ -238,7 +256,6 @@ if mode == "LIVE":
     )
 else:
     st.caption("📁 SNAPSHOT mode — static CSV data")
-
 
 # ==================================================
 # ================= TABLE 1 ========================
