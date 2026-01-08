@@ -1,34 +1,47 @@
-# CSV download
 import streamlit as st
 import pandas as pd
-from kiteconnect import KiteConnect
-from datetime import datetime
-import pytz
-import base64
-import requests
+from datetime import datetime, timedelta
+import pytz, base64, requests
 from streamlit_autorefresh import st_autorefresh
-
-# ==================================================
-# STREAMLIT CONFIG
-# ==================================================
-st.set_page_config(page_title="LIVE Option Chain Snapshot", layout="wide")
-st.title("📊 LIVE Option Chain → GitHub Snapshot (Full Chain)")
-
-# ⏱ Auto refresh every 60 seconds
-refresh_tick = st_autorefresh(interval=180_000, key="live_refresh")
-
-# ==================================================
-# TIMEZONE
-# ==================================================
-IST = pytz.timezone("Asia/Kolkata")
+from kiteconnect import KiteConnect
 
 # ==================================================
 # CONFIG
 # ==================================================
-API_KEY = "bkgv59vaazn56c42"
-ACCESS_TOKEN = "IO4wzhuRsIeusChlrimjw8VZgwA3W10T"
+IST = pytz.timezone("Asia/Kolkata")
+st.set_page_config(layout="wide")
+st.title("📊 Option Chain Collector (KITE + DHAN)")
 
-STOCKS = [
+refresh = st_autorefresh(interval=180_000, key="auto")
+
+SOURCE = st.radio(
+    "Select Data Source",
+    ["KITE (Stocks – New CSV)", "DHAN (Index – Append CSV)"],
+    horizontal=True
+)
+
+# ==================================================
+# GITHUB
+# ==================================================
+TOKEN = st.secrets["GITHUB_TOKEN"]
+BRANCH = st.secrets.get("GITHUB_BRANCH", "main")
+
+KITE_REPO = st.secrets["KITE_REPO"]
+DHAN_REPO = st.secrets["DHAN_REPO"]
+
+HEADERS = {
+    "Authorization": f"token {TOKEN}",
+    "Accept": "application/vnd.github+json"
+}
+
+# ==================================================
+# ---------- KITE SOURCE ----------
+# ==================================================
+if SOURCE.startswith("KITE"):
+
+    API_KEY = "bkgv59vaazn56c42"
+    ACCESS_TOKEN = "IO4wzhuRsIeusChlrimjw8VZgwA3W10T"
+    STOCKS = [
     "360ONE","ABB","ABCAPITAL","ADANIENSOL","ADANIENT","ADANIGREEN","ADANIPORTS","ALKEM",
     "AMBER","AMBUJACEM","ANGELONE","APLAPOLLO","APOLLOHOSP","ASHOKLEY","ASIANPAINT","ASTRAL",
     "AUBANK","AUROPHARMA","AXISBANK","BAJAJ-AUTO","BAJAJFINSV","BAJAJHLDNG","BAJFINANCE",
@@ -55,189 +68,126 @@ STOCKS = [
     "UNOMINDA","UPL","VBL","VEDL","VOLTAS","WAAREEENER","WIPRO","YESBANK","ZYDUSLIFE"
 ]
 
-# ==================================================
-# GITHUB CONFIG (STREAMLIT SECRETS)
-# ==================================================
-GITHUB_TOKEN = st.secrets["GITHUB_TOKEN"]
-GITHUB_REPO = st.secrets["GITHUB_REPO"]
-GITHUB_BRANCH = st.secrets.get("GITHUB_BRANCH", "main")
+    kite = KiteConnect(api_key=API_KEY)
+    kite.set_access_token(ACCESS_TOKEN)
 
-# ==================================================
-# INIT KITE
-# ==================================================
-kite = KiteConnect(api_key=API_KEY)
-kite.set_access_token(ACCESS_TOKEN)
+    @st.cache_data
+    def instruments():
+        return pd.DataFrame(kite.instruments("NFO"))
 
-# ==================================================
-# LOAD INSTRUMENTS (CACHED)
-# ==================================================
-@st.cache_data(show_spinner=False)
-def load_instruments():
-    return pd.DataFrame(kite.instruments("NFO"))
+    inst = instruments()
 
-instruments = load_instruments()
-
-# ==================================================
-# HELPERS
-# ==================================================
-def chunk(lst, size=200):
-    for i in range(0, len(lst), size):
-        yield lst[i:i + size]
-
-def compute_max_pain(df):
-    df = df.fillna(0)
-
-    A = df["CE_LTP"]
-    B = df["CE_OI"]
-    G = df["Strike"]
-    M = df["PE_LTP"]
-    L = df["PE_OI"]
-
-    mp = []
-    for i in range(len(df)):
-        val = (
-            -sum(A[i:] * B[i:])
-            + G.iloc[i] * sum(B[:i]) - sum(G[:i] * B[:i])
-            - sum(M[:i] * L[:i])
-            + sum(G[i:] * L[i:]) - G.iloc[i] * sum(L[i:])
-        )
-        mp.append(int(val / 10000))
-
-    df["Max_Pain"] = mp
-    return df
-
-# ==================================================
-# FETCH FULL OPTION CHAIN (MATCHES YOUR SCRIPT)
-# ==================================================
-def fetch_full_option_chain():
-    option_map = {}
-    all_option_symbols = []
-
-    for stock in STOCKS:
-        df = instruments[
-            (instruments["name"] == stock) &
-            (instruments["segment"] == "NFO-OPT")
-        ].copy()
-
-        if df.empty:
-            continue
-
-        df["expiry"] = pd.to_datetime(df["expiry"])
-        expiry = df["expiry"].min()
-        df = df[df["expiry"] == expiry]
-
-        option_map[stock] = df
-        all_option_symbols.extend(
-            ["NFO:" + ts for ts in df["tradingsymbol"].tolist()]
-        )
-
-    # OPTION QUOTES
-    option_quotes = {}
-    for batch in chunk(all_option_symbols):
-        option_quotes.update(kite.quote(batch))
-
-    # SPOT QUOTES
-    spot_quotes = kite.quote([f"NSE:{s}" for s in option_map.keys()])
-
-    all_data = []
-    now_ts = datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S")
-
-    for stock, df in option_map.items():
+    def fetch_kite():
         rows = []
+        ts = datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S")
 
-        spot = spot_quotes.get(f"NSE:{stock}", {})
-        stock_ltp = spot.get("last_price")
-        ohlc = spot.get("ohlc", {})
-        prev_close = ohlc.get("close")
+        spot = kite.quote([f"NSE:{s}" for s in STOCKS])
 
-        pct_change = (
-            round(((stock_ltp - prev_close) / prev_close) * 100, 3)
-            if stock_ltp and prev_close else None
-        )
-
-        for strike in sorted(df["strike"].unique()):
-            ce = df[(df["strike"] == strike) & (df["instrument_type"] == "CE")]
-            pe = df[(df["strike"] == strike) & (df["instrument_type"] == "PE")]
-
-            ce_q = option_quotes.get(
-                "NFO:" + ce.iloc[0]["tradingsymbol"], {}
-            ) if not ce.empty else {}
-
-            pe_q = option_quotes.get(
-                "NFO:" + pe.iloc[0]["tradingsymbol"], {}
-            ) if not pe.empty else {}
-
+        for s in STOCKS:
+            q = spot.get(f"NSE:{s}", {})
             rows.append({
-                "Stock": stock,
-                "Expiry": df["expiry"].iloc[0].date(),
-                "Strike": strike,
-
-                "CE_LTP": ce_q.get("last_price"),
-                "CE_OI": ce_q.get("oi"),
-                "CE_Volume": ce_q.get("volume"),
-
-                "PE_LTP": pe_q.get("last_price"),
-                "PE_OI": pe_q.get("oi"),
-                "PE_Volume": pe_q.get("volume"),
-
-                "Stock_LTP": stock_ltp,
-                "Stock_High": ohlc.get("high"),
-                "Stock_Low": ohlc.get("low"),
-                "Stock_%_Change": pct_change,
-
-                "timestamp": now_ts,
+                "Stock": s,
+                "LTP": q.get("last_price"),
+                "High": q.get("ohlc",{}).get("high"),
+                "Low": q.get("ohlc",{}).get("low"),
+                "timestamp": ts
             })
 
-        stock_df = pd.DataFrame(rows).sort_values("Strike")
-        stock_df = compute_max_pain(stock_df)
-        all_data.append(stock_df)
+        return pd.DataFrame(rows)
 
-    return pd.concat(all_data, ignore_index=True)
+    df = fetch_kite()
+    st.dataframe(df)
 
-# ==================================================
-# PUSH CSV TO GITHUB
-# ==================================================
-def push_csv_to_github(df):
-    filename = f"data/option_chain_{datetime.now(IST).strftime('%Y-%m-%d_%H-%M-%S')}.csv"
-    csv_bytes = df.to_csv(index=False).encode()
-    content = base64.b64encode(csv_bytes).decode()
+    fname = f"data/option_chain_{datetime.now(IST).strftime('%Y-%m-%d_%H-%M-%S')}.csv"
 
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{filename}"
+    content = base64.b64encode(df.to_csv(index=False).encode()).decode()
 
-    headers = {
-        "Authorization": f"token {GITHUB_TOKEN}",
-        "Accept": "application/vnd.github+json"
-    }
+    url = f"https://api.github.com/repos/{KITE_REPO}/contents/{fname}"
 
-    payload = {
-        "message": f"Auto snapshot {filename}",
+    r = requests.put(url, headers=HEADERS, json={
+        "message": f"KITE snapshot {fname}",
         "content": content,
-        "branch": GITHUB_BRANCH
+        "branch": BRANCH
+    })
+
+    st.success(f"Saved NEW CSV → {fname}")
+
+# ==================================================
+# ---------- DHAN SOURCE ----------
+# ==================================================
+else:
+
+    CLIENT_ID = "1102712380"
+    ACCESS_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY4MDAyMjYzLCJpYXQiOjE3Njc5MTU4NjMsInRva2VuQ29uc3VtZXJUeXBlIjoiU0VMRiIsIndlYmhvb2tVcmwiOiIiLCJkaGFuQ2xpZW50SWQiOiIxMTAyNzEyMzgwIn0.OqpycJr1HOcBRtTgGyxh9rgS8moqvBL4dfT9AYmIvgeyUhy4mYjuTq9dfUACwH4lwwXvt9Jndb_383Q5An_4Cg"
+    API = "https://api.dhan.co/v2"
+
+    HEADERS_DHAN = {
+        "client-id": CLIENT_ID,
+        "access-token": ACCESS_TOKEN,
+        "Content-Type": "application/json"
     }
 
-    r = requests.put(url, headers=headers, json=payload)
-    if r.status_code not in (200, 201):
-        raise Exception(r.json())
+    UNDERLYINGS = {
+        "nifty": {"scrip": 13, "seg": "IDX_I", "center": 26000},
+        "banknifty": {"scrip": 25, "seg": "IDX_I", "center": 60000},
+    }
 
-    return filename
+    def fetch_dhan(sym, cfg):
+        exp = requests.post(
+            f"{API}/optionchain/expirylist",
+            headers=HEADERS_DHAN,
+            json={"UnderlyingScrip": cfg["scrip"], "UnderlyingSeg": cfg["seg"]}
+        ).json()["data"][0]
 
-# ==================================================
-# FETCH → SAVE → DISPLAY
-# ==================================================
-with st.spinner("📡 Fetching FULL option chain..."):
-    df_live = fetch_full_option_chain()
+        data = requests.post(
+            f"{API}/optionchain",
+            headers=HEADERS_DHAN,
+            json={"UnderlyingScrip": cfg["scrip"], "UnderlyingSeg": cfg["seg"], "Expiry": exp}
+        ).json()["data"]["oc"]
 
-if df_live.empty:
-    st.error("❌ LIVE option chain fetch failed.")
-    st.stop()
+        rows = []
+        ts = datetime.now(IST).strftime("%Y-%m-%d %H:%M")
 
-st.dataframe(
-    df_live.sort_values(["Stock", "Strike"]),
-    use_container_width=True
-)
+        for k, v in data.items():
+            ce, pe = v.get("ce",{}), v.get("pe",{})
+            rows.append({
+                "Strike": int(float(k)),
+                "CE LTP": ce.get("last_price"),
+                "PE LTP": pe.get("last_price"),
+                "timestamp": ts
+            })
 
-try:
-    saved_file = push_csv_to_github(df_live)
-    st.success(f"✅ Saved FULL snapshot to GitHub: {saved_file}")
-except Exception as e:
-    st.error(f"❌ GitHub save failed: {e}")
+        return pd.DataFrame(rows)
+
+    for sym, cfg in UNDERLYINGS.items():
+
+        df_new = fetch_dhan(sym, cfg)
+
+        # ---- LOAD EXISTING CSV FROM GITHUB
+        path = f"data/{sym}.csv"
+        url = f"https://api.github.com/repos/{DHAN_REPO}/contents/{path}"
+
+        r = requests.get(url, headers=HEADERS)
+
+        if r.status_code == 200:
+            old = base64.b64decode(r.json()["content"])
+            df_old = pd.read_csv(pd.compat.StringIO(old.decode()))
+            df_final = pd.concat([df_old, df_new], ignore_index=True)
+            sha = r.json()["sha"]
+        else:
+            df_final = df_new
+            sha = None
+
+        content = base64.b64encode(df_final.to_csv(index=False).encode()).decode()
+
+        payload = {
+            "message": f"DHAN append {sym}",
+            "content": content,
+            "branch": BRANCH
+        }
+        if sha:
+            payload["sha"] = sha
+
+        requests.put(url, headers=HEADERS, json=payload)
+        st.success(f"Appended → {sym}.csv")
+
