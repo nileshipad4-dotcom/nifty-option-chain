@@ -6,6 +6,8 @@ import pytz
 import os
 from streamlit_autorefresh import st_autorefresh
 
+st.write("Secrets loaded:", st.secrets.keys())
+
 # ==================================================
 # TIMEZONE
 # ==================================================
@@ -194,3 +196,4 @@ st.dataframe(
     df_live.sort_values(["Stock", "Strike"]),
     use_container_width=True
 )
+
