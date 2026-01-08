@@ -62,6 +62,7 @@ STOCKS = [
     "UNOMINDA","UPL","VBL","VEDL","VOLTAS","WAAREEENER","WIPRO","YESBANK","ZYDUSLIFE"
 ]
 
+
 # ==================================================
 # GITHUB CONFIG
 # ==================================================
@@ -126,17 +127,24 @@ def fetch_full_option_chain():
         option_map[stock] = df
         symbols.extend(["NFO:" + s for s in df["tradingsymbol"]])
 
-    option_quotes = {}
-        for batch in chunk(symbols):
+   option_quotes = {}
+
+for batch in chunk(symbols):
+    try:
+        # Try full batch first (fast path)
+        quotes = kite.quote(batch)
+        option_quotes.update(quotes)
+
+    except Exception:
+        # If Kite rejects the batch, retry symbol-by-symbol
+        for sym in batch:
             try:
-                option_quotes.update(kite.quote(batch))
+                quote = kite.quote([sym])
+                option_quotes.update(quote)
             except Exception:
-                # retry one-by-one if Kite rejects a batch
-                for sym in batch:
-                    try:
-                        option_quotes.update(kite.quote([sym]))
-                    except:
-                        continue
+                # Skip invalid / rejected symbol
+                continue
+
 
 
     spot_quotes = kite.quote([f"NSE:{s}" for s in option_map])
