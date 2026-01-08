@@ -265,7 +265,7 @@ fmt.update({
     "Stock_%_Change": "{:.2f}",
     "% Stock Ch TS1-TS2": "{:.2f}",
     "% Stock Ch TS2-TS3": "{:.2f}",
-    "PE/CE Vol Ratio": "{:.2f}",
+    "PE/CE Vol": "{:.2f}",
 })
 
 # ==================================================
@@ -294,10 +294,11 @@ with rc2:
 
 # ---- COUNT (STOCK-LEVEL, NOT STRIKE-LEVEL) ----
 ratio_df = (
-    df1.groupby("Stock")["PE/CE Vol Ratio"]
+    df1.groupby("Stock")["Δ PE/CE Vol"]
     .first()
     .dropna()
 )
+
 
 if ratio_operator == ">=":
     ratio_count = (ratio_df >= ratio_threshold).sum()
