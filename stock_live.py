@@ -1,38 +1,32 @@
+# CSV download
 import streamlit as st
 import pandas as pd
-import requests, base64
-from datetime import datetime, timedelta
-import pytz
-from streamlit_autorefresh import st_autorefresh
 from kiteconnect import KiteConnect
+from datetime import datetime
+import pytz
+import base64
+import requests
+from streamlit_autorefresh import st_autorefresh
 
 # ==================================================
-# STREAMLIT
+# STREAMLIT CONFIG
 # ==================================================
-st.set_page_config(layout="wide")
-st.title("📊 AUTO Option Chain Collector (KITE + DHAN)")
-st_autorefresh(interval=180_000, key="auto_refresh")
+st.set_page_config(page_title="LIVE Option Chain Snapshot", layout="wide")
+st.title("📊 LIVE Option Chain → GitHub Snapshot (Full Chain)")
 
+# ⏱ Auto refresh every 60 seconds
+refresh_tick = st_autorefresh(interval=180_000, key="live_refresh")
+
+# ==================================================
+# TIMEZONE
+# ==================================================
 IST = pytz.timezone("Asia/Kolkata")
 
 # ==================================================
-# GITHUB
+# CONFIG
 # ==================================================
-TOKEN = st.secrets["GITHUB_TOKEN"]
-KITE_REPO = st.secrets["KITE_REPO"]
-DHAN_REPO = st.secrets["DHAN_REPO"]
-BRANCH = st.secrets.get("GITHUB_BRANCH", "main")
-
-GH_HEADERS = {
-    "Authorization": f"token {TOKEN}",
-    "Accept": "application/vnd.github+json"
-}
-
-# ==================================================
-# ================= KITE ===========================
-# ==================================================
-KITE_API_KEY = "bkgv59vaazn56c42"
-KITE_ACCESS_TOKEN = "IO4wzhuRsIeusChlrimjw8VZgwA3W10T"
+API_KEY = "bkgv59vaazn56c42"
+ACCESS_TOKEN = "IO4wzhuRsIeusChlrimjw8VZgwA3W10T"
 
 STOCKS = [
     "360ONE","ABB","ABCAPITAL","ADANIENSOL","ADANIENT","ADANIGREEN","ADANIPORTS","ALKEM",
@@ -60,171 +54,190 @@ STOCKS = [
     "TORNTPHARM","TORNTPOWER","TRENT","TVSMOTOR","ULTRACEMCO","UNIONBANK","UNITDSPR",
     "UNOMINDA","UPL","VBL","VEDL","VOLTAS","WAAREEENER","WIPRO","YESBANK","ZYDUSLIFE"
 ]
-kite = KiteConnect(api_key=KITE_API_KEY)
-kite.set_access_token(KITE_ACCESS_TOKEN)
 
-@st.cache_data
+# ==================================================
+# GITHUB CONFIG (STREAMLIT SECRETS)
+# ==================================================
+GITHUB_TOKEN = st.secrets["GITHUB_TOKEN"]
+GITHUB_REPO = st.secrets["GITHUB_REPO"]
+GITHUB_BRANCH = st.secrets.get("GITHUB_BRANCH", "main")
+
+# ==================================================
+# INIT KITE
+# ==================================================
+kite = KiteConnect(api_key=API_KEY)
+kite.set_access_token(ACCESS_TOKEN)
+
+# ==================================================
+# LOAD INSTRUMENTS (CACHED)
+# ==================================================
+@st.cache_data(show_spinner=False)
 def load_instruments():
     return pd.DataFrame(kite.instruments("NFO"))
 
-inst = load_instruments()
+instruments = load_instruments()
+
+# ==================================================
+# HELPERS
+# ==================================================
+def chunk(lst, size=200):
+    for i in range(0, len(lst), size):
+        yield lst[i:i + size]
 
 def compute_max_pain(df):
-    A, B = df["CE_LTP"].fillna(0), df["CE_OI"].fillna(0)
+    df = df.fillna(0)
+
+    A = df["CE_LTP"]
+    B = df["CE_OI"]
     G = df["Strike"]
-    M, L = df["PE_LTP"].fillna(0), df["PE_OI"].fillna(0)
+    M = df["PE_LTP"]
+    L = df["PE_OI"]
+
     mp = []
     for i in range(len(df)):
-        v = (
+        val = (
             -sum(A[i:] * B[i:])
-            + G.iloc[i]*sum(B[:i]) - sum(G[:i]*B[:i])
-            - sum(M[:i]*L[:i])
-            + sum(G[i:]*L[i:]) - G.iloc[i]*sum(L[i:])
+            + G.iloc[i] * sum(B[:i]) - sum(G[:i] * B[:i])
+            - sum(M[:i] * L[:i])
+            + sum(G[i:] * L[i:]) - G.iloc[i] * sum(L[i:])
         )
-        mp.append(int(v/10000))
+        mp.append(int(val / 10000))
+
     df["Max_Pain"] = mp
     return df
 
-def fetch_kite_full():
-    option_map, symbols = {}, []
-    for s in STOCKS:
-        df = inst[(inst["name"]==s)&(inst["segment"]=="NFO-OPT")].copy()
-        if df.empty: continue
+# ==================================================
+# FETCH FULL OPTION CHAIN (MATCHES YOUR SCRIPT)
+# ==================================================
+def fetch_full_option_chain():
+    option_map = {}
+    all_option_symbols = []
+
+    for stock in STOCKS:
+        df = instruments[
+            (instruments["name"] == stock) &
+            (instruments["segment"] == "NFO-OPT")
+        ].copy()
+
+        if df.empty:
+            continue
+
         df["expiry"] = pd.to_datetime(df["expiry"])
-        df = df[df["expiry"]==df["expiry"].min()]
-        option_map[s] = df
-        symbols += ["NFO:"+x for x in df["tradingsymbol"]]
+        expiry = df["expiry"].min()
+        df = df[df["expiry"] == expiry]
 
-    quotes = {}
-    for i in range(0,len(symbols),200):
-        quotes.update(kite.quote(symbols[i:i+200]))
+        option_map[stock] = df
+        all_option_symbols.extend(
+            ["NFO:" + ts for ts in df["tradingsymbol"].tolist()]
+        )
 
-    spot = kite.quote([f"NSE:{s}" for s in option_map])
-    ts = datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S")
+    # OPTION QUOTES
+    option_quotes = {}
+    for batch in chunk(all_option_symbols):
+        option_quotes.update(kite.quote(batch))
 
-    out = []
-    for s,df in option_map.items():
-        spot_q = spot.get(f"NSE:{s}", {})
-        
-        ohlc = spot_q.get("ohlc", {})
-        ltp = spot_q.get("last_price")
-        
-        pc = ohlc.get("close")
-        high = ohlc.get("high")
-        low = ohlc.get("low")
+    # SPOT QUOTES
+    spot_quotes = kite.quote([f"NSE:{s}" for s in option_map.keys()])
 
-        pct = ((ltp-pc)/pc*100) if ltp and pc else None
+    all_data = []
+    now_ts = datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S")
 
-        rows=[]
-        for k in sorted(df["strike"].unique()):
-            ce = df[(df["strike"]==k)&(df["instrument_type"]=="CE")]
-            pe = df[(df["strike"]==k)&(df["instrument_type"]=="PE")]
-            ceq = quotes.get("NFO:"+ce.iloc[0]["tradingsymbol"],{}) if not ce.empty else {}
-            peq = quotes.get("NFO:"+pe.iloc[0]["tradingsymbol"],{}) if not pe.empty else {}
+    for stock, df in option_map.items():
+        rows = []
+
+        spot = spot_quotes.get(f"NSE:{stock}", {})
+        stock_ltp = spot.get("last_price")
+        ohlc = spot.get("ohlc", {})
+        prev_close = ohlc.get("close")
+
+        pct_change = (
+            round(((stock_ltp - prev_close) / prev_close) * 100, 3)
+            if stock_ltp and prev_close else None
+        )
+
+        for strike in sorted(df["strike"].unique()):
+            ce = df[(df["strike"] == strike) & (df["instrument_type"] == "CE")]
+            pe = df[(df["strike"] == strike) & (df["instrument_type"] == "PE")]
+
+            ce_q = option_quotes.get(
+                "NFO:" + ce.iloc[0]["tradingsymbol"], {}
+            ) if not ce.empty else {}
+
+            pe_q = option_quotes.get(
+                "NFO:" + pe.iloc[0]["tradingsymbol"], {}
+            ) if not pe.empty else {}
 
             rows.append({
-                "Stock":s,"Expiry":df["expiry"].iloc[0].date(),"Strike":k,
-                "CE_LTP":ceq.get("last_price"),"CE_OI":ceq.get("oi"),"CE_Volume":ceq.get("volume"),
-                "PE_LTP":peq.get("last_price"),"PE_OI":peq.get("oi"),"PE_Volume":peq.get("volume"),
-                "Stock_LTP":ltp,"Stock_High":ohlc.get("high"),"Stock_Low":ohlc.get("low"),
-                "Stock_%_Change":pct,"timestamp":ts
+                "Stock": stock,
+                "Expiry": df["expiry"].iloc[0].date(),
+                "Strike": strike,
+
+                "CE_LTP": ce_q.get("last_price"),
+                "CE_OI": ce_q.get("oi"),
+                "CE_Volume": ce_q.get("volume"),
+
+                "PE_LTP": pe_q.get("last_price"),
+                "PE_OI": pe_q.get("oi"),
+                "PE_Volume": pe_q.get("volume"),
+
+                "Stock_LTP": stock_ltp,
+                "Stock_High": ohlc.get("high"),
+                "Stock_Low": ohlc.get("low"),
+                "Stock_%_Change": pct_change,
+
+                "timestamp": now_ts,
             })
-        sdf = compute_max_pain(pd.DataFrame(rows).sort_values("Strike"))
-        out.append(sdf)
-    return pd.concat(out, ignore_index=True)
 
-df_kite = fetch_kite_full()
-kite_file = f"data/option_chain_{datetime.now(IST).strftime('%Y-%m-%d_%H-%M-%S')}.csv"
+        stock_df = pd.DataFrame(rows).sort_values("Strike")
+        stock_df = compute_max_pain(stock_df)
+        all_data.append(stock_df)
 
-requests.put(
-    f"https://api.github.com/repos/{KITE_REPO}/contents/{kite_file}",
-    headers=GH_HEADERS,
-    json={
-        "message": f"KITE snapshot {kite_file}",
-        "content": base64.b64encode(df_kite.to_csv(index=False).encode()).decode(),
-        "branch": BRANCH
+    return pd.concat(all_data, ignore_index=True)
+
+# ==================================================
+# PUSH CSV TO GITHUB
+# ==================================================
+def push_csv_to_github(df):
+    filename = f"data/option_chain_{datetime.now(IST).strftime('%Y-%m-%d_%H-%M-%S')}.csv"
+    csv_bytes = df.to_csv(index=False).encode()
+    content = base64.b64encode(csv_bytes).decode()
+
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{filename}"
+
+    headers = {
+        "Authorization": f"token {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github+json"
     }
+
+    payload = {
+        "message": f"Auto snapshot {filename}",
+        "content": content,
+        "branch": GITHUB_BRANCH
+    }
+
+    r = requests.put(url, headers=headers, json=payload)
+    if r.status_code not in (200, 201):
+        raise Exception(r.json())
+
+    return filename
+
+# ==================================================
+# FETCH → SAVE → DISPLAY
+# ==================================================
+with st.spinner("📡 Fetching FULL option chain..."):
+    df_live = fetch_full_option_chain()
+
+if df_live.empty:
+    st.error("❌ LIVE option chain fetch failed.")
+    st.stop()
+
+st.dataframe(
+    df_live.sort_values(["Stock", "Strike"]),
+    use_container_width=True
 )
 
-# ==================================================
-# ================= DHAN ===========================
-# ==================================================
-DHAN_CLIENT = "1102712380"
-DHAN_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY4MDAyMjYzLCJpYXQiOjE3Njc5MTU4NjMsInRva2VuQ29uc3VtZXJUeXBlIjoiU0VMRiIsIndlYmhvb2tVcmwiOiIiLCJkaGFuQ2xpZW50SWQiOiIxMTAyNzEyMzgwIn0.OqpycJr1HOcBRtTgGyxh9rgS8moqvBL4dfT9AYmIvgeyUhy4mYjuTq9dfUACwH4lwwXvt9Jndb_383Q5An_4Cg"
-DHAN_API = "https://api.dhan.co/v2"
-
-DHAN_HEADERS = {
-    "client-id": DHAN_CLIENT,
-    "access-token": DHAN_TOKEN,
-    "Content-Type": "application/json"
-}
-
-UNDERLYINGS = {
-    "nifty":      {"scrip":13,"seg":"IDX_I","center":26000},
-    "banknifty":  {"scrip":25,"seg":"IDX_I","center":60000},
-    "midcpnifty": {"scrip":442,"seg":"IDX_I","center":13600},
-    "sensex":     {"scrip":51,"seg":"IDX_I","center":84000},
-}
-
-BASE_COLS = [
- "Strike","CE LTP","CE OI","CE Volume","CE IV","CE Delta","CE Gamma","CE Vega",
- "PE LTP","PE OI","PE Volume","PE IV","PE Delta","PE Gamma","PE Vega",
- "timestamp","Max Pain"
-]
-
-def append_to_github(sym, df):
-    path = f"data/{sym}.csv"
-    url = f"https://api.github.com/repos/{DHAN_REPO}/contents/{path}"
-    r = requests.get(url, headers=GH_HEADERS)
-    if r.status_code==200:
-        old = pd.read_csv(pd.compat.StringIO(base64.b64decode(r.json()["content"]).decode()))
-        df = pd.concat([old,df],ignore_index=True)
-        sha = r.json()["sha"]
-    else:
-        sha = None
-    payload={
-        "message":f"DHAN append {sym}",
-        "content":base64.b64encode(df.to_csv(index=False).encode()).decode(),
-        "branch":BRANCH
-    }
-    if sha: payload["sha"]=sha
-    requests.put(url, headers=GH_HEADERS, json=payload)
-
-for sym,cfg in UNDERLYINGS.items():
-    exp = requests.post(f"{DHAN_API}/optionchain/expirylist",headers=DHAN_HEADERS,
-        json={"UnderlyingScrip":cfg["scrip"],"UnderlyingSeg":cfg["seg"]}).json()["data"][0]
-
-    oc = requests.post(f"{DHAN_API}/optionchain",headers=DHAN_HEADERS,
-        json={"UnderlyingScrip":cfg["scrip"],"UnderlyingSeg":cfg["seg"],"Expiry":exp}
-    ).json()["data"]["oc"]
-
-    ts = datetime.now(IST).strftime("%Y-%m-%d %H:%M")
-    rows=[]
-    for k,v in oc.items():
-        ce,pe=v.get("ce",{}),v.get("pe",{})
-        rows.append({
-            "Stock": s,
-            "Expiry": df["expiry"].iloc[0].date(),
-            "Strike": k,
-        
-            "CE_LTP": ceq.get("last_price"),
-            "CE_OI": ceq.get("oi"),
-            "CE_Volume": ceq.get("volume"),
-        
-            "PE_LTP": peq.get("last_price"),
-            "PE_OI": peq.get("oi"),
-            "PE_Volume": peq.get("volume"),
-        
-            "Stock_LTP": ltp,
-            "Stock_High": high,
-            "Stock_Low": low,
-            "Stock_%_Change": ((ltp - pc) / pc * 100) if ltp and pc else None,
-        
-            "timestamp": ts
-        })
-
-        })
-    df=pd.DataFrame(rows)[BASE_COLS]
-    append_to_github(sym, df)
-
-st.success("✅ KITE snapshot + DHAN append completed")
+try:
+    saved_file = push_csv_to_github(df_live)
+    st.success(f"✅ Saved FULL snapshot to GitHub: {saved_file}")
+except Exception as e:
+    st.error(f"❌ GitHub save failed: {e}")
