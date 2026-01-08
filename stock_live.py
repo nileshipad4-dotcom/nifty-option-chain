@@ -87,6 +87,9 @@ def compute_max_pain(df):
 def fetch_full_option_chain():
     option_map, symbols = {}, []
 
+    # ----------------------------------
+    # BUILD OPTION SYMBOL LIST
+    # ----------------------------------
     for stock in STOCKS:
         df = instruments[
             (instruments["name"] == stock) &
@@ -101,30 +104,31 @@ def fetch_full_option_chain():
         df = df[df["expiry"] == expiry]
 
         option_map[stock] = df
-        symbols.extend(["NFO:" + s for s in df["tradingsymbol"]])
+        symbols.extend(["NFO:" + s for s in df["tradingsymbol"].tolist()])
 
-   option_quotes = {}
+    # ----------------------------------
+    # OPTION QUOTES (FIXED INDENTATION)
+    # ----------------------------------
+    option_quotes = {}
 
-for batch in chunk(symbols):
-    try:
-        # Try full batch first (fast path)
-        quotes = kite.quote(batch)
-        option_quotes.update(quotes)
+    for batch in chunk(symbols, 50):
+        try:
+            option_quotes.update(kite.quote(batch))
+        except Exception:
+            for sym in batch:
+                try:
+                    option_quotes.update(kite.quote([sym]))
+                except Exception:
+                    continue
 
-    except Exception:
-        # If Kite rejects the batch, retry symbol-by-symbol
-        for sym in batch:
-            try:
-                quote = kite.quote([sym])
-                option_quotes.update(quote)
-            except Exception:
-                # Skip invalid / rejected symbol
-                continue
-
-
-
+    # ----------------------------------
+    # SPOT QUOTES
+    # ----------------------------------
     spot_quotes = kite.quote([f"NSE:{s}" for s in option_map])
 
+    # ----------------------------------
+    # BUILD FINAL DATAFRAME
+    # ----------------------------------
     rows_all = []
     now_ts = datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S")
 
@@ -169,6 +173,7 @@ for batch in chunk(symbols):
         rows_all.append(sdf)
 
     return pd.concat(rows_all, ignore_index=True)
+
 
 # ==================================================
 # PUSH CSV (LOCAL + GITHUB)
