@@ -32,7 +32,7 @@ mode = st.radio(
 # AUTO REFRESH (CALL ONLY ONCE)
 # ==================================================
 refresh_count = st_autorefresh(
-    interval=60_000 if mode == "LIVE" else None,
+    interval=360_000 if mode == "LIVE" else None,
     key="auto_refresh"
 )
 
