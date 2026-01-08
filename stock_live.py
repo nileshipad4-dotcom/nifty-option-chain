@@ -20,7 +20,7 @@ st.subheader("⚙️ Data Mode")
 
 mode = st.radio(
     "Select Data Mode",
-    ["LIVE", "SNAPSHOT"],
+    ["SNAPSHOT", "LIVE"],
     horizontal=True
 )
 
