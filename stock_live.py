@@ -124,6 +124,18 @@ def fetch_full_option_chain():
     # ----------------------------------
     # SPOT QUOTES
     # ----------------------------------
+    spot_quotes = {}
+    spot_symbols = [f"NSE:{s}" for s in option_map]
+    
+    for batch in chunk(spot_symbols, 50):
+        try:
+            spot_quotes.update(kite.quote(batch))
+        except Exception:
+            for sym in batch:
+                try:
+                    spot_quotes.update(kite.quote([sym]))
+                except Exception:
+                    continue
     spot_quotes = kite.quote([f"NSE:{s}" for s in option_map])
 
     # ----------------------------------
