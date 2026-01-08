@@ -115,7 +115,7 @@ df1["PE/CE Vol Ratio"] = np.nan
 for stock, g in df1.groupby("Stock"):
     g = g.sort_values("Strike").reset_index()
 
-    ltp = g["Stock_LTP"].iloc[0]
+    ltp = g["LTP_0"].iloc[0]
 
     # ATM strike index
     atm_idx = (g["Strike"] - ltp).abs().idxmin()
