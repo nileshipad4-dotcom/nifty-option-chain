@@ -270,9 +270,9 @@ fmt = {
 
 fmt.update({
     "Stock_LTP": "{:.2f}",
-    "Stock_%_Change": "{:.2f}",
-    "% Stock Ch TS1-TS2": "{:.2f}",
-    "% Stock Ch TS2-TS3": "{:.2f}",
+    "% Ch": "{:.2f}",        # Stock_%_Change
+    "% Ch 1-2": "{:.2f}",    # TS1 → TS2
+    "% Ch 2-3": "{:.2f}",    # TS2 → TS3
     "Δ PE/CE Vol": "{:.2f}",   # ✅ CORRECT NAME
 })
 
