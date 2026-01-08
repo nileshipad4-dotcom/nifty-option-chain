@@ -217,7 +217,7 @@ def is_downtrend_stock(sdf):
     # ---- BELOW STRIKE DISTANCE CHECK (COMMON FOR ALL CONDITIONS)
     below_dist_ok = (
         abs((below["Strike"] - ltp) / ltp) * 100
-        <= ltp_strike_dist_pct
+        >= ltp_strike_dist_pct
     )
 
     if not below_dist_ok:
