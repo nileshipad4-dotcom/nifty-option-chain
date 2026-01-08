@@ -1,59 +1,140 @@
-# =====================================
-# STOCK OC MAIN – HISTORICAL + LIVE MP
-# =====================================
-
 import streamlit as st
 import pandas as pd
 import numpy as np
 import os
+from datetime import time
 from streamlit_autorefresh import st_autorefresh
 from kiteconnect import KiteConnect
 import pytz
-import time 
+from datetime import datetime
 
-# =====================================
-# AUTO REFRESH (5 MIN)
-# =====================================
-st_autorefresh(interval=300_000, key="auto_refresh")
+st_autorefresh(interval=360_000, key="auto_refresh")
 
-# =====================================
+# ==================================================
 # STREAMLIT CONFIG
-# =====================================
-st.set_page_config(page_title="Max Pain Comparison", layout="wide")
-st.title("📊 FnO STOCKS")
+# ==================================================
+st.set_page_config(page_title="FnO MP Delta Dashboard", layout="wide")
+st.title("📊 FnO STOCKS – Max Pain Delta View")
 
 DATA_DIR = "data"
+
 IST = pytz.timezone("Asia/Kolkata")
 
-# =====================================
-# KITE CONFIG
-# =====================================
+now = datetime.now(IST).time()
+if not time(9,15) <= now <= time(15,30):
+    st.warning("Market closed — showing last available live snapshot")
+
+# ==================================================
+# CONFIG
+# ==================================================
 API_KEY = "bkgv59vaazn56c42"
-ACCESS_TOKEN = "4epY0bfSn2lIfN8CvTZuyMvrE2mA58W7"
+ACCESS_TOKEN = "um1gYW2GgQ94kdg2G1C9vu3cWfdFF00X"
 
-@st.cache_resource
-def init_kite():
-    k = KiteConnect(api_key=API_KEY)
-    k.set_access_token(ACCESS_TOKEN)
-    return k
+STOCKS = [
+    "360ONE","ABB","ABCAPITAL","ADANIENSOL","ADANIENT","ADANIGREEN","ADANIPORTS","ALKEM",
+    "AMBER","AMBUJACEM","ANGELONE","APLAPOLLO","APOLLOHOSP","ASHOKLEY","ASIANPAINT","ASTRAL",
+    "AUBANK","AUROPHARMA","AXISBANK","BAJAJ-AUTO","BAJAJFINSV","BAJAJHLDNG","BAJFINANCE",
+    "BANDHANBNK","BANKBARODA","BANKINDIA","BANKNIFTY","BDL","BEL","BHARATFORG","BHARTIARTL",
+    "BHEL","BIOCON","BLUESTARCO","BOSCHLTD","BPCL","BRITANNIA","BSE","CAMS","CANBK","CDSL",
+    "CGPOWER","CHOLAFIN","CIPLA","COALINDIA","COFORGE","COLPAL","CONCOR","CROMPTON","CUMMINSIND",
+    "DABUR","DALBHARAT","DELHIVERY","DIVISLAB","DIXON","DLF","DMART","DRREDDY","EICHERMOT",
+    "ETERNAL","EXIDEIND","FEDERALBNK","FINNIFTY","FORTIS","GAIL","GLENMARK","GMRAIRPORT",
+    "GODREJCP","GODREJPROP","GRASIM","HAL","HAVELLS","HCLTECH","HDFCAMC","HDFCBANK","HDFCLIFE",
+    "HEROMOTOCO","HINDALCO","HINDPETRO","HINDUNILVR","HINDZINC","HUDCO","ICICIBANK","ICICIGI",
+    "ICICIPRULI","IDEA","IDFCFIRSTB","IEX","IIFL","INDHOTEL","INDIANB","INDIGO","INDUSINDBK",
+    "INDUSTOWER","INFY","INOXWIND","IOC","IRCTC","IREDA","IRFC","ITC","JINDALSTEL","JIOFIN",
+    "JSWENERGY","JSWSTEEL","JUBLFOOD","KALYANKJIL","KAYNES","KEI","KFINTECH","KOTAKBANK",
+    "KPITTECH","LAURUSLABS","LICHSGFIN","LICI","LODHA","LT","LTF","LTIM","LUPIN","M&M",
+    "MANAPPURAM","MANKIND","MARICO","MARUTI","MAXHEALTH","MAZDOCK","MCX","MFSL","MIDCPNIFTY",
+    "MOTHERSON","MPHASIS","MUTHOOTFIN","NATIONALUM","NAUKRI","NBCC","NESTLEIND","NHPC",
+    "NIFTY","NIFTYNXT50","NMDC","NTPC","NUVAMA","NYKAA","OBEROIRLTY","OFSS","OIL","ONGC",
+    "PAGEIND","PATANJALI","PAYTM","PERSISTENT","PETRONET","PFC","PGEL","PHOENIXLTD",
+    "PIDILITIND","PIIND","PNB","PNBHOUSING","POLICYBZR","POLYCAB","POWERGRID","POWERINDIA",
+    "PPLPHARMA","PREMIERENE","PRESTIGE","RBLBANK","RECLTD","RELIANCE","RVNL","SAIL",
+    "SAMMAANCAP","SBICARD","SBILIFE","SBIN","SHREECEM","SHRIRAMFIN","SIEMENS","SOLARINDS",
+    "SONACOMS","SRF","SUNPHARMA","SUPREMEIND","SUZLON","SWIGGY","SYNGENE","TATACONSUM",
+    "TATAELXSI","TATAPOWER","TATASTEEL","TATATECH","TCS","TECHM","TIINDIA","TITAN","TMPV",
+    "TORNTPHARM","TORNTPOWER","TRENT","TVSMOTOR","ULTRACEMCO","UNIONBANK","UNITDSPR",
+    "UNOMINDA","UPL","VBL","VEDL","VOLTAS","WAAREEENER","WIPRO","YESBANK","ZYDUSLIFE"
+]
 
-kite = init_kite()
+def load_live_data():
+    kite = KiteConnect(api_key=API_KEY)
+    kite.set_access_token(ACCESS_TOKEN)
 
-@st.cache_data(ttl=300)
-def load_instruments():
-    df = pd.DataFrame(kite.instruments("NFO"))
-    df["expiry"] = pd.to_datetime(df["expiry"])
-    return df
+    instruments = pd.DataFrame(kite.instruments("NFO"))
 
-instruments = load_instruments()
+    option_map = {}
+    all_option_symbols = []
 
-# =====================================
+    for stock in STOCKS:
+        df = instruments[
+            (instruments["name"] == stock) &
+            (instruments["segment"] == "NFO-OPT")
+        ].copy()
+
+        if df.empty:
+            continue
+
+        df["expiry"] = pd.to_datetime(df["expiry"])
+        expiry = df["expiry"].min()
+        df = df[df["expiry"] == expiry]
+
+        option_map[stock] = df
+        all_option_symbols.extend(
+            ["NFO:" + ts for ts in df["tradingsymbol"]]
+        )
+
+    # Quotes
+    option_quotes = {}
+    for i in range(0, len(all_option_symbols), 200):
+        option_quotes.update(kite.quote(all_option_symbols[i:i+200]))
+
+    spot_quotes = kite.quote([f"NSE:{s}" for s in STOCKS])
+
+    rows = []
+
+    for stock, df in option_map.items():
+        spot = spot_quotes.get(f"NSE:{stock}", {})
+        stock_ltp = spot.get("last_price")
+        ohlc = spot.get("ohlc", {})
+
+        prev_close = ohlc.get("close")
+        pct_change = (
+            ((stock_ltp - prev_close) / prev_close) * 100
+            if stock_ltp and prev_close else np.nan
+        )
+
+        for strike in sorted(df["strike"].unique()):
+            ce = df[(df["strike"] == strike) & (df["instrument_type"] == "CE")]
+            pe = df[(df["strike"] == strike) & (df["instrument_type"] == "PE")]
+
+            ce_q = option_quotes.get("NFO:" + ce.iloc[0]["tradingsymbol"], {}) if not ce.empty else {}
+            pe_q = option_quotes.get("NFO:" + pe.iloc[0]["tradingsymbol"], {}) if not pe.empty else {}
+
+            rows.append({
+                "Stock": stock,
+                "Strike": strike,
+
+                "CE_OI": ce_q.get("oi"),
+                "PE_OI": pe_q.get("oi"),
+                "CE_Volume": ce_q.get("volume"),
+                "PE_Volume": pe_q.get("volume"),
+
+                "Stock_LTP": stock_ltp,
+                "Stock_High": ohlc.get("high"),
+                "Stock_Low": ohlc.get("low"),
+                "Stock_%_Change": pct_change,
+            })
+
+    df_live = pd.DataFrame(rows)
+    df_live["Max_Pain"] = 0   # placeholder, calculated later in your pipeline
+    return df_live
+# ==================================================
 # LOAD CSV FILES
-# =====================================
+# ==================================================
 def load_csv_files():
     files = []
-    if not os.path.exists(DATA_DIR):
-        return files
     for f in os.listdir(DATA_DIR):
         if f.startswith("option_chain_") and f.endswith(".csv"):
             ts = f.replace("option_chain_", "").replace(".csv", "")
@@ -61,353 +142,722 @@ def load_csv_files():
     return sorted(files, reverse=True)
 
 csv_files = load_csv_files()
-if len(csv_files) < 2:
-    st.error("Need at least 2 CSV files.")
+if len(csv_files) < 3:
+    st.error("Need at least 3 CSV files.")
     st.stop()
 
-timestamps = [ts for ts, _ in csv_files]
+timestamps_all = [ts for ts, _ in csv_files]
 file_map = dict(csv_files)
 
-def short_ts(ts):
-    return ts.split("_")[-1].replace("-", ":")
+# ==================================================
+# TIME FILTER (08:00 to 16:30)
+# ==================================================
+def extract_time(ts):
+    try:
+        hh, mm = map(int, ts.split("_")[-1].split("-")[:2])
+        return time(hh, mm)
+    except:
+        return None
 
-# =====================================
-# DROPDOWNS
-# =====================================
-c1, c2 = st.columns(2)
-with c1:
-    t1 = st.selectbox("Timestamp 1 (Latest)", timestamps, 0)
-with c2:
-    t2 = st.selectbox("Timestamp 2", timestamps, 1)
-
-t1_lbl, t2_lbl = short_ts(t1), short_ts(t2)
-
-mp1_col = f"MP ({t1_lbl})"
-mp2_col = f"MP ({t2_lbl})"
-
-live_delta_col = f"Δ MP (Live - {t1_lbl})"
-live_delta_2_col = f"Δ MP ({t1_lbl} - {t2_lbl})"
-
-delta_live_above_col = "ΔΔ MP"
-delta_live_above_2_col = "ΔΔ MP 2"
-
-sum_live_exact_atm_col = "Σ ΔΔ MP"
-pct_col = "% Ch"
-
-
-
-# =====================================
-# LOAD CSV DATA
-# =====================================
-df1 = pd.read_csv(file_map[t1])
-df2 = pd.read_csv(file_map[t2])
-
-df1 = df1[["Stock", "Strike", "Max_Pain", "Stock_LTP"]].rename(columns={"Max_Pain": mp1_col})
-df2 = df2[["Stock", "Strike", "Max_Pain"]].rename(columns={"Max_Pain": mp2_col})
-
-df = df1.merge(df2, on=["Stock", "Strike"])
-# =====================================
-# REMOVE INDEX SYMBOLS
-# =====================================
-EXCLUDE_SYMBOLS = {"NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"}
-
-df = df[~df["Stock"].isin(EXCLUDE_SYMBOLS)]
-
-# =====================================
-# LIVE MAX PAIN LOGIC
-# =====================================
-def compute_live_max_pain(df):
-    df = df.fillna(0)
-    A, B, G, M, L = df["CE_LTP"], df["CE_OI"], df["Strike"], df["PE_LTP"], df["PE_OI"]
-    mp = []
-    for i in range(len(df)):
-        val = (
-            -sum(A[i:] * B[i:])
-            + G.iloc[i] * sum(B[:i]) - sum(G[:i] * B[:i])
-            - sum(M[:i] * L[:i])
-            + sum(G[i:] * L[i:]) - G.iloc[i] * sum(L[i:])
-        )
-        mp.append(int(val / 10000))
-    df["MP Live"] = mp
-    return df
-
-
-# =====================================
-# FETCH LIVE DATA (MP + LTP + DAY HIGH)
-# =====================================
-@st.cache_data(ttl=300)
-def fetch_live_mp_and_ltp(stocks):
-    rows = []
-
-    def chunk(lst, size=15):
-        for i in range(0, len(lst), size):
-            yield lst[i:i + size]
-
-    for batch in chunk(stocks, 15):
-
-        # ---- FETCH SPOT QUOTES (HIGH COMES ONLY FROM HERE) ----
-        spot_quotes = kite.quote([f"NSE:{s}" for s in batch])
-        time.sleep(0.5)  # prevent quote degradation
-
-        for stock in batch:
-
-            # ---- SPOT DATA ----
-            spot = spot_quotes.get(f"NSE:{stock}", {})
-            if not spot:
-                continue
-
-            ohlc = spot.get("ohlc", {}) or {}
-
-            ltp = spot.get("last_price")
-            prev = ohlc.get("close")
-
-            # ✅ DAY HIGH - LOW (ONLY THIS)
-            high = ohlc.get("high") or spot.get("day_high")
-            low  = ohlc.get("low")  or spot.get("day_low")
-
-
-            # ---- OPTION DATA ----
-            opt_df = instruments[
-                (instruments["name"] == stock) &
-                (instruments["segment"] == "NFO-OPT")
-            ]
-            if opt_df.empty:
-                continue
-
-            expiry = opt_df["expiry"].min()
-            opt_df = opt_df[opt_df["expiry"] == expiry]
-
-            option_symbols = ["NFO:" + s for s in opt_df["tradingsymbol"].tolist()]
-            quotes = {}
-
-            for sym_batch in chunk(option_symbols, 200):
-                quotes.update(kite.quote(sym_batch))
-
-            chain = []
-            for strike in sorted(opt_df["strike"].unique()):
-                ce = opt_df[(opt_df["strike"] == strike) & (opt_df["instrument_type"] == "CE")]
-                pe = opt_df[(opt_df["strike"] == strike) & (opt_df["instrument_type"] == "PE")]
-
-                ce_q = quotes.get("NFO:" + ce.iloc[0]["tradingsymbol"], {}) if not ce.empty else {}
-                pe_q = quotes.get("NFO:" + pe.iloc[0]["tradingsymbol"], {}) if not pe.empty else {}
-
-                chain.append({
-                    "Strike": strike,
-                    "CE_LTP": ce_q.get("last_price"),
-                    "CE_OI": ce_q.get("oi"),
-                    "PE_LTP": pe_q.get("last_price"),
-                    "PE_OI": pe_q.get("oi"),
-                })
-
-            if not chain:
-                continue
-
-            df_mp = compute_live_max_pain(pd.DataFrame(chain))
-
-            live_pct = (
-                round(((ltp - prev) / prev) * 100, 2)
-                if ltp and prev else np.nan
-            )
-
-            # ---- APPEND ROWS ----
-            for _, r in df_mp.iterrows():
-                rows.append({
-                    "Stock": stock,
-                    "Strike": r["Strike"],
-                    "MP Live": r["MP Live"],
-                    "LTP": ltp,
-                    "High": high,
-                    "Low": low,
-                    pct_col: live_pct,
-                    hl_col: hl_value
-                })
-
-
-
-    return pd.DataFrame(rows)
-
-
-# =====================================
-# MERGE LIVE DATA
-# =====================================
-stocks = [
-    s for s in df["Stock"].unique().tolist()
-    if s not in {"NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"}
+filtered_ts = [
+    ts for ts in timestamps_all
+    if extract_time(ts) and time(8, 0) <= extract_time(ts) <= time(16, 30)
 ]
 
-live_df = fetch_live_mp_and_ltp(stocks)
+# ==================================================
+# TIMESTAMP SELECTION
+# ==================================================
+st.subheader("🕒 Timestamp Selection")
+c1, c2, c3 = st.columns(3)
+t1 = "LIVE" 
+st.markdown("**Timestamp 1: LIVE DATA**")
+t2 = c2.selectbox("Timestamp 2", filtered_ts, 1)
+t3 = c3.selectbox("Timestamp 3", filtered_ts, 2)
 
-final_df = df.merge(live_df, on=["Stock", "Strike"], how="left")
-final_df[pct_col] = final_df.groupby("Stock")[pct_col].transform("first")
-final_df["High"] = final_df.groupby("Stock")["High"].transform("first")
-final_df["Low"] = final_df.groupby("Stock")["Low"].transform("first")
+# ==================================================
+# LOAD CSVs ONCE
+# ==================================================
+with st.spinner("Fetching LIVE market data..."):     
+    df_t1 = load_live_data()  
+df_t2 = pd.read_csv(file_map[t2])
+df_t3 = pd.read_csv(file_map[t3])
 
+# ==================================================
+# ================= TABLE 1 ========================
+# ==================================================
+st.subheader("📘 Table 1 – FnO MP Delta Dashboard")
 
-# =====================================
-# DELTA CALCULATIONS
-# =====================================
-final_df[live_delta_col] = final_df["MP Live"] - final_df[mp1_col]
-final_df[live_delta_2_col] = final_df[mp1_col] - final_df[mp2_col]
+dfs = []
+for i, d in enumerate([df_t1, df_t2, df_t3]):
+    dfs.append(
+        d[[
+            "Stock", "Strike", "Max_Pain", "Stock_LTP",
+            "CE_OI", "PE_OI", "CE_Volume", "PE_Volume"
+        ]].rename(columns={
+            "Max_Pain": f"MP_{i}",
+            "Stock_LTP": f"LTP_{i}",
+            "CE_OI": f"CE_OI_{i}",
+            "PE_OI": f"PE_OI_{i}",
+            "CE_Volume": f"CE_VOL_{i}",
+            "PE_Volume": f"PE_VOL_{i}",
+        })
+    )
 
-final_df[delta_live_above_col] = (
-    final_df[live_delta_col] -
-    final_df.groupby("Stock")[live_delta_col].shift(-1)
+df1 = dfs[0].merge(dfs[1], on=["Stock", "Strike"]).merge(dfs[2], on=["Stock", "Strike"])
+
+df1 = df1.merge(
+    df_t1[["Stock", "Strike", "Stock_%_Change", "Stock_High", "Stock_Low"]],
+    on=["Stock", "Strike"],
+    how="left"
 )
 
-final_df[delta_live_above_2_col] = (
-    final_df[live_delta_2_col] -
-    final_df.groupby("Stock")[live_delta_2_col].shift(-1)
-)
+for c in df1.columns:
+    if any(x in c for x in ["MP_", "LTP_", "OI_", "VOL_"]):
+        df1[c] = pd.to_numeric(df1[c], errors="coerce").fillna(0)
 
-# =====================================
-# Σ ΔΔ MP
-# =====================================
-final_df[sum_live_exact_atm_col] = np.nan
+df1["Δ MP TS1-TS2"] = df1["MP_0"] - df1["MP_1"]
+df1["Δ MP TS2-TS3"] = df1["MP_1"] - df1["MP_2"]
 
-for stock, sdf in final_df.sort_values("Strike").groupby("Stock"):
-    sdf = sdf.reset_index()
-    ltp = sdf["LTP"].iloc[0]
-    strikes = sdf["Strike"].values
+df1["Δ CE OI TS1-TS2"] = df1["CE_OI_0"] - df1["CE_OI_1"]
+df1["Δ PE OI TS1-TS2"] = df1["PE_OI_0"] - df1["PE_OI_1"]
+df1["Δ CE Vol TS1-TS2"] = df1["CE_VOL_0"] - df1["CE_VOL_1"]
+df1["Δ PE Vol TS1-TS2"] = df1["PE_VOL_0"] - df1["PE_VOL_1"]
 
-    if pd.isna(ltp):
-        continue
+# ==================================================
+# PE / CE VOL RATIO (ATM WINDOW)
+# ==================================================
 
-    for i in range(len(strikes) - 1):
-        if strikes[i] <= ltp <= strikes[i + 1]:
-            final_df.loc[final_df["Stock"] == stock, sum_live_exact_atm_col] = (
-                sdf.loc[i, delta_live_above_col] +
-                sdf.loc[i + 1, delta_live_above_col]
-            )
-            break
+df1["PE/CE Vol Ratio"] = np.nan
+
+for stock, g in df1.groupby("Stock"):
+    g = g.sort_values("Strike").reset_index()
+
+    ltp = g["LTP_0"].iloc[0]
+
+    # ATM strike index
+    atm_idx = (g["Strike"] - ltp).abs().idxmin()
+
+    # Define windows safely
+    pe_idx = g.loc[
+        max(0, atm_idx-2) : min(len(g)-1, atm_idx+1)
+    ].index
+
+    ce_idx = g.loc[
+        atm_idx : min(len(g)-1, atm_idx+3)
+    ].index
+
+    pe_sum = g.loc[pe_idx, "Δ PE Vol TS1-TS2"].sum()
+    ce_sum = g.loc[ce_idx, "Δ CE Vol TS1-TS2"].sum()
+
+    ratio = pe_sum / ce_sum if ce_sum != 0 else np.nan
+
+    df1.loc[g["index"], "PE/CE Vol Ratio"] = round(ratio, 2)
+
+# ---- ATM PAIR (BELOW + ABOVE LTP) PE–CE DIFFERENCE ----
+
+df1["Δ (PE-CE) OI TS1-TS2"] = np.nan
+df1["Δ (PE-CE) Vol TS1-TS2"] = np.nan
+
+for stock, g in df1.groupby("Stock"):
+    g = g.sort_values("Strike")
+    ltp = g["LTP_0"].iloc[0]
+
+    below_candidates = g[g["Strike"] <= ltp]
+    above_candidates = g[g["Strike"] > ltp]
+    
+    if below_candidates.empty or above_candidates.empty:
+        continue   # ❗ skip this stock safely
+    
+    below = below_candidates.iloc[-1]
+    above = above_candidates.iloc[0]
 
 
 
+    pe_oi_sum = (
+        below["Δ PE OI TS1-TS2"] +
+        above["Δ PE OI TS1-TS2"]
+    )
+    ce_oi_sum = (
+        below["Δ CE OI TS1-TS2"] +
+        above["Δ CE OI TS1-TS2"]
+    )
 
-# =====================================
-# HIGHLIGHTING
-# =====================================
-def highlight_rows(df):
-    styles = pd.DataFrame("", index=df.index, columns=df.columns)
+    pe_vol_sum = (
+        below["Δ PE Vol TS1-TS2"] +
+        above["Δ PE Vol TS1-TS2"]
+    )
+    ce_vol_sum = (
+        below["Δ CE Vol TS1-TS2"] +
+        above["Δ CE Vol TS1-TS2"]
+    )
 
-    for stock in df["Stock"].dropna().unique():
-        sdf = df[(df["Stock"] == stock) & df["Strike"].notna()]
+    df1.loc[g.index, "Δ (PE-CE) OI TS1-TS2"] = pe_oi_sum - ce_oi_sum
+    df1.loc[g.index, "Δ (PE-CE) Vol TS1-TS2"] = pe_vol_sum - ce_vol_sum
+
+
+
+df1["% Stock Ch TS1-TS2"] = ((df1["LTP_0"] - df1["LTP_1"]) / df1["LTP_1"]) * 100
+df1["% Stock Ch TS2-TS3"] = ((df1["LTP_1"] - df1["LTP_2"]) / df1["LTP_2"]) * 100
+df1["Stock_LTP"] = df1["LTP_0"]
+
+# ---- TS3 COLUMNS MOVED TO END ----
+df1 = df1[[
+    "Stock", 
+    "Strike",
+    "Δ MP TS1-TS2",
+    "Δ CE OI TS1-TS2", 
+    "Δ PE OI TS1-TS2",
+    "Δ CE Vol TS1-TS2", 
+    "Δ PE Vol TS1-TS2",
+    "Δ (PE-CE) OI TS1-TS2",
+    "Δ (PE-CE) Vol TS1-TS2",
+    "PE/CE Vol Ratio",
+    "% Stock Ch TS1-TS2",
+    "% Stock Ch TS2-TS3",
+    "Stock_LTP", 
+    "Stock_%_Change", 
+    "Stock_High", 
+    "Stock_Low",
+    "Δ MP TS2-TS3", 
+
+]]
+
+# ---- RENAME DELTA COLUMNS (DISPLAY ONLY) ----
+df1 = df1.rename(columns={
+    "Δ MP TS1-TS2": "Δ MP",
+    "Δ CE OI TS1-TS2": "Δ CE OI",
+    "Δ PE OI TS1-TS2": "Δ PE OI",
+    "Δ CE Vol TS1-TS2": "Δ CE Vol",
+    "Δ PE Vol TS1-TS2": "Δ PE Vol",
+    "PE/CE Vol Ratio":  "Δ PE/CE Vol",
+    "% Stock Ch TS1-TS2": "% Ch 1-2",
+    "% Stock Ch TS2-TS3": "% Ch 2-3",
+    "Stock_%_Change": "% Ch",
+    "Δ (PE-CE) OI TS1-TS2": "Δ (PE-CE) OI",
+    "Δ (PE-CE) Vol TS1-TS2": "Δ (PE-CE) Vol",
+})
+
+
+def filter_strikes(df, n=4):
+    blocks = []
+    for _, g in df.groupby("Stock"):
+        g = g.sort_values("Strike").reset_index(drop=True)
+        atm = (g["Strike"] - g["Stock_LTP"].iloc[0]).abs().idxmin()
+        blocks.append(g.iloc[max(0, atm-n):atm+n])
+    return pd.concat(blocks[:-1], ignore_index=True)
+
+display_df1 = filter_strikes(df1)
+
+def highlight_table1(data):
+    styles = pd.DataFrame("", index=data.index, columns=data.columns)
+
+    # ✅ updated column name
+    required_cols = {"Stock", "Strike", "Stock_LTP", "Δ MP"}
+    if not required_cols.issubset(data.columns):
+        return styles
+
+    for stock in data["Stock"].dropna().unique():
+        sdf = data[(data["Stock"] == stock) & data["Strike"].notna()]
+
         if sdf.empty:
             continue
 
-        # ---- ATM HIGHLIGHT ----
-        ltp = pd.to_numeric(sdf["LTP"].iloc[0], errors="coerce")
+        ltp = sdf["Stock_LTP"].iloc[0]
         strikes = sdf["Strike"].values
 
-        if pd.notna(ltp):
-            for i in range(len(strikes) - 1):
-                if strikes[i] <= ltp <= strikes[i + 1]:
-                    styles.loc[sdf.index[i], :] = "background-color:#003366;color:white"
-                    styles.loc[sdf.index[i + 1], :] = "background-color:#003366;color:white"
-                    break
+        # 🔵 ATM pair highlight (below + above LTP)
+        for i in range(len(strikes) - 1):
+            if strikes[i] <= ltp <= strikes[i + 1]:
+                styles.loc[sdf.index[i]] = "background-color:#003366;color:white"
+                styles.loc[sdf.index[i + 1]] = "background-color:#003366;color:white"
+                break
 
-        # ---- MIN LIVE MP HIGHLIGHT ----
-        mp_vals = sdf["MP Live"].dropna()
-        if not mp_vals.empty:
-            styles.loc[mp_vals.idxmin(), :] = "background-color:#8B0000;color:white"
+        # 🔴 Max Δ MP highlight
+        idx = sdf["Δ MP"].abs().idxmax()
+        styles.loc[idx] = "background-color:#8B0000;color:white"
 
     return styles
 
 
-# =====================================
-# FILTER 6 STRIKES BELOW & ABOVE LTP
-# =====================================
-filtered_rows = []
+fmt = {
+    c: "{:.0f}"
+    for c in display_df1.select_dtypes("number").columns
+    if c != "Δ PE/CE Vol"
+}
 
-for stock, sdf in final_df.groupby("Stock"):
+fmt.update({
+    "Stock_LTP": "{:.2f}",
+    "% Ch": "{:.2f}",        # Stock_%_Change
+    "% Ch 1-2": "{:.2f}",    # TS1 → TS2
+    "% Ch 2-3": "{:.2f}",    # TS2 → TS3
+    "Δ PE/CE Vol": "{:.2f}",   # ✅ CORRECT NAME
+})
+
+# ==================================================
+# RATIO COUNT CONTROL (NON-FILTERING)
+# ==================================================
+
+st.subheader("📊 PE/CE Volume Ratio – Count")
+
+rc1, rc2 = st.columns(2)
+
+with rc1:
+    ratio_operator = st.selectbox(
+        "Ratio Condition",
+        [">=", "<="],
+        index=0
+    )
+
+with rc2:
+    ratio_threshold = st.number_input(
+        "Ratio Value",
+        min_value=0.1,
+        max_value=10.0,
+        value=1.0,
+        step=0.1
+    )
+
+# ---- COUNT (STOCK-LEVEL, NOT STRIKE-LEVEL) ----
+ratio_df = (
+    df1.groupby("Stock")["Δ PE/CE Vol"]
+    .first()
+    .dropna()
+)
+
+
+if ratio_operator == ">=":
+    ratio_count = (ratio_df >= ratio_threshold).sum()
+else:
+    ratio_count = (ratio_df <= ratio_threshold).sum()
+
+st.metric(
+    label=f"Stocks with PE/CE Vol Ratio {ratio_operator} {ratio_threshold}",
+    value=int(ratio_count)
+)
+
+st.dataframe(display_df1.style.apply(highlight_table1, axis=None).format(fmt, na_rep=""),
+             use_container_width=True)
+
+
+
+# ==================================================
+# FILTERED DOWNTREND
+# ==================================================
+
+st.subheader("📉 DOWNTREND Filters")
+
+dc1, dc2 = st.columns(2)
+
+with dc1:
+    ltp_strike_dist_pct = st.number_input(
+        "Max % distance of BELOW strike from LTP",
+        min_value=0.1,
+        max_value=5.0,
+        value=0.6,
+        step=0.1
+    )
+
+with dc2:
+    stock_chg_ts23_limit = st.number_input(
+        "% Stock Change TS2→TS3 threshold",
+        min_value=0.1,
+        max_value=5.0,
+        value=0.7,
+        step=0.1
+    )
+
+# ==================================================
+# FILTERED DOWNTREND
+# ==================================================
+def get_ltp_strikes(sdf):
     sdf = sdf.sort_values("Strike").reset_index(drop=True)
+    ltp = sdf["Stock_LTP"].iloc[0]
 
-    ltp = sdf["LTP"].iloc[0]
-    if pd.isna(ltp):
+    below = sdf[sdf["Strike"] <= ltp].iloc[-1]
+    above = sdf[sdf["Strike"] > ltp].iloc[0]
+
+    idx = sdf.index[sdf["Strike"] == below["Strike"]][0]
+    window = sdf.iloc[max(0, idx-2): idx+4]   # 6 strikes window
+
+    return below, above, window
+
+
+# DOWNTREND LOGIC
+def is_downtrend_stock(sdf):
+    below, above, window = get_ltp_strikes(sdf)
+
+    ltp = sdf["Stock_LTP"].iloc[0]
+
+    # ---- BELOW STRIKE DISTANCE CHECK (COMMON FOR ALL CONDITIONS)
+    below_dist_ok = (
+        abs((below["Strike"] - ltp) / ltp) * 100
+        >= ltp_strike_dist_pct
+    )
+
+    if not below_dist_ok:
+        return False
+
+    # ---------- CONDITION 1 ----------
+    cond1 = (
+        above["Δ CE OI TS1-TS2"] > above["Δ PE OI TS1-TS2"] and
+        above["Δ CE Vol TS1-TS2"] > above["Δ PE Vol TS1-TS2"] and
+        below["Δ CE OI TS1-TS2"] > below["Δ PE OI TS1-TS2"] and
+        below["Δ CE Vol TS1-TS2"] > below["Δ PE Vol TS1-TS2"]
+    )
+
+    # ---------- CONDITION 2 ----------
+    pe_neg = (window["Δ PE OI TS1-TS2"] < 0).sum() >= 4
+    ce_pos = (window["Δ CE OI TS1-TS2"] > 0).sum() >= 4
+    oi_above = above["Δ CE OI TS1-TS2"] > above["Δ PE OI TS1-TS2"]
+    oi_below = below["Δ CE OI TS1-TS2"] > below["Δ PE OI TS1-TS2"]
+
+    cond2 = (
+        pe_neg and ce_pos and  oi_above and oi_below and
+        above["Δ CE Vol TS1-TS2"] > above["Δ PE Vol TS1-TS2"]
+    )
+
+    # ---------- CONDITION 3 ----------
+    cond3 = (
+        sdf["% Stock Ch TS2-TS3"].iloc[0] > stock_chg_ts23_limit and
+        above["Δ CE Vol TS1-TS2"] > above["Δ PE Vol TS1-TS2"] and
+        above["Δ CE OI TS1-TS2"] > above["Δ PE OI TS1-TS2"] and
+        below["Δ CE OI TS1-TS2"] > 0
+    )
+
+    return cond1 or cond2 or cond3
+
+
+
+
+
+
+
+
+
+# DOWNTREND DATAFRAME
+downtrend_blocks = []
+
+for stock in display_df1["Stock"].dropna().unique():
+    sdf = display_df1[display_df1["Stock"] == stock].dropna(subset=["Strike"])
+    if len(sdf) < 6:
         continue
 
-    # Find ATM index
-    atm_idx = sdf["Strike"].sub(ltp).abs().idxmin()
+    try:
+        if is_downtrend_stock(sdf):
+            downtrend_blocks.append(sdf)
+            downtrend_blocks.append(
+                pd.DataFrame([{c: np.nan for c in sdf.columns}])
+            )
+    except:
+        pass
 
-    lower_idx = max(atm_idx - 6, 0)
-    upper_idx = min(atm_idx + 6, len(sdf))  # +7 to include ATM + 6 above
-
-    filtered_rows.append(sdf.iloc[lower_idx:upper_idx])
-
-final_df = pd.concat(filtered_rows, ignore_index=True)
-
-
-
-# =====================================
-# DISPLAY
-# =====================================
-display_cols = [
-    "Stock",
-    "Strike",
-    "MP Live",
-    mp1_col,
-    mp2_col,
-    live_delta_col,
-    live_delta_2_col,
-    delta_live_above_col,
-    delta_live_above_2_col,
-    sum_live_exact_atm_col,
-    pct_col,
-    "LTP",
-    hl_col
-]
-
-
-
-display_df = final_df[display_cols].copy()
-
-# =====================================
-# MERGE HIGH | LTP | LOW INTO LTP COLUMN
-# =====================================
-def format_h_l_ltp(row):
-    h = row["High"]
-    ltp = row["LTP"]
-    lo = row["Low"]
-
-    if pd.isna(h) or pd.isna(ltp) or pd.isna(lo):
-        return ""
-
-    return f"{int(h):>4} | {int(ltp):>4} | {int(lo):>4}"
-
-display_df["LTP"] = final_df.loc[display_df.index].apply(
-    format_h_l_ltp,
-    axis=1
+df_downtrend = (
+    pd.concat(downtrend_blocks[:-1], ignore_index=True)
+    if downtrend_blocks else pd.DataFrame()
 )
 
+# DOWNTREND DISPLAY
+st.subheader("📉 DOWNTREND – CE Dominance & Price Confirmation")
 
-for c in display_df.columns:
-    if c == "Stock":
+if not df_downtrend.empty:
+    st.dataframe(
+        df_downtrend
+        .style
+        .apply(highlight_table1, axis=None)
+        .format(fmt, na_rep=""),
+        use_container_width=True
+    )
+else:
+    st.info("No stocks matched DOWNTREND conditions.")
+
+
+
+
+
+
+
+
+
+
+# ==================================================
+# UPTREND
+# ==================================================
+
+st.subheader("📈 UPTREND Filters")
+
+uc1, uc2 = st.columns(2)
+
+with uc1:
+    stock_chg_ts23_down = st.number_input(
+        "% Stock Change TS2→TS3 (UPTREND, negative)",
+        min_value=0.1,
+        max_value=5.0,
+        value=0.7,
+        step=0.1
+    )
+
+with uc2:
+    above_strike_dist_pct = st.number_input(
+        "Min % distance of ABOVE strike from LTP",
+        min_value=0.1,
+        max_value=5.0,
+        value=0.7,
+        step=0.1
+    )
+
+def is_uptrend_stock(sdf):
+    below, above, window = get_ltp_strikes(sdf)
+    ltp = sdf["Stock_LTP"].iloc[0]
+
+    # ---- COMMON CONDITIONS ----
+    above_dist_ok = (
+        abs((above["Strike"] - ltp) / ltp) * 100
+        >= above_strike_dist_pct
+    )
+
+    pe_oi_common = (
+        below["Δ PE OI TS1-TS2"] > 0 and
+        above["Δ PE OI TS1-TS2"] > 0
+    )
+
+    if not (above_dist_ok and pe_oi_common):
+        return False
+
+    # ---------- CONDITION 1 ----------
+    cond1 = (
+        above["Δ CE OI TS1-TS2"] < above["Δ PE OI TS1-TS2"] and
+        above["Δ CE Vol TS1-TS2"] < above["Δ PE Vol TS1-TS2"] and
+        below["Δ CE OI TS1-TS2"] < below["Δ PE OI TS1-TS2"] and
+        below["Δ CE Vol TS1-TS2"] < below["Δ PE Vol TS1-TS2"]
+    )
+
+    # ---------- CONDITION 2 ----------
+    pe_pos = (window["Δ PE OI TS1-TS2"] > 0).sum() >= 4
+    ce_neg = (window["Δ CE OI TS1-TS2"] < 0).sum() >= 4
+
+    cond2 = (
+        pe_pos and ce_neg and
+        below["Δ CE Vol TS1-TS2"] < below["Δ PE Vol TS1-TS2"]
+    )
+
+    # ---------- CONDITION 3 ----------
+    cond3 = (
+        sdf["% Stock Ch TS2-TS3"].iloc[0] < -stock_chg_ts23_down and
+        below["Δ CE Vol TS1-TS2"] < below["Δ PE Vol TS1-TS2"] and
+        below["Δ CE OI TS1-TS2"] < below["Δ PE OI TS1-TS2"] and
+        above["Δ PE OI TS1-TS2"] > 0
+    )
+
+    return cond1 or cond2 or cond3
+
+uptrend_blocks = []
+
+for stock in display_df1["Stock"].dropna().unique():
+    sdf = display_df1[display_df1["Stock"] == stock].dropna(subset=["Strike"])
+    if len(sdf) < 6:
         continue
-    if c in {pct_col, "LTP", "High", "Low"}:
-        display_df[c] = (
-            pd.to_numeric(display_df[c], errors="coerce")
-            .round(2)
-            .map(lambda x: f"{x:.2f}" if pd.notna(x) else "")
-        )
+
+    try:
+        if is_uptrend_stock(sdf):
+            uptrend_blocks.append(sdf)
+            uptrend_blocks.append(
+                pd.DataFrame([{c: np.nan for c in sdf.columns}])
+            )
+    except:
+        pass
+
+df_uptrend = (
+    pd.concat(uptrend_blocks[:-1], ignore_index=True)
+    if uptrend_blocks else pd.DataFrame()
+)
+
+st.subheader("📈 UPTREND – PE Dominance & Price Weakness")
+
+if not df_uptrend.empty:
+    st.dataframe(
+        df_uptrend
+        .style
+        .apply(highlight_table1, axis=None)
+        .format(fmt, na_rep=""),
+        use_container_width=True
+    )
+else:
+    st.info("No stocks matched UPTREND conditions.")
+
+
+
+
+
+
+
+
+# ==================================================
+# SINGLE STOCK TABLES (A / B / C)
+# ==================================================
+st.subheader("🔎 Selected Stocks")
+
+stocks = sorted(display_df1["Stock"].dropna().unique())
+a, b, c = st.columns(3)
+
+stock_a = a.selectbox("Stock A", [""] + stocks)
+stock_b = b.selectbox("Stock B", [""] + stocks)
+stock_c = c.selectbox("Stock C", [""] + stocks)
+
+def show_stock(s, label):
+    if s:
+        sdf = display_df1[display_df1["Stock"] == s]
+        st.markdown(f"**{label}: {s}**")
+        st.dataframe(sdf.style.apply(highlight_table1, axis=None).format(fmt, na_rep=""),
+                     use_container_width=True)
+
+show_stock(stock_a, "A")
+show_stock(stock_b, "B")
+show_stock(stock_c, "C")
+
+# ==================================================
+# ================= TABLE 2 ========================
+# ==================================================
+st.subheader("📕 Table 2 – ΔΔ Max Pain Viewer")
+
+p1, p2 = st.columns(2)
+with p1:
+    ltp_pct_limit = st.number_input(
+        "Max % distance from LTP (Table 2)", 0.0, 50.0, 5.0, 0.5
+    )
+with p2:
+    ddmp_diff_limit = st.number_input(
+        "Min |Δ MP(T2 − T3)| (Table 2)", 0.0, value=347.0, step=10.0
+    )
+
+def short_ts(ts):
+    return ts.split("_")[-1].replace("-", ":")
+
+# --------------------------------------------------
+# BUILD BASE DF
+# --------------------------------------------------
+df_all = df_t1.merge(
+    df_t2[["Stock", "Strike", "Max_Pain", "Stock_LTP"]],
+    on=["Stock", "Strike"],
+    suffixes=("", "_T2"),
+)
+
+df_all = df_all.merge(
+    df_t3[["Stock", "Strike", "Max_Pain", "Stock_LTP"]],
+    on=["Stock", "Strike"],
+    suffixes=("", "_T3"),
+)
+
+df_all[short_ts(t2)] = df_all["Max_Pain"] - df_all["Max_Pain_T2"]
+df_all[short_ts(t3)] = df_all["Max_Pain_T2"] - df_all["Max_Pain_T3"]
+
+# --------------------------------------------------
+# PRE-COMPUTE ATM & MAX PAIN
+# --------------------------------------------------
+atm_map = {}
+mp_map = {}
+
+for stock in df_all["Stock"].unique():
+    sdf = df_all[df_all["Stock"] == stock].sort_values("Strike")
+    ltp = sdf["Stock_LTP"].iloc[0]
+    strikes = sdf["Strike"].values
+
+    for i in range(len(strikes) - 1):
+        if strikes[i] <= ltp <= strikes[i + 1]:
+            atm_map[stock] = {strikes[i], strikes[i + 1]}
+            break
+
+    mp_map[stock] = sdf.loc[sdf["Max_Pain"].idxmin(), "Strike"]
+
+# --------------------------------------------------
+# FILTERED ROWS
+# --------------------------------------------------
+rows = []
+
+for stock in df_all["Stock"].unique():
+    sdf = df_all[df_all["Stock"] == stock].sort_values("Strike")
+
+    ltp1 = pd.to_numeric(sdf["Stock_LTP"].iloc[0], errors="coerce")
+    ltp2 = pd.to_numeric(sdf["Stock_LTP_T2"].iloc[0], errors="coerce")
+    
+    if pd.isna(ltp1) or ltp1 <= 0 or pd.isna(ltp2):
+        continue
+
+
+    pct_ltp_12 = ((ltp1 - ltp2) / ltp2 * 100) if ltp2 != 0 else np.nan
+
+    high = float(sdf["Stock_High"].iloc[0])
+    low = float(sdf["Stock_Low"].iloc[0])
+
+    for _, r in sdf.iterrows():
+        v1 = r[short_ts(t2)]
+        v2 = r[short_ts(t3)]
+
+        if abs(v2 - v1) <= ddmp_diff_limit:
+            continue
+
+        strike = float(r["Strike"])
+        if abs(strike - ltp1) / ltp1 * 100 > ltp_pct_limit:
+            continue
+
+        rows.append({
+            "Stock": stock,
+            "Strike": int(strike),
+            short_ts(t2): int(v1),
+            "%Δ LTP TS1→TS2": round(pct_ltp_12, 2),
+            "Stock_LTP": round(ltp1, 2),
+            "Stock_High": round(high, 2),
+            "Stock_Low": round(low, 2),
+
+            # ---- TS3 AT END ----
+            short_ts(t3): int(v2),
+        })
+
+df2 = pd.DataFrame(rows)
+
+# --------------------------------------------------
+# HIGHLIGHTING (RESTORED CORRECT LOGIC)
+# --------------------------------------------------
+def color_table2(row):
+    stock = row["Stock"]
+    strike = row["Strike"]
+    high = row["Stock_High"]
+    low = row["Stock_Low"]
+
+    if strike == mp_map.get(stock):
+        base = "background-color:#4E342E;color:white"
+    elif strike in atm_map.get(stock, set()):
+        base = "background-color:#003366;color:white"
+    elif strike > row["Stock_LTP"]:
+        base = "background-color:#004d00;color:white"
     else:
-        display_df[c] = (
-            pd.to_numeric(display_df[c], errors="coerce")
-            .round(0)
-            .astype("Int64")
-        )
+        base = "background-color:#660000;color:white"
 
-st.dataframe(
-    display_df.style.apply(highlight_rows, axis=None),
-    use_container_width=True,
-    height=900
-)
+    styles = []
+    for col in row.index:
+        if col in ("Stock_High", "Stock_Low") and low <= strike <= high:
+            styles.append("")     # ✅ NO highlight between High–Low
+        else:
+            styles.append(base)
+    return styles
 
-
-# =====================================
-# DOWNLOAD
-# =====================================
-st.download_button(
-    "⬇️ Download CSV",
-    final_df.to_csv(index=False),
-    f"max_pain_with_live_{t1_lbl}_{t2_lbl}.csv",
-    "text/csv",
-)
+# --------------------------------------------------
+# DISPLAY TABLE 2
+# --------------------------------------------------
+if not df2.empty:
+    st.dataframe(
+        df2.sort_values(["Stock", "Strike"])
+        .style
+        .apply(color_table2, axis=1)
+        .format({
+            "Strike": "{:.0f}",
+            short_ts(t2): "{:.0f}",
+            short_ts(t3): "{:.0f}",
+            "%Δ LTP TS1→TS2": "{:.2f}",
+            "Stock_LTP": "{:.2f}",
+            "Stock_High": "{:.2f}",
+            "Stock_Low": "{:.2f}",
+        }),
+        use_container_width=True
+    )
+else:
+    st.info("No rows matched Table-2 filter criteria.")
