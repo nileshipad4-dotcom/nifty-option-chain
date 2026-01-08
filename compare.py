@@ -112,7 +112,8 @@ df1["Δ (PE-CE) Vol TS1-TS2"] = np.nan
 
 for stock, g in df1.groupby("Stock"):
     g = g.sort_values("Strike")
-    ltp = g["Stock_LTP"].iloc[0]
+    ltp = g["LTP_0"].iloc[0]
+
 
     below = g[g["Strike"] <= ltp].iloc[-1]
     above = g[g["Strike"] > ltp].iloc[0]
