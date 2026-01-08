@@ -114,9 +114,16 @@ for stock, g in df1.groupby("Stock"):
     g = g.sort_values("Strike")
     ltp = g["LTP_0"].iloc[0]
 
+    below_candidates = g[g["Strike"] <= ltp]
+    above_candidates = g[g["Strike"] > ltp]
+    
+    if below_candidates.empty or above_candidates.empty:
+        continue   # ❗ skip this stock safely
+    
+    below = below_candidates.iloc[-1]
+    above = above_candidates.iloc[0]
 
-    below = g[g["Strike"] <= ltp].iloc[-1]
-    above = g[g["Strike"] > ltp].iloc[0]
+
 
     pe_oi_sum = (
         below["Δ PE OI TS1-TS2"] +
