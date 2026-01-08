@@ -14,7 +14,7 @@ st.set_page_config(page_title="LIVE Option Chain Snapshot", layout="wide")
 st.title("📊 LIVE Option Chain → GitHub Snapshot (Full Chain)")
 
 # ⏱ Auto refresh every 60 seconds
-refresh_tick = st_autorefresh(interval=120_000, key="live_refresh")
+refresh_tick = st_autorefresh(interval=180_000, key="live_refresh")
 
 # ==================================================
 # TIMEZONE
