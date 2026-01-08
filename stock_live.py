@@ -25,11 +25,23 @@ mode = st.radio(
     horizontal=True
 )
 
+refresh_count = st_autorefresh(
+    interval=60_000 if mode == "LIVE" else 0,
+    key="auto_refresh"
+)
+
+if "live_df" not in st.session_state:
+    st.session_state.live_df = None
+
+if "last_refresh" not in st.session_state:
+    st.session_state.last_refresh = -1
+
 
 if mode == "LIVE":
     st_autorefresh(interval=60_000, key="auto_refresh")   # 1 min
 else:
     st_autorefresh(interval=0, key="auto_refresh")        # disabled
+
 
 
 DATA_DIR = "data"
@@ -199,14 +211,33 @@ t3 = c3.selectbox("Timestamp 3", filtered_ts, 2)
 # ==================================================
 # LOAD CSVs ONCE
 # ==================================================
+# ==================================================
+# LOAD DATA (LIVE vs SNAPSHOT)
+# ==================================================
+
 if mode == "LIVE":
-    with st.spinner("📡 Fetching LIVE market data..."):
-        df_t1 = load_live_data()
+    # Load LIVE data ONLY on autorefresh tick
+    if refresh_count != st.session_state.last_refresh:
+        with st.spinner("📡 Updating LIVE market data..."):
+            st.session_state.live_df = load_live_data()
+            st.session_state.last_refresh = refresh_count
+
+    df_t1 = st.session_state.live_df
+
 else:
     df_t1 = pd.read_csv(file_map[t1])
 
+# Snapshot timestamps always load from CSV
 df_t2 = pd.read_csv(file_map[t2])
 df_t3 = pd.read_csv(file_map[t3])
+
+if mode == "LIVE":
+    st.caption(
+        f"🟢 LIVE mode — last update: "
+        f"{datetime.now(IST).strftime('%H:%M:%S')}"
+    )
+else:
+    st.caption("📁 SNAPSHOT mode — static CSV data")
 
 
 # ==================================================
