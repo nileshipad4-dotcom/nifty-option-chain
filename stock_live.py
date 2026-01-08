@@ -8,10 +8,6 @@ from kiteconnect import KiteConnect
 import pytz
 from datetime import datetime
 
-if mode == "LIVE":
-    st_autorefresh(interval=60_000, key="auto_refresh")   # 1 min
-else:
-    st_autorefresh(interval=0, key="auto_refresh")        # disabled
 
 
 # ==================================================
@@ -27,6 +23,12 @@ mode = st.radio(
     ["LIVE", "SNAPSHOT"],
     horizontal=True
 )
+
+if mode == "LIVE":
+    st_autorefresh(interval=60_000, key="auto_refresh")   # 1 min
+else:
+    st_autorefresh(interval=0, key="auto_refresh")        # disabled
+
 
 DATA_DIR = "data"
 
