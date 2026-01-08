@@ -247,6 +247,13 @@ df_t2 = pd.read_csv(file_map[t2])
 df_t3 = pd.read_csv(file_map[t3])
 
 # ==================================================
+# SAFETY CHECK (CRITICAL)
+# ==================================================
+if df_t1 is None or df_t2 is None or df_t3 is None:
+    st.error("Data not available yet. Waiting for LIVE refresh or CSV load.")
+    st.stop()
+
+# ==================================================
 # MODE STATUS
 # ==================================================
 if mode == "LIVE":
@@ -419,7 +426,12 @@ def filter_strikes(df, n=4):
         g = g.sort_values("Strike").reset_index(drop=True)
         atm = (g["Strike"] - g["Stock_LTP"].iloc[0]).abs().idxmin()
         blocks.append(g.iloc[max(0, atm-n):atm+n])
-    return pd.concat(blocks[:-1], ignore_index=True)
+
+    if not blocks:
+        return pd.DataFrame()
+
+    return pd.concat(blocks, ignore_index=True)
+
 
 display_df1 = filter_strikes(df1)
 
