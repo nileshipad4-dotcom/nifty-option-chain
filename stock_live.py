@@ -59,7 +59,7 @@ STOCKS = [
 # GITHUB CONFIG (STREAMLIT SECRETS)
 # ==================================================
 GITHUB_TOKEN = st.secrets["GITHUB_TOKEN"]
-GITHUB_REPO = st.secrets["GITHUB_REPO"]
+GITHUB_REPO = st.secrets["KITE_REPO"]
 GITHUB_BRANCH = st.secrets.get("GITHUB_BRANCH", "main")
 
 # ==================================================
