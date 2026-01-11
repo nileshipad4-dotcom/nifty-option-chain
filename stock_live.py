@@ -7,6 +7,10 @@ import base64
 import requests
 import os
 from streamlit_autorefresh import st_autorefresh
+from kite_config import KITE_API_KEY, KITE_ACCESS_TOKEN
+
+API_KEY = KITE_API_KEY
+ACCESS_TOKEN = KITE_ACCESS_TOKEN
 
 # ==================================================
 # STREAMLIT CONFIG
@@ -21,11 +25,7 @@ refresh_tick = st_autorefresh(interval=180_000, key="live_refresh")
 # ==================================================
 IST = pytz.timezone("Asia/Kolkata")
 
-# ==================================================
-# KITE CONFIG (UNCHANGED)
-# ==================================================
-API_KEY = "bkgv59vaazn56c42"
-ACCESS_TOKEN = "SylpyKUon81kyzVikMYvrmJQ63ihhHU8"
+
 
 STOCKS = [
     "360ONE","ABB","ABCAPITAL","ADANIENSOL","ADANIENT","ADANIGREEN","ADANIPORTS","ALKEM",
