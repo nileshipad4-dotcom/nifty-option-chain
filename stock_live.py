@@ -198,7 +198,7 @@ def fetch_full_option_chain():
 # PUSH CSV TO GITHUB
 # ==================================================
 def push_csv_to_github(df):
-    filename = f"data/option_chain_{datetime.now(IST).strftime('%Y-%m-%d_%H-%M-%S')}.csv"
+    filename = f"data/option_chain_{datetime.now(IST).strftime('%Y-%m-%d_%H-%M')}.csv"
     csv_bytes = df.to_csv(index=False).encode()
     content = base64.b64encode(csv_bytes).decode()
 
