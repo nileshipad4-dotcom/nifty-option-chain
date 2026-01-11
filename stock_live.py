@@ -291,6 +291,35 @@ st.subheader("📈 KITE – STOCK OPTION CHAIN")
 df_kite = fetch_kite_option_chain()
 st.dataframe(df_kite, use_container_width=True)
 
+# ---- RESTORE KITE CSV SAVE ----
+try:
+    kite_filename = f"data/option_chain_{datetime.now(IST).strftime('%Y-%m-%d_%H-%M')}.csv"
+    csv_bytes = df_kite.to_csv(index=False).encode()
+    content = base64.b64encode(csv_bytes).decode()
+
+    url = f"https://api.github.com/repos/{KITE_REPO}/contents/{kite_filename}"
+
+    headers = {
+        "Authorization": f"token {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github+json"
+    }
+
+    payload = {
+        "message": f"Auto snapshot {kite_filename}",
+        "content": content,
+        "branch": GITHUB_BRANCH
+    }
+
+    r = requests.put(url, headers=headers, json=payload)
+
+    if r.status_code not in (200, 201):
+        raise Exception(r.json())
+
+    st.success(f"✅ Kite CSV saved to GitHub: {kite_filename}")
+
+except Exception as e:
+    st.error(f"❌ Kite GitHub save failed: {e}")
+
 st.subheader("📊 DHAN – INDEX OPTION CHAINS")
 
 for sym, cfg in UNDERLYINGS.items():
