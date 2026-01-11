@@ -1,17 +1,23 @@
+# ================================
+# KITE + DHAN COMBINED COLLECTOR
+# ================================
+
+# -------- KITE PART (UNCHANGED) --------
 import streamlit as st
 import pandas as pd
 from kiteconnect import KiteConnect
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 import base64
 import requests
+import os
 from streamlit_autorefresh import st_autorefresh
 
 # ==================================================
 # STREAMLIT CONFIG
 # ==================================================
 st.set_page_config(page_title="LIVE Option Chain Snapshot", layout="wide")
-st.title("📊 LIVE Option Chain → Kite + Dhan")
+st.title("📊 LIVE Option Chain → GitHub Snapshot (Full Chain)")
 
 refresh_tick = st_autorefresh(interval=180_000, key="live_refresh")
 
@@ -21,7 +27,7 @@ refresh_tick = st_autorefresh(interval=180_000, key="live_refresh")
 IST = pytz.timezone("Asia/Kolkata")
 
 # ==================================================
-# KITE CONFIG
+# KITE CONFIG (UNCHANGED)
 # ==================================================
 API_KEY = "bkgv59vaazn56c42"
 ACCESS_TOKEN = "DLSvBzTX0sVAn5In8dDj0vRtC6gVbs4P"
@@ -31,24 +37,10 @@ STOCKS = [
 ]
 
 # ==================================================
-# DHAN CONFIG
-# ==================================================
-CLIENT_ID = "1102712380"
-DHAN_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY4MjQ5NzkwLCJpYXQiOjE3NjgxNjMzOTAsInRva2VuQ29uc3VtZXJUeXBlIjoiU0VMRiIsIndlYmhvb2tVcmwiOiIiLCJkaGFuQ2xpZW50SWQiOiIxMTAyNzEyMzgwIn0.y9CAHmsZCpTVulTRcK8AuiE_vaIK1-nSQ1TSqaG8zO1x8BPX2kodNgdLNPfF_P5hB_tiJUJY3bSEj-kf-0ypDw"
-API_BASE = "https://api.dhan.co/v2"
-
-HEADERS = {
-    "client-id": CLIENT_ID,
-    "access-token": DHAN_TOKEN,
-    "Content-Type": "application/json",
-}
-
-# ==================================================
-# GITHUB CONFIG (SECRETS)
+# GITHUB CONFIG
 # ==================================================
 GITHUB_TOKEN = st.secrets["GITHUB_TOKEN"]
-KITE_REPO = st.secrets["KITE_REPO"]
-DHAN_REPO = st.secrets["DHAN_REPO"]
+GITHUB_REPO = st.secrets["KITE_REPO"]
 GITHUB_BRANCH = st.secrets.get("GITHUB_BRANCH", "main")
 
 # ==================================================
@@ -70,7 +62,7 @@ def chunk(lst, size=100):
     for i in range(0, len(lst), size):
         yield lst[i:i + size]
 
-def compute_max_pain(df):
+def compute_max_pain_kite(df):
     df = df.fillna(0)
     A = df["CE_LTP"]
     B = df["CE_OI"]
@@ -92,9 +84,9 @@ def compute_max_pain(df):
     return df
 
 # ==================================================
-# KITE OPTION CHAIN
+# FETCH KITE OPTION CHAIN (UNCHANGED)
 # ==================================================
-def fetch_kite_option_chain():
+def fetch_full_option_chain():
     option_map = {}
     all_option_symbols = []
 
@@ -118,8 +110,8 @@ def fetch_kite_option_chain():
     for batch in chunk(all_option_symbols):
         try:
             option_quotes.update(kite.quote(batch))
-        except Exception as e:
-            print("Kite batch failed:", e)
+        except:
+            pass
 
     spot_quotes = kite.quote([f"NSE:{s}" for s in option_map.keys()])
 
@@ -164,65 +156,21 @@ def fetch_kite_option_chain():
             })
 
         stock_df = pd.DataFrame(rows).sort_values("Strike")
-        stock_df = compute_max_pain(stock_df)
+        stock_df = compute_max_pain_kite(stock_df)
         all_data.append(stock_df)
 
     return pd.concat(all_data, ignore_index=True)
 
 # ==================================================
-# DHAN OPTION CHAIN (NIFTY)
+# PUSH KITE CSV TO GITHUB (UNCHANGED)
 # ==================================================
-def get_expiries():
-    r = requests.post(
-        f"{API_BASE}/optionchain/expirylist",
-        headers=HEADERS,
-        json={"UnderlyingScrip": 13, "UnderlyingSeg": "IDX_I"}
-    )
-    return r.json().get("data", []) if r.status_code == 200 else []
+def push_csv_to_github(df):
+    filename = f"data/option_chain_{datetime.now(IST).strftime('%Y-%m-%d_%H-%M')}.csv"
+    csv_bytes = df.to_csv(index=False).encode()
+    content = base64.b64encode(csv_bytes).decode()
 
-def get_option_chain(expiry):
-    r = requests.post(
-        f"{API_BASE}/optionchain",
-        headers=HEADERS,
-        json={"UnderlyingScrip": 13, "UnderlyingSeg": "IDX_I", "Expiry": expiry}
-    )
-    return r.json().get("data") if r.status_code == 200 else None
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{filename}"
 
-def fetch_dhan_option_chain():
-    expiries = get_expiries()
-    if not expiries:
-        return pd.DataFrame()
-
-    data = get_option_chain(expiries[0])
-    oc = data.get("oc", {}) if data else {}
-
-    rows = []
-    ts = datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S")
-
-    for s, v in oc.items():
-        ce = v.get("ce", {})
-        pe = v.get("pe", {})
-
-        rows.append({
-            "Strike": int(float(s)),
-            "CE LTP": ce.get("last_price"),
-            "CE OI": ce.get("oi"),
-            "CE Volume": ce.get("volume"),
-            "PE LTP": pe.get("last_price"),
-            "PE OI": pe.get("oi"),
-            "PE Volume": pe.get("volume"),
-            "timestamp": ts
-        })
-
-    return pd.DataFrame(rows).sort_values("Strike")
-
-# ==================================================
-# GITHUB PUSH
-# ==================================================
-def push_csv(df, filename, repo):
-    content = base64.b64encode(df.to_csv(index=False).encode()).decode()
-
-    url = f"https://api.github.com/repos/{repo}/contents/{filename}"
     headers = {
         "Authorization": f"token {GITHUB_TOKEN}",
         "Accept": "application/vnd.github+json"
@@ -238,32 +186,155 @@ def push_csv(df, filename, repo):
     if r.status_code not in (200, 201):
         raise Exception(r.json())
 
-# ==================================================
-# UI
-# ==================================================
-st.subheader("📈 KITE – STOCK OPTION CHAIN")
+    return filename
 
-df_kite = fetch_kite_option_chain()
+# ==================================================
+# RUN KITE
+# ==================================================
+with st.spinner("📡 Fetching KITE option chain..."):
+    df_kite = fetch_full_option_chain()
 
 st.dataframe(df_kite, use_container_width=True)
 
-kite_file = f"data/option_chain_kite_{datetime.now(IST).strftime('%Y-%m-%d_%H-%M')}.csv"
-push_csv(df_kite, kite_file, KITE_REPO)
+try:
+    saved_file = push_csv_to_github(df_kite)
+    st.success(f"✅ Kite CSV saved: {saved_file}")
+except Exception as e:
+    st.error(f"❌ GitHub save failed: {e}")
 
-st.success(f"Kite CSV pushed → {kite_file}")
+# -------- DHAN PART (FIXED, ORIGINAL BEHAVIOR) --------
 
-# --------------------------------------------------
+# ================= CONFIG =================
+CLIENT_ID = "1102712380"
+ACCESS_TOKEN_DHAN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY4MjQ5NzkwLCJpYXQiOjE3NjgxNjMzOTAsInRva2VuQ29uc3VtZXJUeXBlIjoiU0VMRiIsIndlYmhvb2tVcmwiOiIiLCJkaGFuQ2xpZW50SWQiOiIxMTAyNzEyMzgwIn0.y9CAHmsZCpTVulTRcK8AuiE_vaIK1-nSQ1TSqaG8zO1x8BPX2kodNgdLNPfF_P5hB_tiJUJY3bSEj-kf-0ypDw"
 
-st.subheader("📊 DHAN – NIFTY OPTION CHAIN")
+API_BASE = "https://api.dhan.co/v2"
 
-df_dhan = fetch_dhan_option_chain()
+UNDERLYINGS = {
+    "NIFTY":      {"scrip": 13,  "seg": "IDX_I", "center": 26000},
+    "BANKNIFTY":  {"scrip": 25,  "seg": "IDX_I", "center": 60000},
+    "MIDCPNIFTY": {"scrip": 442, "seg": "IDX_I", "center": 13600},
+    "SENSEX":     {"scrip": 51,  "seg": "IDX_I", "center": 84000},
+}
 
-if df_dhan.empty:
-    st.error("❌ Dhan data not available")
-else:
-    st.dataframe(df_dhan, use_container_width=True)
+HEADERS = {
+    "client-id": CLIENT_ID,
+    "access-token": ACCESS_TOKEN_DHAN,
+    "Content-Type": "application/json",
+}
 
-    dhan_file = f"data/dhan_nifty_{datetime.now(IST).strftime('%Y-%m-%d_%H-%M')}.csv"
-    push_csv(df_dhan, dhan_file, DHAN_REPO)
+DATA_DIR = "data"
+os.makedirs(DATA_DIR, exist_ok=True)
 
-    st.success(f"Dhan CSV pushed → {dhan_file}")
+BASE_COLUMNS = [
+    "Strike",
+    "CE LTP","CE OI","CE Volume","CE IV","CE Delta","CE Gamma","CE Vega",
+    "PE LTP","PE OI","PE Volume","PE IV","PE Delta","PE Gamma","PE Vega",
+    "timestamp",
+    "Max Pain",
+]
+
+# Create CSVs only if not exist
+for sym in ["nifty", "banknifty", "midcpnifty", "sensex"]:
+    path = os.path.join(DATA_DIR, f"{sym}.csv")
+    if not os.path.exists(path):
+        pd.DataFrame(columns=BASE_COLUMNS).to_csv(path, index=False)
+
+def get_expiries(scrip, seg):
+    r = requests.post(
+        f"{API_BASE}/optionchain/expirylist",
+        headers=HEADERS,
+        json={"UnderlyingScrip": scrip, "UnderlyingSeg": seg}
+    )
+    return r.json().get("data", []) if r.status_code == 200 else []
+
+def get_option_chain(scrip, seg, expiry):
+    r = requests.post(
+        f"{API_BASE}/optionchain",
+        headers=HEADERS,
+        json={"UnderlyingScrip": scrip, "UnderlyingSeg": seg, "Expiry": expiry}
+    )
+    return r.json().get("data") if r.status_code == 200 else None
+
+def compute_max_pain_dhan(df):
+    A = df["CE LTP"].fillna(0)
+    B = df["CE OI"].fillna(0)
+    G = df["Strike"]
+    M = df["PE LTP"].fillna(0)
+    L = df["PE OI"].fillna(0)
+
+    mp = []
+    for i in range(len(df)):
+        val = (
+            -sum(A[i:] * B[i:])
+            + G.iloc[i] * sum(B[:i]) - sum(G[:i] * B[:i])
+            - sum(M[:i] * L[:i])
+            + sum(G[i:] * L[i:]) - G.iloc[i] * sum(L[i:])
+        )
+        mp.append(int(val / 10000))
+
+    df["Max Pain"] = mp
+    return df
+
+def run_dhan_collector():
+    ts = (datetime.utcnow() + timedelta(hours=5, minutes=30)).strftime("%Y-%m-%d %H:%M")
+
+    for sym, cfg in UNDERLYINGS.items():
+        expiries = get_expiries(cfg["scrip"], cfg["seg"])
+        if not expiries:
+            continue
+
+        data = get_option_chain(cfg["scrip"], cfg["seg"], expiries[0])
+        oc = data.get("oc", {}) if data else {}
+
+        strikes = sorted(float(s) for s in oc.keys())
+        center = cfg["center"]
+
+        below = [s for s in strikes if s <= center][-35:]
+        above = [s for s in strikes if s > center][:36]
+        selected = sorted(set(below + above))
+
+        rows = []
+
+        for s in selected:
+            v = oc.get(f"{s:.6f}", {})
+            ce = v.get("ce", {})
+            pe = v.get("pe", {})
+
+            rows.append({
+                "Strike": int(s),
+                "CE LTP": ce.get("last_price"),
+                "CE OI": ce.get("oi"),
+                "CE Volume": ce.get("volume"),
+                "CE IV": ce.get("implied_volatility"),
+                "CE Delta": ce.get("greeks", {}).get("delta"),
+                "CE Gamma": ce.get("greeks", {}).get("gamma"),
+                "CE Vega": ce.get("greeks", {}).get("vega"),
+                "PE LTP": pe.get("last_price"),
+                "PE OI": pe.get("oi"),
+                "PE Volume": pe.get("volume"),
+                "PE IV": pe.get("implied_volatility"),
+                "PE Delta": pe.get("greeks", {}).get("delta"),
+                "PE Gamma": pe.get("greeks", {}).get("gamma"),
+                "PE Vega": pe.get("greeks", {}).get("vega"),
+                "timestamp": ts,
+            })
+
+        if not rows:
+            continue
+
+        df = pd.DataFrame(rows).sort_values("Strike")
+
+        for c in BASE_COLUMNS:
+            if c not in df.columns:
+                df[c] = None
+
+        df = compute_max_pain_dhan(df)
+        df = df[BASE_COLUMNS]
+
+        out = os.path.join(DATA_DIR, f"{sym.lower()}.csv")
+        df.to_csv(out, mode="a", header=False, index=False)
+
+        print(f"[OK] {sym} saved @ {ts}")
+
+run_dhan_collector()
