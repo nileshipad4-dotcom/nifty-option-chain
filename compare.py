@@ -297,11 +297,13 @@ st.subheader("📊 PE/CE Ratio – Count")
 rc1, rc2, rc3, rc4 = st.columns(4)
 
 with rc1:
-    vol_operator = st.selectbox(
+    vol_operator = st.radio(
         "Vol Ratio Condition",
         [">=", "<="],
-        index=0
+        index=0,
+        horizontal=True
     )
+
 
 with rc2:
     vol_threshold = st.number_input(
@@ -313,11 +315,13 @@ with rc2:
     )
 
 with rc3:
-    oi_operator = st.selectbox(
+    oi_operator = st.radio(
         "OI Ratio Condition",
         [">=", "<="],
-        index=0
+        index=0,
+        horizontal=True
     )
+
 
 with rc4:
     oi_threshold = st.number_input(
