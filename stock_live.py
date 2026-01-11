@@ -73,6 +73,7 @@ for sym in UNDERLYINGS.keys():
 # ==================================================
 GITHUB_TOKEN = st.secrets["GITHUB_TOKEN"]
 KITE_REPO = st.secrets["KITE_REPO"]
+DHAN_REPO = st.secrets["DHAN_REPO"]
 GITHUB_BRANCH = st.secrets.get("GITHUB_BRANCH", "main")
 
 # ==================================================
@@ -294,13 +295,30 @@ def fetch_dhan_index(sym, cfg):
     df = compute_max_pain_dhan(df)
     df = df[BASE_COLUMNS]
 
-    out = os.path.join(DATA_DIR, f"{sym.lower()}.csv")
-    if not os.path.exists(out):
-        df.to_csv(out, index=False)
-    else:
-        df.to_csv(out, mode="a", header=False, index=False)
-
+    filename = f"data/{sym.lower()}.csv"
+    csv_bytes = df.to_csv(index=False).encode()
+    content = base64.b64encode(csv_bytes).decode()
+    
+    url = f"https://api.github.com/repos/{DHAN_REPO}/contents/{filename}"
+    
+    headers = {
+        "Authorization": f"token {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github+json"
+    }
+    
+    payload = {
+        "message": f"Auto update {filename}",
+        "content": content,
+        "branch": GITHUB_BRANCH
+    }
+    
+    r = requests.put(url, headers=headers, json=payload)
+    
+    if r.status_code not in (200, 201):
+        raise Exception(r.json())
+    
     return df
+
 
 # ==================================================
 # UI
@@ -349,4 +367,5 @@ for sym, cfg in UNDERLYINGS.items():
     else:
         st.dataframe(df_idx, use_container_width=True)
         save_time = datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S") 
-        st.success(f"✅ {sym} data saved @ {save_time} → data/{sym.lower()}.csv")
+        st.success(f"✅ {sym} uploaded to GitHub @ {save_time}")
+
