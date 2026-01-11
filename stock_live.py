@@ -354,4 +354,5 @@ for sym, cfg in UNDERLYINGS.items():
         st.error(f"{sym} data not available")
     else:
         st.dataframe(df_idx, use_container_width=True)
-        st.success(f"{sym} data saved to data/{sym.lower()}.csv")
+        save_time = datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S") 
+        st.success(f"✅ {sym} data saved @ {save_time} → data/{sym.lower()}.csv")
