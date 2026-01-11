@@ -223,6 +223,7 @@ df1 = df1.rename(columns={
     "Δ CE Vol TS1-TS2": "Δ CE Vol",
     "Δ PE Vol TS1-TS2": "Δ PE Vol",
     "PE/CE Vol Ratio":  "Δ PE/CE Vol",
+     "PE/CE OI Ratio": "Δ PE/CE OI",
     "% Stock Ch TS1-TS2": "% Ch 1-2",
     "% Stock Ch TS2-TS3": "% Ch 2-3",
     "Stock_%_Change": "% Ch",
@@ -328,17 +329,17 @@ with rc4:
     )
 
 # ---- COUNT (STOCK-LEVEL, NOT STRIKE-LEVEL) ----
-ratio_df = (
+vol_ratio_df = (
     df1.groupby("Stock")["Δ PE/CE Vol"]
     .first()
     .dropna()
 )
 
-
-if ratio_operator == ">=":
-    ratio_count = (ratio_df >= ratio_threshold).sum()
+if vol_operator == ">=":
+    vol_count = (vol_ratio_df >= vol_threshold).sum()
 else:
-    ratio_count = (ratio_df <= ratio_threshold).sum()
+    vol_count = (vol_ratio_df <= vol_threshold).sum()
+
 
 
 
