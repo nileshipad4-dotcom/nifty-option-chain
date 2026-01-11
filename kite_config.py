@@ -1,0 +1,2 @@
+KITE_API_KEY = "bkgv59vaazn56c42"
+KITE_ACCESS_TOKEN = "SylpyKUon81kyzVikMYvrmJQ63ihhHU8"
