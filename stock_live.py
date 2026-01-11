@@ -282,9 +282,9 @@ def fetch_dhan_index(sym, cfg):
         })
 
     if not rows:
-    return pd.DataFrame()
+        return pd.DataFrame()
 
-df = pd.DataFrame(rows).sort_values("Strike")
+    df = pd.DataFrame(rows).sort_values("Strike")
 
 
     num_cols = [c for c in df.columns if c not in ["Strike","timestamp"]]
