@@ -312,10 +312,17 @@ def fetch_dhan_index(sym, cfg):
         "branch": GITHUB_BRANCH
     }
     
+    # Check if file exists to get SHA
+    check = requests.get(url, headers=headers)
+    
+    if check.status_code == 200:
+        payload["sha"] = check.json()["sha"]
+    
     r = requests.put(url, headers=headers, json=payload)
     
     if r.status_code not in (200, 201):
         raise Exception(r.json())
+
     
     return df
 
