@@ -4,16 +4,19 @@ from datetime import datetime
 import pytz
 import os
 
+
+# ==================================================
+# CONFIG
+# ==================================================
+from kite_config import KITE_API_KEY, KITE_ACCESS_TOKEN
+
+API_KEY = KITE_API_KEY
+ACCESS_TOKEN = KITE_ACCESS_TOKEN
 # ==================================================
 # TIMEZONE
 # ==================================================
 IST = pytz.timezone("Asia/Kolkata")
 
-# ==================================================
-# CONFIG
-# ==================================================
-API_KEY = os.getenv("KITE_API_KEY")
-ACCESS_TOKEN = os.getenv("KITE_ACCESS_TOKEN")
 
 
 STOCKS = [
