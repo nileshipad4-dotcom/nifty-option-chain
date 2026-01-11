@@ -27,7 +27,9 @@ IST = pytz.timezone("Asia/Kolkata")
 API_KEY = "bkgv59vaazn56c42"
 ACCESS_TOKEN = "DLSvBzTX0sVAn5In8dDj0vRtC6gVbs4P"
 
-STOCKS = ["RELIANCE","SBIN","TCS","INFY"]
+STOCKS = [
+    "RELIANCE","SBIN","TCS","INFY"
+]
 
 # ==================================================
 # DHAN CONFIG
@@ -36,11 +38,21 @@ CLIENT_ID = "1102712380"
 DHAN_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY4MjQ5NzkwLCJpYXQiOjE3NjgxNjMzOTAsInRva2VuQ29uc3VtZXJUeXBlIjoiU0VMRiIsIndlYmhvb2tVcmwiOiIiLCJkaGFuQ2xpZW50SWQiOiIxMTAyNzEyMzgwIn0.y9CAHmsZCpTVulTRcK8AuiE_vaIK1-nSQ1TSqaG8zO1x8BPX2kodNgdLNPfF_P5hB_tiJUJY3bSEj-kf-0ypDw"
 API_BASE = "https://api.dhan.co/v2"
 
+UNDERLYINGS = {
+    "NIFTY":      {"scrip": 13,  "seg": "IDX_I", "center": 26000},
+    "BANKNIFTY":  {"scrip": 25,  "seg": "IDX_I", "center": 60000},
+    "MIDCPNIFTY": {"scrip": 442, "seg": "IDX_I", "center": 13600},
+    "SENSEX":     {"scrip": 51,  "seg": "IDX_I", "center": 84000},
+}
+
 HEADERS = {
     "client-id": CLIENT_ID,
     "access-token": DHAN_TOKEN,
     "Content-Type": "application/json",
 }
+
+DATA_DIR = "data"
+os.makedirs(DATA_DIR, exist_ok=True)
 
 # ==================================================
 # GITHUB CONFIG (ONLY FOR KITE)
@@ -89,8 +101,28 @@ def compute_max_pain_kite(df):
     df["Max_Pain"] = mp
     return df
 
+def compute_max_pain_dhan(df):
+    A = df["CE LTP"].fillna(0)
+    B = df["CE OI"].fillna(0)
+    G = df["Strike"]
+    M = df["PE LTP"].fillna(0)
+    L = df["PE OI"].fillna(0)
+
+    mp = []
+    for i in range(len(df)):
+        val = (
+            -sum(A[i:] * B[i:])
+            + G.iloc[i] * sum(B[:i]) - sum(G[:i] * B[:i])
+            - sum(M[:i] * L[:i])
+            + sum(G[i:] * L[i:]) - G.iloc[i] * sum(L[i:])
+        )
+        mp.append(int(val / 10000))
+
+    df["Max Pain"] = mp
+    return df
+
 # ==================================================
-# KITE OPTION CHAIN
+# KITE OPTION CHAIN (UNCHANGED)
 # ==================================================
 def fetch_kite_option_chain():
     option_map = {}
@@ -168,13 +200,20 @@ def fetch_kite_option_chain():
     return pd.concat(all_data, ignore_index=True)
 
 # ==================================================
-# DHAN OPTION CHAIN (DISPLAY + SAVE)
+# DHAN OPTION CHAIN (FULL + SAVING)
 # ==================================================
-def fetch_dhan_index(symbol, scrip, seg):
+BASE_COLUMNS = [
+    "Strike",
+    "CE LTP","CE OI","CE Volume","CE IV","CE Delta","CE Gamma","CE Vega",
+    "PE LTP","PE OI","PE Volume","PE IV","PE Delta","PE Gamma","PE Vega",
+    "timestamp","Max Pain"
+]
+
+def fetch_dhan_index(sym, cfg):
     r1 = requests.post(
         f"{API_BASE}/optionchain/expirylist",
         headers=HEADERS,
-        json={"UnderlyingScrip": scrip, "UnderlyingSeg": seg}
+        json={"UnderlyingScrip": cfg["scrip"], "UnderlyingSeg": cfg["seg"]}
     )
 
     expiries = r1.json().get("data", []) if r1.status_code == 200 else []
@@ -184,34 +223,64 @@ def fetch_dhan_index(symbol, scrip, seg):
     r2 = requests.post(
         f"{API_BASE}/optionchain",
         headers=HEADERS,
-        json={"UnderlyingScrip": scrip, "UnderlyingSeg": seg, "Expiry": expiries[0]}
+        json={
+            "UnderlyingScrip": cfg["scrip"],
+            "UnderlyingSeg": cfg["seg"],
+            "Expiry": expiries[0]
+        }
     )
 
     data = r2.json().get("data") if r2.status_code == 200 else {}
     oc = data.get("oc", {}) if data else {}
 
+    strikes = sorted(float(s) for s in oc.keys())
+
+    center = cfg["center"]
+    below = [s for s in strikes if s <= center][-35:]
+    above = [s for s in strikes if s > center][:36]
+    selected = sorted(set(below + above))
+
     rows = []
     ts = datetime.now(IST).strftime("%Y-%m-%d %H:%M")
 
-    for s, v in oc.items():
+    for s in selected:
+        v = oc.get(f"{s:.6f}", {})
         ce = v.get("ce", {})
         pe = v.get("pe", {})
 
         rows.append({
-            "Strike": int(float(s)),
+            "Strike": int(s),
             "CE LTP": ce.get("last_price"),
             "CE OI": ce.get("oi"),
             "CE Volume": ce.get("volume"),
+            "CE IV": ce.get("implied_volatility"),
+            "CE Delta": ce.get("greeks", {}).get("delta"),
+            "CE Gamma": ce.get("greeks", {}).get("gamma"),
+            "CE Vega": ce.get("greeks", {}).get("vega"),
             "PE LTP": pe.get("last_price"),
             "PE OI": pe.get("oi"),
             "PE Volume": pe.get("volume"),
+            "PE IV": pe.get("implied_volatility"),
+            "PE Delta": pe.get("greeks", {}).get("delta"),
+            "PE Gamma": pe.get("greeks", {}).get("gamma"),
+            "PE Vega": pe.get("greeks", {}).get("vega"),
             "timestamp": ts
         })
 
     df = pd.DataFrame(rows).sort_values("Strike")
 
-    os.makedirs("data", exist_ok=True)
-    df.to_csv(f"data/{symbol.lower()}.csv", index=False)
+    num_cols = [c for c in df.columns if c not in ["Strike","timestamp"]]
+    for c in num_cols:
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+
+    df = compute_max_pain_dhan(df)
+    df = df[BASE_COLUMNS]
+
+    out = os.path.join(DATA_DIR, f"{sym.lower()}.csv")
+    if not os.path.exists(out):
+        df.to_csv(out, index=False)
+    else:
+        df.to_csv(out, mode="a", header=False, index=False)
 
     return df
 
@@ -224,18 +293,12 @@ st.dataframe(df_kite, use_container_width=True)
 
 st.subheader("📊 DHAN – INDEX OPTION CHAINS")
 
-indices = {
-    "NIFTY": (13, "IDX_I"),
-    "BANKNIFTY": (25, "IDX_I"),
-    "MIDCPNIFTY": (442, "IDX_I"),
-    "SENSEX": (51, "IDX_I"),
-}
-
-for name, (scrip, seg) in indices.items():
-    st.markdown(f"### {name}")
-    df_idx = fetch_dhan_index(name, scrip, seg)
+for sym, cfg in UNDERLYINGS.items():
+    st.markdown(f"### {sym}")
+    df_idx = fetch_dhan_index(sym, cfg)
 
     if df_idx.empty:
-        st.error(f"{name} data not available")
+        st.error(f"{sym} data not available")
     else:
         st.dataframe(df_idx, use_container_width=True)
+        st.success(f"{sym} data saved to data/{sym.lower()}.csv")
