@@ -77,6 +77,20 @@ HEADERS = {
 
 DATA_DIR = "data"
 os.makedirs(DATA_DIR, exist_ok=True)
+# ==================================================
+# ENSURE DHAN CSV FILES EXIST
+# ==================================================
+BASE_COLUMNS = [
+    "Strike",
+    "CE LTP","CE OI","CE Volume","CE IV","CE Delta","CE Gamma","CE Vega",
+    "PE LTP","PE OI","PE Volume","PE IV","PE Delta","PE Gamma","PE Vega",
+    "timestamp","Max Pain"
+]
+
+for sym in UNDERLYINGS.keys():
+    path = os.path.join(DATA_DIR, f"{sym.lower()}.csv")
+    if not os.path.exists(path):
+        pd.DataFrame(columns=BASE_COLUMNS).to_csv(path, index=False)
 
 # ==================================================
 # GITHUB CONFIG (ONLY FOR KITE)
