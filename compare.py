@@ -340,18 +340,13 @@ pcr_now_count = (
     .sum()
 )
 
-# Old PCR (TS2 → TS3)
-pcr_old_count = (
-    (pcr_df["Δ PE OI TS2-TS3"] > pcr_df["Δ CE OI TS2-TS3"])
-    .sum()
-)
 
 
 
 
 
 
-mc1, mc2, mc3 = st.columns(3)
+mc1, mc2 = st.columns(3)
 
 mc1.metric(
     label=f"Stocks with PE/CE Vol Ratio {vol_operator} {vol_threshold}",
@@ -363,10 +358,6 @@ mc2.metric(
     value=int(pcr_now_count)
 )
 
-mc3.metric(
-    label="PCR > 1 (old)",
-    value=int(pcr_old_count)
-)
 
 st.dataframe(display_df1.style.apply(highlight_table1, axis=None).format(fmt, na_rep=""),
              use_container_width=True)
