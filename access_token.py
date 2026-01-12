@@ -1,5 +1,3 @@
-# https://kite.zerodha.com/connect/login?api_key=bkgv59vaazn56c42&v=3
-
 import streamlit as st
 from kiteconnect import KiteConnect
 
@@ -9,18 +7,21 @@ api_key = "bkgv59vaazn56c42"
 api_secret = "sb1sxe6s2p9qbmajwnlfe8bxmxfzbzbf"
 
 st.markdown(
-    '<a href="https://kite.zerodha.com/connect/login?api_key=bkgv59vaazn56c42&v=3" target="_blank">Hi</a>',
+    '<a href="https://kite.zerodha.com/connect/login?api_key=bkgv59vaazn56c42&v=3" target="_blank">Login to Zerodha</a>',
     unsafe_allow_html=True
 )
 
-raw_input = st.text_input("Enter Request Token", type="password")
+raw_input = st.text_input("Enter Request Token or Redirect URL", type="password")
 
-request_token = (
-    raw_input.rsplit("=", 1)[-1].strip()
-    if raw_input
-    else ""
-)
+def extract_request_token(text):
+    if "request_token=" in text:
+        return text.split("request_token=", 1)[1].split("&", 1)[0].strip()
+    elif "=" in text:
+        return text.rsplit("=", 1)[-1].strip()
+    else:
+        return text.strip()
 
+request_token = extract_request_token(raw_input) if raw_input else ""
 
 if st.button("Generate Access Token"):
     if request_token:
@@ -35,4 +36,4 @@ if st.button("Generate Access Token"):
         except Exception as e:
             st.error(f"Error: {e}")
     else:
-        st.warning("Please enter a request token")
+        st.warning("Please enter a request token or URL")
