@@ -314,23 +314,7 @@ with rc2:
         step=0.1
     )
 
-with rc3:
-    oi_operator = st.radio(
-        "OI Ratio Condition",
-        [">=", "<="],
-        index=0,
-        horizontal=True
-    )
 
-
-with rc4:
-    oi_threshold = st.number_input(
-        "OI Ratio Value",
-        min_value=0.1,
-        max_value=10.0,
-        value=1.0,
-        step=0.1
-    )
 
 # ---- COUNT (STOCK-LEVEL, NOT STRIKE-LEVEL) ----
 vol_ratio_df = (
@@ -347,18 +331,25 @@ else:
 
 
 
-oi_ratio_df = (
-    df1.groupby("Stock")["Δ PE/CE OI"]
-    .first()
-    .dropna()
+# ---- PCR COUNTS ----
+
+# TS1 → TS2
+pcr_now_df = df1.groupby("Stock").first()
+pcr_now_count = (
+    (pcr_now_df["Δ PE OI"] > pcr_now_df["Δ CE OI"])
+    .sum()
 )
 
-if oi_operator == ">=":
-    oi_count = (oi_ratio_df >= oi_threshold).sum()
-else:
-    oi_count = (oi_ratio_df <= oi_threshold).sum()
+# TS2 → TS3
+pcr_old_count = (
+    (pcr_now_df["Δ MP TS2-TS3"] * 0 +   # dummy align
+     (df1.groupby("Stock").first()["Δ PE OI"] >
+      df1.groupby("Stock").first()["Δ CE OI"]))
+    .sum()
+)
 
-mc1, mc2 = st.columns(2)
+
+mc1, mc2, mc3 = st.columns(3)
 
 mc1.metric(
     label=f"Stocks with PE/CE Vol Ratio {vol_operator} {vol_threshold}",
@@ -366,8 +357,13 @@ mc1.metric(
 )
 
 mc2.metric(
-    label=f"Stocks with PE/CE OI Ratio {oi_operator} {oi_threshold}",
-    value=int(oi_count)
+    label="PCR > 1",
+    value=int(pcr_now_count)
+)
+
+mc3.metric(
+    label="PCR > 1 (old)",
+    value=int(pcr_old_count)
 )
 
 st.dataframe(display_df1.style.apply(highlight_table1, axis=None).format(fmt, na_rep=""),
