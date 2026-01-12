@@ -7,7 +7,7 @@ import base64
 import requests
 import os
 from streamlit_autorefresh import st_autorefresh
-from kite_config import KITE_API_KEY, KITE_ACCESS_TOKEN
+from kite_config import KITE_API_KEY, KITE_ACCESS_TOKEN, DHAN_CLIENT_ID, DHAN_ACCESS_TOKEN
 
 API_KEY = KITE_API_KEY
 ACCESS_TOKEN = KITE_ACCESS_TOKEN
@@ -59,8 +59,8 @@ STOCKS = [
 # ==================================================
 # DHAN CONFIG
 # ==================================================
-CLIENT_ID = "1102712380"
-DHAN_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY4MjQ5NzkwLCJpYXQiOjE3NjgxNjMzOTAsInRva2VuQ29uc3VtZXJUeXBlIjoiU0VMRiIsIndlYmhvb2tVcmwiOiIiLCJkaGFuQ2xpZW50SWQiOiIxMTAyNzEyMzgwIn0.y9CAHmsZCpTVulTRcK8AuiE_vaIK1-nSQ1TSqaG8zO1x8BPX2kodNgdLNPfF_P5hB_tiJUJY3bSEj-kf-0ypDw"
+CLIENT_ID = DHAN_CLIENT_ID
+DHAN_TOKEN = DHAN_ACCESS_TOKEN
 API_BASE = "https://api.dhan.co/v2"
 
 UNDERLYINGS = {
