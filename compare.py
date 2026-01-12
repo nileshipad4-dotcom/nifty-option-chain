@@ -105,6 +105,8 @@ df1["Δ CE OI TS1-TS2"] = df1["CE_OI_0"] - df1["CE_OI_1"]
 df1["Δ PE OI TS1-TS2"] = df1["PE_OI_0"] - df1["PE_OI_1"]
 df1["Δ CE Vol TS1-TS2"] = df1["CE_VOL_0"] - df1["CE_VOL_1"]
 df1["Δ PE Vol TS1-TS2"] = df1["PE_VOL_0"] - df1["PE_VOL_1"]
+df1["Δ CE OI TS2-TS3"] = df1["CE_OI_1"] - df1["CE_OI_2"]
+df1["Δ PE OI TS2-TS3"] = df1["PE_OI_1"] - df1["PE_OI_2"]
 
 # ==================================================
 # PE / CE VOL RATIO (ATM WINDOW)
@@ -333,20 +335,20 @@ else:
 
 # ---- PCR COUNTS ----
 
-# TS1 → TS2
-pcr_now_df = df1.groupby("Stock").first()
+pcr_df = df1.groupby("Stock").first()
+
+# Current PCR (TS1 → TS2)
 pcr_now_count = (
-    (pcr_now_df["Δ PE OI"] > pcr_now_df["Δ CE OI"])
+    (pcr_df["Δ PE OI"] > pcr_df["Δ CE OI"])
     .sum()
 )
 
-# TS2 → TS3
+# Old PCR (TS2 → TS3)
 pcr_old_count = (
-    (pcr_now_df["Δ MP TS2-TS3"] * 0 +   # dummy align
-     (df1.groupby("Stock").first()["Δ PE OI"] >
-      df1.groupby("Stock").first()["Δ CE OI"]))
+    (pcr_df["Δ PE OI TS2-TS3"] > pcr_df["Δ CE OI TS2-TS3"])
     .sum()
 )
+
 
 
 mc1, mc2, mc3 = st.columns(3)
