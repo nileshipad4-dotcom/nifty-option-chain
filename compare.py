@@ -503,38 +503,41 @@ def ce_vol_expansion_filter(df, x=1.0, extra_check=False):
         below = sdf[sdf["Strike"] <= ltp]
         above = sdf[sdf["Strike"] > ltp]
 
-        if len(below) < 2 or above.empty:
+        # Need at least 2 below + 1 above
+        if len(below) < 2 or len(above) < 1:
             continue
 
-        below_idx = below.index[-1]      # strike just BELOW LTP (e.g. 34)
-        below2_idx = below.index[-2]    # 2nd strike BELOW LTP (e.g. 33)
+        below_idx = below.index[-1]      # just BELOW LTP (e.g. 34)
+        below2_idx = below.index[-2]    # 2nd BELOW (e.g. 33)
 
         ce_below = sdf.loc[below_idx, "Δ CE Vol"]
         ce_below2 = sdf.loc[below2_idx, "Δ CE Vol"]
 
-        # 3 strikes ABOVE (CE Vol)
+        # ---- SAFE WINDOWS ----
+
+        # CE Vol: up to 4 strikes ABOVE (or fewer if not available)
         ce_above_vals = sdf.loc[
-            above.index[:4],
+            above.index[:min(4, len(above))],
             "Δ CE Vol"
-        ].values
+        ].dropna().values
 
-        # PE window: 3 below + 3 above
+        # PE Vol: 3 below + up to 3 above
+        pe_start = max(0, below2_idx - 1)
+        pe_end = min(len(sdf) - 1, above.index[min(2, len(above)-1)])
+
         pe_window = sdf.loc[
-            max(0, below2_idx-1):min(len(sdf)-1, above.index[3]),
+            pe_start:pe_end,
             "Δ PE Vol"
-        ].values
-
-        ce_above_vals = ce_above_vals[~np.isnan(ce_above_vals)]
-        pe_window = pe_window[~np.isnan(pe_window)]
+        ].dropna().values
 
         if len(ce_above_vals) == 0 or len(pe_window) == 0:
             continue
 
-        # ORIGINAL CONDITIONS
+        # ---- BASE CONDITIONS ----
         ce_condition = all(ce_below > x * v for v in ce_above_vals)
         pe_condition = all(ce_below > x * v for v in pe_window)
 
-        # OPTIONAL EXTRA CHECK (2nd BELOW STRIKE)
+        # ---- OPTIONAL EXTRA CHECK (2nd BELOW STRIKE) ----
         extra_condition = True
         if extra_check:
             extra_condition = all(ce_below2 > v for v in pe_window)
@@ -547,8 +550,6 @@ def ce_vol_expansion_filter(df, x=1.0, extra_check=False):
         return pd.concat(blocks[:-1], ignore_index=True)
     else:
         return pd.DataFrame()
-
-
 
 
 # FILTERED DOWNTREND VOLUME BLAST (CE BELOW LTP) DISPLAY
