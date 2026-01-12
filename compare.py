@@ -203,6 +203,8 @@ df1 = df1[[
     "Δ MP TS1-TS2",
     "Δ CE OI TS1-TS2", 
     "Δ PE OI TS1-TS2",
+    "Δ CE OI TS2-TS3",   # ✅ ADD
+    "Δ PE OI TS2-TS3", 
     "Δ CE Vol TS1-TS2", 
     "Δ PE Vol TS1-TS2",
     "Δ (PE-CE) OI TS1-TS2",
