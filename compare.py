@@ -299,7 +299,7 @@ rc1, rc2, rc3, rc4 = st.columns(4)
 with rc1:
     vol_operator = st.radio(
         "Vol Ratio Condition",
-        [">=", "<="],
+        ["=>", "<="],
         index=0,
         horizontal=True
     )
