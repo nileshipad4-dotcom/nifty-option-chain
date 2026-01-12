@@ -234,7 +234,7 @@ df1 = df1.rename(columns={
 })
 
 
-def filter_strikes(df, n=4):
+def filter_strikes(df, n=5):
     blocks = []
     for _, g in df.groupby("Stock"):
         g = g.sort_values("Strike").reset_index(drop=True)
