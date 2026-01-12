@@ -103,8 +103,6 @@ df1["Δ MP TS2-TS3"] = df1["MP_1"] - df1["MP_2"]
 
 df1["Δ CE OI TS1-TS2"] = df1["CE_OI_0"] - df1["CE_OI_1"]
 df1["Δ PE OI TS1-TS2"] = df1["PE_OI_0"] - df1["PE_OI_1"]
-df1["Δ CE OI TS2-TS3"] = df1["CE_OI_1"] - df1["CE_OI_2"]
-df1["Δ PE OI TS2-TS3"] = df1["PE_OI_1"] - df1["PE_OI_2"]
 df1["Δ CE Vol TS1-TS2"] = df1["CE_VOL_0"] - df1["CE_VOL_1"]
 df1["Δ PE Vol TS1-TS2"] = df1["PE_VOL_0"] - df1["PE_VOL_1"]
 
@@ -202,8 +200,6 @@ df1 = df1[[
     "Strike",
     "Δ MP TS1-TS2",
     "Δ CE OI TS1-TS2", 
-    "Δ PE OI TS1-TS2",
-    "Δ CE OI TS2-TS3",   # ✅ ADD
     "Δ PE OI TS2-TS3", 
     "Δ CE Vol TS1-TS2", 
     "Δ PE Vol TS1-TS2",
@@ -228,8 +224,6 @@ df1 = df1.rename(columns={
     "Δ PE OI TS1-TS2": "Δ PE OI",
     "Δ CE Vol TS1-TS2": "Δ CE Vol",
     "Δ PE Vol TS1-TS2": "Δ PE Vol",
-    "Δ CE OI TS2-TS3": "Δ CE OI 2-3",
-    "Δ PE OI TS2-TS3": "Δ PE OI 2-3",
     "PE/CE Vol Ratio": "Δ PE/CE Vol",
      "PE/CE OI Ratio": "Δ PE/CE OI",
     "% Stock Ch TS1-TS2": "% Ch 1-2",
