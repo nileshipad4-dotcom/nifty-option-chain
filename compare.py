@@ -389,26 +389,31 @@ x_mult = st.number_input(
     step=0.1
 )
 
+extra_pe_check = st.toggle(
+    "Also require PE Vol at 2nd strike ABOVE LTP to dominate CE Vol window",
+    value=False
+)
+
 # FILTERED UPTREND VOLUME BLAST LOGIC
-def pe_vol_expansion_filter(df, x=1.0):
+def pe_vol_expansion_filter(df, x=1.0, extra_check=False):
     blocks = []
 
     for stock, sdf in df.groupby("Stock"):
         sdf = sdf.sort_values("Strike").reset_index(drop=True)
         ltp = sdf["Stock_LTP"].iloc[0]
 
-        # Find BELOW and ABOVE LTP strikes
         below = sdf[sdf["Strike"] <= ltp]
         above = sdf[sdf["Strike"] > ltp]
 
-        if below.empty or above.empty:
+        if below.empty or len(above) < 2:
             continue
 
         below_idx = below.index[-1]
-        above_idx = above.index[0]
+        above_idx = above.index[0]        # strike just above LTP
+        above2_idx = above.index[1]      # 2nd strike above LTP
 
-        # Target PE Vol (strike just ABOVE LTP)
         pe_above = sdf.loc[above_idx, "Δ PE Vol"]
+        pe_above2 = sdf.loc[above2_idx, "Δ PE Vol"]
 
         # 3 strikes below (PE Vol)
         pe_below_vals = sdf.loc[
@@ -416,23 +421,28 @@ def pe_vol_expansion_filter(df, x=1.0):
             "Δ PE Vol"
         ].values
 
-        # 3 strikes above + 3 below (CE Vol)
+        # CE Vol window: 3 below + above + above2
         ce_window = sdf.loc[
-            max(0, below_idx-3):min(len(sdf)-1, above_idx+3),
+            max(0, below_idx-3):min(len(sdf)-1, above2_idx),
             "Δ CE Vol"
         ].values
 
-        # Remove NaN / zeros
         pe_below_vals = pe_below_vals[~np.isnan(pe_below_vals)]
         ce_window = ce_window[~np.isnan(ce_window)]
 
         if len(pe_below_vals) == 0 or len(ce_window) == 0:
             continue
 
+        # ORIGINAL CONDITIONS
         pe_condition = all(pe_above > x * v for v in pe_below_vals)
         ce_condition = all(pe_above > x * v for v in ce_window)
 
-        if pe_condition and ce_condition:
+        # OPTIONAL EXTRA CHECK (2nd ABOVE STRIKE)
+        extra_condition = True
+        if extra_check:
+            extra_condition = all(pe_above2 > v for v in ce_window)
+
+        if pe_condition and ce_condition and extra_condition:
             blocks.append(sdf)
             blocks.append(pd.DataFrame([{c: np.nan for c in sdf.columns}]))
 
@@ -442,7 +452,8 @@ def pe_vol_expansion_filter(df, x=1.0):
         return pd.DataFrame()
 
 # FILTERED UPTREND VOLUME BLAST DISPLAY
-df_pe_expansion = pe_vol_expansion_filter(display_df1, x_mult)
+df_pe_expansion = pe_vol_expansion_filter(display_df1, x_mult, extra_pe_check)
+
 
 st.subheader("🚀 PE Volume Expansion (Above LTP)")
 
