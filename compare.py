@@ -468,6 +468,107 @@ if not df_pe_expansion.empty:
 else:
     st.info("No stocks matched the PE Vol Expansion condition.")
 
+
+
+
+
+# ==================================================
+# FILTERED DOWNTREND VOLUME BLAST (CE BELOW LTP)
+# ==================================================
+st.subheader("⚡ CE Vol Expansion Filter (Below LTP)")
+
+x_mult_ce = st.number_input(
+    "X Multiplier (CE Vol must be > X × surrounding vols)",
+    min_value=0.5,
+    max_value=10.0,
+    value=1.0,
+    step=0.1,
+    key="ce_x"
+)
+
+extra_ce_check = st.toggle(
+    "Also require CE Vol at 2nd strike BELOW LTP to dominate PE Vol window",
+    value=False,
+    key="ce_toggle"
+)
+
+# FILTERED DOWNTREND VOLUME BLAST (CE BELOW LTP) LOGIC
+def ce_vol_expansion_filter(df, x=1.0, extra_check=False):
+    blocks = []
+
+    for stock, sdf in df.groupby("Stock"):
+        sdf = sdf.sort_values("Strike").reset_index(drop=True)
+        ltp = sdf["Stock_LTP"].iloc[0]
+
+        below = sdf[sdf["Strike"] <= ltp]
+        above = sdf[sdf["Strike"] > ltp]
+
+        if len(below) < 2 or above.empty:
+            continue
+
+        below_idx = below.index[-1]      # strike just BELOW LTP (e.g. 34)
+        below2_idx = below.index[-2]    # 2nd strike BELOW LTP (e.g. 33)
+
+        ce_below = sdf.loc[below_idx, "Δ CE Vol"]
+        ce_below2 = sdf.loc[below2_idx, "Δ CE Vol"]
+
+        # 3 strikes ABOVE (CE Vol)
+        ce_above_vals = sdf.loc[
+            above.index[:4],
+            "Δ CE Vol"
+        ].values
+
+        # PE window: 3 below + 3 above
+        pe_window = sdf.loc[
+            max(0, below2_idx-1):min(len(sdf)-1, above.index[3]),
+            "Δ PE Vol"
+        ].values
+
+        ce_above_vals = ce_above_vals[~np.isnan(ce_above_vals)]
+        pe_window = pe_window[~np.isnan(pe_window)]
+
+        if len(ce_above_vals) == 0 or len(pe_window) == 0:
+            continue
+
+        # ORIGINAL CONDITIONS
+        ce_condition = all(ce_below > x * v for v in ce_above_vals)
+        pe_condition = all(ce_below > x * v for v in pe_window)
+
+        # OPTIONAL EXTRA CHECK (2nd BELOW STRIKE)
+        extra_condition = True
+        if extra_check:
+            extra_condition = all(ce_below2 > v for v in pe_window)
+
+        if ce_condition and pe_condition and extra_condition:
+            blocks.append(sdf)
+            blocks.append(pd.DataFrame([{c: np.nan for c in sdf.columns}]))
+
+    if blocks:
+        return pd.concat(blocks[:-1], ignore_index=True)
+    else:
+        return pd.DataFrame()
+
+
+
+
+# FILTERED DOWNTREND VOLUME BLAST (CE BELOW LTP) DISPLAY
+df_ce_expansion = ce_vol_expansion_filter(display_df1, x_mult_ce, extra_ce_check)
+
+st.subheader("📉 CE Volume Expansion (Below LTP)")
+
+if not df_ce_expansion.empty:
+    st.dataframe(
+        df_ce_expansion
+        .style
+        .apply(highlight_table1, axis=None)
+        .format(fmt, na_rep=""),
+        use_container_width=True
+    )
+else:
+    st.info("No stocks matched the CE Vol Expansion condition.")
+
+
+
 # ==================================================
 # FILTERED DOWNTREND
 # ==================================================
