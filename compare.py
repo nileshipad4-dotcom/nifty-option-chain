@@ -346,7 +346,7 @@ pcr_now_count = (
 
 
 
-mc1, mc2 = st.columns(3)
+mc1, mc2 = st.columns(2)
 
 mc1.metric(
     label=f"Stocks with PE/CE Vol Ratio {vol_operator} {vol_threshold}",
