@@ -269,6 +269,33 @@ def filter_strikes(df, n=5):
 
 display_df1 = filter_strikes(df1)
 
+# ==================================================
+# FORCE CREATE WEIGHTED OI COLUMNS (NO DEPENDENCIES)
+# ==================================================
+
+# Ensure numeric
+display_df1["Strike"] = pd.to_numeric(display_df1["Strike"], errors="coerce")
+display_df1["Δ CE OI"] = pd.to_numeric(display_df1["Δ CE OI"], errors="coerce")
+display_df1["Δ PE OI"] = pd.to_numeric(display_df1["Δ PE OI"], errors="coerce")
+
+# Per-strike weighted values
+display_df1["CE_x_Strike"] = display_df1["Δ CE OI"] * display_df1["Strike"]
+display_df1["PE_x_Strike"] = display_df1["Δ PE OI"] * display_df1["Strike"]
+
+# Stock-level sums
+sum_df = display_df1.groupby("Stock", as_index=False).agg({
+    "CE_x_Strike": "sum",
+    "PE_x_Strike": "sum"
+})
+
+sum_df["Sum CE"] = sum_df["CE_x_Strike"]
+sum_df["Sum PE"] = sum_df["PE_x_Strike"]
+sum_df["PE-CE"] = sum_df["Sum PE"] - sum_df["Sum CE"]
+
+sum_df = sum_df[["Stock", "Sum CE", "Sum PE", "PE-CE"]]
+
+# Merge back
+display_df1 = display_df1.merge(sum_df, on="Stock", how="left")
 
 # ==================================================
 # ADD WEIGHTED OI & SUM COLUMNS TO display_df1
