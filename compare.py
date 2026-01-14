@@ -148,34 +148,6 @@ for stock, g in df1.groupby("Stock"):
     df1.loc[g["index"], "PE/CE OI Ratio"] = round(oi_ratio, 2)
 
 
-# ==================================================
-# WEIGHTED OI MOMENTUM (SAFE & ACCURATE)
-# ==================================================
-
-df1["Strike"] = pd.to_numeric(df1["Strike"], errors="coerce")
-df1["Δ PE OI TS1-TS2"] = pd.to_numeric(df1["Δ PE OI TS1-TS2"], errors="coerce")
-df1["Δ CE OI TS1-TS2"] = pd.to_numeric(df1["Δ CE OI TS1-TS2"], errors="coerce")
-
-df1["PE_OI_x_Strike"] = df1["Δ PE OI TS1-TS2"] * df1["Strike"]
-df1["CE_OI_x_Strike"] = df1["Δ CE OI TS1-TS2"] * df1["Strike"]
-
-oi_weighted = (
-    df1
-    .dropna(subset=["Strike"])
-    .groupby("Stock")[["PE_OI_x_Strike", "CE_OI_x_Strike"]]
-    .sum()
-)
-
-oi_weighted["Momentum"] = (
-    oi_weighted["PE_OI_x_Strike"] - oi_weighted["CE_OI_x_Strike"]
-)
-
-df1 = df1.merge(
-    oi_weighted[["Momentum"]],
-    on="Stock",
-    how="left"
-)
-
 
 
 
@@ -239,7 +211,6 @@ df1 = df1[[
     "Δ (PE-CE) Vol TS1-TS2",
     "PE/CE OI Ratio",
     "PE/CE Vol Ratio",
-    "Momentum", 
     "% Stock Ch TS1-TS2",
     "% Stock Ch TS2-TS3",
     "Stock_LTP", 
