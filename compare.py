@@ -149,14 +149,20 @@ for stock, g in df1.groupby("Stock"):
 
 
 # ==================================================
-# Momentum (STRIKE × ΔOI)
+# WEIGHTED OI MOMENTUM (SAFE & ACCURATE)
 # ==================================================
+
+df1["Strike"] = pd.to_numeric(df1["Strike"], errors="coerce")
+df1["Δ PE OI TS1-TS2"] = pd.to_numeric(df1["Δ PE OI TS1-TS2"], errors="coerce")
+df1["Δ CE OI TS1-TS2"] = pd.to_numeric(df1["Δ CE OI TS1-TS2"], errors="coerce")
 
 df1["PE_OI_x_Strike"] = df1["Δ PE OI TS1-TS2"] * df1["Strike"]
 df1["CE_OI_x_Strike"] = df1["Δ CE OI TS1-TS2"] * df1["Strike"]
 
 oi_weighted = (
-    df1.groupby("Stock")[["PE_OI_x_Strike", "CE_OI_x_Strike"]]
+    df1
+    .dropna(subset=["Strike"])
+    .groupby("Stock")[["PE_OI_x_Strike", "CE_OI_x_Strike"]]
     .sum()
 )
 
@@ -164,12 +170,12 @@ oi_weighted["Momentum"] = (
     oi_weighted["PE_OI_x_Strike"] - oi_weighted["CE_OI_x_Strike"]
 )
 
-# Merge back to main df (stock-level value)
 df1 = df1.merge(
     oi_weighted[["Momentum"]],
     on="Stock",
     how="left"
 )
+
 
 
 
