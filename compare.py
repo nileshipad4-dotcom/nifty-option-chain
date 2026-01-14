@@ -635,7 +635,7 @@ st.subheader("📊 OI Weighted Strike Summary")
 
 st.dataframe(
     oi_table.style.format({
-        "Strike": "{:.0f}",
+        "Strike": "{:.2f}",
         "Δ CE OI": "{:.0f}",
         "Δ PE OI": "{:.0f}",
         "CE_x_Strike": "{:.0f}",
