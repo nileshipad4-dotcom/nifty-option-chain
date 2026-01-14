@@ -238,6 +238,27 @@ df1 = df1.rename(columns={
 })
 
 
+# ==================================================
+# STRIKE-WEIGHTED OI CALCULATIONS (FOR NEW TABLE)
+# ==================================================
+
+df1["CE_x_Strike"] = df1["Δ CE OI"] * df1["Strike"]
+df1["PE_x_Strike"] = df1["Δ PE OI"] * df1["Strike"]
+
+oi_sums = (
+    df1.groupby("Stock")[["CE_x_Strike", "PE_x_Strike"]]
+    .sum()
+    .rename(columns={
+        "CE_x_Strike": "Sum CE",
+        "PE_x_Strike": "Sum PE"
+    })
+)
+
+oi_sums["PE-CE"] = oi_sums["Sum PE"] - oi_sums["Sum CE"]
+
+df1 = df1.merge(oi_sums, on="Stock", how="left")
+
+
 def filter_strikes(df, n=5):
     blocks = []
     for _, g in df.groupby("Stock"):
@@ -247,6 +268,25 @@ def filter_strikes(df, n=5):
     return pd.concat(blocks[:-1], ignore_index=True)
 
 display_df1 = filter_strikes(df1)
+
+
+# ==================================================
+# NEW OI WEIGHTED SUMMARY TABLE
+# ==================================================
+
+oi_table = display_df1[[
+    "Stock",
+    "Strike",
+    "Δ CE OI",
+    "Δ PE OI",
+    "% Ch 1-2",
+    "% Ch 2-3",
+    "CE_x_Strike",
+    "PE_x_Strike",
+    "Sum CE",
+    "Sum PE",
+    "PE-CE"
+]].copy()
 
 def highlight_table1(data):
     styles = pd.DataFrame("", index=data.index, columns=data.columns)
@@ -585,6 +625,29 @@ def show_stock(s, label):
 show_stock(stock_a, "A")
 show_stock(stock_b, "B")
 show_stock(stock_c, "C")
+
+
+
+# ==================================================
+# OI WEIGHTED STRIKE SUMMARY TABLE
+# ==================================================
+st.subheader("📊 OI Weighted Strike Summary")
+
+st.dataframe(
+    oi_table.style.format({
+        "Strike": "{:.0f}",
+        "Δ CE OI": "{:.0f}",
+        "Δ PE OI": "{:.0f}",
+        "CE_x_Strike": "{:.0f}",
+        "PE_x_Strike": "{:.0f}",
+        "Sum CE": "{:.0f}",
+        "Sum PE": "{:.0f}",
+        "PE-CE": "{:.0f}",
+        "% Ch 1-2": "{:.2f}",
+        "% Ch 2-3": "{:.2f}",
+    }),
+    use_container_width=True
+)
 
 # ==================================================
 # ================= TABLE 2 ========================
