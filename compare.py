@@ -147,6 +147,32 @@ for stock, g in df1.groupby("Stock"):
     df1.loc[g["index"], "PE/CE Vol Ratio"] = round(ratio, 2)
     df1.loc[g["index"], "PE/CE OI Ratio"] = round(oi_ratio, 2)
 
+
+# ==================================================
+# Momentum (STRIKE × ΔOI)
+# ==================================================
+
+df1["PE_OI_x_Strike"] = df1["Δ PE OI"] * df1["Strike"]
+df1["CE_OI_x_Strike"] = df1["Δ CE OI"] * df1["Strike"]
+
+oi_weighted = (
+    df1.groupby("Stock")[["PE_OI_x_Strike", "CE_OI_x_Strike"]]
+    .sum()
+)
+
+oi_weighted["Momentum"] = (
+    oi_weighted["PE_OI_x_Strike"] - oi_weighted["CE_OI_x_Strike"]
+)
+
+# Merge back to main df (stock-level value)
+df1 = df1.merge(
+    oi_weighted[["Momentum"]],
+    on="Stock",
+    how="left"
+)
+
+
+
 # ---- ATM PAIR (BELOW + ABOVE LTP) PE–CE DIFFERENCE ----
 
 df1["Δ (PE-CE) OI TS1-TS2"] = np.nan
@@ -207,6 +233,7 @@ df1 = df1[[
     "Δ (PE-CE) Vol TS1-TS2",
     "PE/CE OI Ratio",
     "PE/CE Vol Ratio",
+    "Momentum", 
     "% Stock Ch TS1-TS2",
     "% Stock Ch TS2-TS3",
     "Stock_LTP", 
