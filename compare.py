@@ -152,8 +152,8 @@ for stock, g in df1.groupby("Stock"):
 # Momentum (STRIKE × ΔOI)
 # ==================================================
 
-df1["PE_OI_x_Strike"] = df1["Δ PE OI"] * df1["Strike"]
-df1["CE_OI_x_Strike"] = df1["Δ CE OI"] * df1["Strike"]
+df1["PE_OI_x_Strike"] = df1["Δ PE OI TS1-TS2"] * df1["Strike"]
+df1["CE_OI_x_Strike"] = df1["Δ CE OI TS1-TS2"] * df1["Strike"]
 
 oi_weighted = (
     df1.groupby("Stock")[["PE_OI_x_Strike", "CE_OI_x_Strike"]]
