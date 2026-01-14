@@ -271,6 +271,26 @@ display_df1 = filter_strikes(df1)
 
 
 # ==================================================
+# ADD WEIGHTED OI & SUM COLUMNS TO display_df1
+# ==================================================
+
+display_df1["CE_x_Strike"] = display_df1["Δ CE OI"] * display_df1["Strike"]
+display_df1["PE_x_Strike"] = display_df1["Δ PE OI"] * display_df1["Strike"]
+
+oi_sums_display = (
+    display_df1.groupby("Stock", as_index=False)[["CE_x_Strike", "PE_x_Strike"]]
+    .sum()
+)
+
+oi_sums_display["Sum CE"] = oi_sums_display["CE_x_Strike"]
+oi_sums_display["Sum PE"] = oi_sums_display["PE_x_Strike"]
+oi_sums_display["PE-CE"] = oi_sums_display["Sum PE"] - oi_sums_display["Sum CE"]
+
+oi_sums_display = oi_sums_display[["Stock", "Sum CE", "Sum PE", "PE-CE"]]
+
+display_df1 = display_df1.merge(oi_sums_display, on="Stock", how="left")
+
+# ==================================================
 # RE-CALCULATE SUMS USING ONLY DISPLAYED STRIKES
 # ==================================================
 
