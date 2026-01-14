@@ -278,23 +278,18 @@ display_df1["CE_x_Strike"] = display_df1["Δ CE OI"] * display_df1["Strike"]
 display_df1["PE_x_Strike"] = display_df1["Δ PE OI"] * display_df1["Strike"]
 
 oi_sums_display = (
-    display_df1.groupby("Stock")[["CE_x_Strike", "PE_x_Strike"]]
+    display_df1.groupby("Stock", as_index=False)[["CE_x_Strike", "PE_x_Strike"]]
     .sum()
-    .rename(columns={
-        "CE_x_Strike": "Sum CE",
-        "PE_x_Strike": "Sum PE"
-    })
 )
 
-oi_sums_display["PE-CE"] = (
-    oi_sums_display["Sum PE"] - oi_sums_display["Sum CE"]
-)
+oi_sums_display["Sum CE"] = oi_sums_display["CE_x_Strike"]
+oi_sums_display["Sum PE"] = oi_sums_display["PE_x_Strike"]
+oi_sums_display["PE-CE"] = oi_sums_display["Sum PE"] - oi_sums_display["Sum CE"]
 
-display_df1 = display_df1.merge(
-    oi_sums_display,
-    on="Stock",
-    how="left"
-)
+oi_sums_display = oi_sums_display[["Stock", "Sum CE", "Sum PE", "PE-CE"]]
+
+display_df1 = display_df1.merge(oi_sums_display, on="Stock", how="left")
+
 
 # ==================================================
 # NEW OI WEIGHTED SUMMARY TABLE
