@@ -35,8 +35,8 @@ STOCKS = [
 # ==================================================
 # DHAN CONFIG
 # ==================================================
-CLIENT_ID = DHAN_CLIENT_ID
-DHAN_TOKEN = DHAN_ACCESS_TOKEN
+CLIENT_ID = "1102712380"
+DHAN_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY4NjAwNDQ0LCJpYXQiOjE3Njg1MTQwNDQsInRva2VuQ29uc3VtZXJUeXBlIjoiU0VMRiIsIndlYmhvb2tVcmwiOiIiLCJkaGFuQ2xpZW50SWQiOiIxMTAyNzEyMzgwIn0.Sgsch6RRDYDHboth4Hsttjgnsjle2TqUPR-OahFKTgcmkhB7_rDYXG_yZR1qbXj3SlBYjZxPBP_JmDeNjktiOw"
 API_BASE = "https://api.dhan.co/v2"
 
 UNDERLYINGS = {
