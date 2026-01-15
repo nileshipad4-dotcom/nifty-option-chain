@@ -35,6 +35,12 @@ timestamps_all = [ts for ts, _ in csv_files]
 file_map = dict(csv_files)
 
 # ==================================================
+# LOAD FnO LOT SIZE
+# ==================================================
+fno_df = pd.read_csv("FnO.csv")[["Stock", "Lot_Size"]]
+
+
+# ==================================================
 # TIME FILTER (08:00 to 16:30)
 # ==================================================
 def extract_time(ts):
@@ -273,6 +279,10 @@ sum_df = sum_df[["Stock", "Sum CE", "Sum PE", "PE-CE"]]
 # Merge back
 display_df1 = display_df1.merge(sum_df, on="Stock", how="left")
 
+# Merge Lot Size
+display_df1 = display_df1.merge(fno_df, on="Stock", how="left")
+# Lot Size × (PE-CE)
+display_df1["Lot_PE-CE"] = display_df1["Lot_Size"] * display_df1["PE-CE"]
 
 # ==================================================
 # NEW OI WEIGHTED SUMMARY TABLE
@@ -289,7 +299,8 @@ oi_table = display_df1[[
     "PE_x_Strike",
     "Sum CE",
     "Sum PE",
-    "PE-CE"
+    "PE-CE",
+    "Lot_PE-CE" 
 ]].copy()
 
 
@@ -646,6 +657,7 @@ st.dataframe(
         "Sum CE": "{:.0f}",
         "Sum PE": "{:.0f}",
         "PE-CE": "{:.0f}",
+        "Lot_PE-CE": "{:.0f}",
         "% Ch 1-2": "{:.2f}",
         "% Ch 2-3": "{:.2f}",
     }),
