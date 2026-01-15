@@ -278,9 +278,15 @@ display_df1 = display_df1.merge(sum_df, on="Stock", how="left")
 # NEW OI WEIGHTED SUMMARY TABLE
 # ==================================================
 
+# ==================================================
+# NEW OI WEIGHTED SUMMARY TABLE (MODIFIED)
+# ==================================================
+
 oi_table = display_df1[[
     "Stock",
     "Strike",
+    "Stock_LTP",
+    "Stock_%_Change",
     "Δ CE OI",
     "Δ PE OI",
     "% Ch 1-2",
@@ -291,6 +297,18 @@ oi_table = display_df1[[
     "Sum PE",
     "PE-CE"
 ]].copy()
+
+# Scale large numbers
+oi_table["Sum CE"] = oi_table["Sum CE"] / 100000
+oi_table["Sum PE"] = oi_table["Sum PE"] / 100000
+oi_table["PE-CE"] = oi_table["PE-CE"] / 100000
+
+# Hide internal calculation columns (display only)
+oi_display = oi_table.drop(columns=["CE_x_Strike", "PE_x_Strike"])
+
+# Dummy column so highlight function works
+oi_display["Δ MP"] = 0
+
 
 
 def highlight_table1(data):
@@ -637,20 +655,24 @@ show_stock(stock_c, "C")
 st.subheader("📊 OI Weighted Strike Summary")
 
 st.dataframe(
-    oi_table.style.format({
-        "Strike": "{:.2f}",
+    oi_display
+    .style
+    .apply(highlight_table1, axis=None)
+    .format({
+        "Strike": "{:.0f}",
         "Δ CE OI": "{:.0f}",
         "Δ PE OI": "{:.0f}",
-        "CE_x_Strike": "{:.0f}",
-        "PE_x_Strike": "{:.0f}",
         "Sum CE": "{:.0f}",
         "Sum PE": "{:.0f}",
         "PE-CE": "{:.0f}",
+        "Stock_LTP": "{:.2f}",
+        "Stock_%_Change": "{:.2f}",
         "% Ch 1-2": "{:.2f}",
         "% Ch 2-3": "{:.2f}",
     }),
     use_container_width=True
 )
+
 
 
 # ==================================================
