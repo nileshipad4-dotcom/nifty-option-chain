@@ -188,10 +188,15 @@ def fetch_kite_option_chain():
     for batch in chunk(all_option_symbols):
         try:
             option_quotes.update(kite.quote(batch))
-        except:
-            pass
+        except Exception as e:
+            st.warning(f"Option quote batch failed: {e}")
 
-    spot_quotes = kite.quote([f"NSE:{s}" for s in option_map.keys()])
+    try:
+        spot_quotes = kite.quote([f"NSE:{s}" for s in option_map.keys()])
+    except Exception as e:
+        st.error(f"Kite spot quote failed: {e}")
+        spot_quotes = {}
+
 
     all_data = []
     now_ts = datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S")
