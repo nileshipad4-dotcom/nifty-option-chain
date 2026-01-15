@@ -9,8 +9,8 @@ import os
 from streamlit_autorefresh import st_autorefresh
 from kite_config import KITE_API_KEY, KITE_ACCESS_TOKEN, DHAN_CLIENT_ID, DHAN_ACCESS_TOKEN
 
-API_KEY = KITE_API_KEY
-ACCESS_TOKEN = KITE_ACCESS_TOKEN
+KITE_API_KEY = "bkgv59vaazn56c42"
+ACCESS_TOKEN = "rgpSvAPRwW5M6iepW7GpZh4QYV6JgaUz"
 
 # ==================================================
 # STREAMLIT CONFIG
