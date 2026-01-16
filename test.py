@@ -185,9 +185,9 @@ def filter_near_ltp(df, n=5):
         end = min(len(g) - 1, atm_idx + n)
 
         blocks.append(g.iloc[start:end + 1])
-        blocks.append(pd.DataFrame([{c: np.nan for c in g.columns}]))
 
-    return pd.concat(blocks[:-1], ignore_index=True)
+    return pd.concat(blocks, ignore_index=True)
+
 
 display_df = filter_near_ltp(table, n=5)
 
