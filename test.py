@@ -5,7 +5,7 @@ import os
 from datetime import time
 from streamlit_autorefresh import st_autorefresh
 
-st_autorefresh(interval=360_000, key="auto_refresh")
+st_autorefresh(interval=3600_000, key="auto_refresh")
 
 # ==================================================
 # CONFIG
@@ -112,7 +112,7 @@ df["ce_x"] = (df["d_ce"] * df["Strike"]) / 10000
 df["pe_x"] = (df["d_pe"] * df["Strike"]) / 10000
 
 # ==================================================
-# SLIDING WINDOW SUM (STRIKE-BASED, NOT LTP-BASED)
+# SLIDING WINDOW SUM (STRIKE-BASED)
 # ==================================================
 df["sum_ce"] = np.nan
 df["sum_pe"] = np.nan
@@ -149,7 +149,7 @@ for stk, g in df.groupby("Stock"):
         df.loc[g["index"], "atm_diff"] = atm_val
 
 # ==================================================
-# FINAL DISPLAY TABLE
+# FINAL TABLE (ALL STRIKES)
 # ==================================================
 table = df[[
     "Stock",
@@ -171,12 +171,33 @@ table = df[[
 })
 
 # ==================================================
+# DISPLAY FILTER: 5 ABOVE + 5 BELOW LTP
+# ==================================================
+def filter_near_ltp(df, n=5):
+    blocks = []
+    for stk, g in df.groupby("stk"):
+        g = g.sort_values("str").reset_index(drop=True)
+        ltp = g["ltp"].iloc[0]
+
+        atm_idx = (g["str"] - ltp).abs().idxmin()
+
+        start = max(0, atm_idx - n)
+        end = min(len(g) - 1, atm_idx + n)
+
+        blocks.append(g.iloc[start:end + 1])
+        blocks.append(pd.DataFrame([{c: np.nan for c in g.columns}]))
+
+    return pd.concat(blocks[:-1], ignore_index=True)
+
+display_df = filter_near_ltp(table, n=5)
+
+# ==================================================
 # ATM BLUE HIGHLIGHT
 # ==================================================
 def atm_blue(data):
     styles = pd.DataFrame("", index=data.index, columns=data.columns)
 
-    for stk in data["stk"].unique():
+    for stk in data["stk"].dropna().unique():
         sdf = data[data["stk"] == stk].sort_values("str")
         ltp = sdf["ltp"].iloc[0]
         strikes = sdf["str"].values
@@ -210,7 +231,7 @@ fmt = {
 # DISPLAY
 # ==================================================
 st.dataframe(
-    table
+    display_df
     .style
     .apply(atm_blue, axis=None)
     .format(fmt, na_rep=""),
