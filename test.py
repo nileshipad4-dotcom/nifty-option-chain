@@ -101,7 +101,7 @@ for c in df.columns:
         df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
 
 # ==================================================
-# CALCULATIONS
+# CORE CALCULATIONS
 # ==================================================
 df["d_ce"] = df["ce_0"] - df["ce_1"]
 df["d_pe"] = df["pe_0"] - df["pe_1"]
@@ -112,7 +112,7 @@ df["ce_x"] = (df["d_ce"] * df["Strike"]) / 10000
 df["pe_x"] = (df["d_pe"] * df["Strike"]) / 10000
 
 # ==================================================
-# WINDOW SUM CALCULATIONS
+# SLIDING WINDOW SUM (STRIKE-BASED, NOT LTP-BASED)
 # ==================================================
 df["sum_ce"] = np.nan
 df["sum_pe"] = np.nan
@@ -122,33 +122,31 @@ df["atm_diff"] = np.nan
 for stk, g in df.groupby("Stock"):
     g = g.sort_values("Strike").reset_index()
 
+    for i in range(len(g)):
+        low = max(0, i - X)
+        high = min(len(g) - 1, i + X)
+
+        ce_sum = g.loc[low:high, "ce_x"].sum()
+        pe_sum = g.loc[low:high, "pe_x"].sum()
+        diff_val = pe_sum - ce_sum
+
+        df.loc[g.loc[i, "index"], "sum_ce"] = ce_sum
+        df.loc[g.loc[i, "index"], "sum_pe"] = pe_sum
+        df.loc[g.loc[i, "index"], "diff"] = diff_val
+
+    # ATM just-above strike diff (repeated)
     ltp = g["ltp_0"].iloc[0]
     strikes = g["Strike"].values
 
-    # Find ATM pair
-    atm_idx = None
+    atm_above_idx = None
     for i in range(len(strikes) - 1):
         if strikes[i] <= ltp <= strikes[i + 1]:
-            atm_idx = i
+            atm_above_idx = i + 1
             break
 
-    if atm_idx is None:
-        continue
-
-    low = max(0, atm_idx - X + 1)
-    high = min(len(g) - 1, atm_idx + X)
-
-    ce_sum = g.loc[low:high, "ce_x"].sum()
-    pe_sum = g.loc[low:high, "pe_x"].sum()
-    diff_val = pe_sum - ce_sum
-
-    df.loc[g["index"], "sum_ce"] = ce_sum
-    df.loc[g["index"], "sum_pe"] = pe_sum
-    df.loc[g["index"], "diff"] = diff_val
-
-    # Value at strike just ABOVE LTP
-    atm_above_idx = atm_idx + 1
-    df.loc[g["index"], "atm_diff"] = diff_val
+    if atm_above_idx is not None:
+        atm_val = df.loc[g.loc[atm_above_idx, "index"], "diff"]
+        df.loc[g["index"], "atm_diff"] = atm_val
 
 # ==================================================
 # FINAL DISPLAY TABLE
