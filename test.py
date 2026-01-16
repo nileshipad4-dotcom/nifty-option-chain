@@ -51,14 +51,23 @@ filtered_ts = [
 ]
 
 # ==================================================
-# TIMESTAMP SELECTION
+# USER CONTROLS
 # ==================================================
-st.subheader("🕒 Select Timestamps")
+st.subheader("🕒 Timestamp & Window Settings")
 
-c1, c2, c3 = st.columns(3)
+c1, c2, c3, c4 = st.columns(4)
+
 t1 = c1.selectbox("TS1", filtered_ts, 0)
 t2 = c2.selectbox("TS2", filtered_ts, 1)
 t3 = c3.selectbox("TS3", filtered_ts, 2)
+
+X = c4.number_input(
+    "Strike Window X",
+    min_value=1,
+    max_value=10,
+    value=4,
+    step=1
+)
 
 # ==================================================
 # LOAD DATA
@@ -99,9 +108,47 @@ df["d_pe"] = df["pe_0"] - df["pe_1"]
 
 df["ch"] = ((df["ltp_0"] - df["ltp_1"]) / df["ltp_1"]) * 100
 
-# Divide by 10000 as requested
 df["ce_x"] = (df["d_ce"] * df["Strike"]) / 10000
 df["pe_x"] = (df["d_pe"] * df["Strike"]) / 10000
+
+# ==================================================
+# WINDOW SUM CALCULATIONS
+# ==================================================
+df["sum_ce"] = np.nan
+df["sum_pe"] = np.nan
+df["diff"] = np.nan
+df["atm_diff"] = np.nan
+
+for stk, g in df.groupby("Stock"):
+    g = g.sort_values("Strike").reset_index()
+
+    ltp = g["ltp_0"].iloc[0]
+    strikes = g["Strike"].values
+
+    # Find ATM pair
+    atm_idx = None
+    for i in range(len(strikes) - 1):
+        if strikes[i] <= ltp <= strikes[i + 1]:
+            atm_idx = i
+            break
+
+    if atm_idx is None:
+        continue
+
+    low = max(0, atm_idx - X + 1)
+    high = min(len(g) - 1, atm_idx + X)
+
+    ce_sum = g.loc[low:high, "ce_x"].sum()
+    pe_sum = g.loc[low:high, "pe_x"].sum()
+    diff_val = pe_sum - ce_sum
+
+    df.loc[g["index"], "sum_ce"] = ce_sum
+    df.loc[g["index"], "sum_pe"] = pe_sum
+    df.loc[g["index"], "diff"] = diff_val
+
+    # Value at strike just ABOVE LTP
+    atm_above_idx = atm_idx + 1
+    df.loc[g["index"], "atm_diff"] = diff_val
 
 # ==================================================
 # FINAL DISPLAY TABLE
@@ -114,7 +161,11 @@ table = df[[
     "d_ce",
     "d_pe",
     "ce_x",
-    "pe_x"
+    "pe_x",
+    "sum_ce",
+    "sum_pe",
+    "diff",
+    "atm_diff"
 ]].rename(columns={
     "Stock": "stk",
     "Strike": "str",
@@ -122,7 +173,7 @@ table = df[[
 })
 
 # ==================================================
-# ATM BLUE HIGHLIGHT (ABOVE + BELOW LTP)
+# ATM BLUE HIGHLIGHT
 # ==================================================
 def atm_blue(data):
     styles = pd.DataFrame("", index=data.index, columns=data.columns)
@@ -151,6 +202,10 @@ fmt = {
     "d_pe": "{:.0f}",
     "ce_x": "{:.2f}",
     "pe_x": "{:.2f}",
+    "sum_ce": "{:.2f}",
+    "sum_pe": "{:.2f}",
+    "diff": "{:.2f}",
+    "atm_diff": "{:.2f}",
 }
 
 # ==================================================
