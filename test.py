@@ -85,9 +85,11 @@ for i, d in enumerate([df1, df2, df3]):
         d[["Stock", "Strike", "Stock_LTP", "Stock_%_Change", "CE_OI", "PE_OI"]]
         .rename(columns={
             "Stock_LTP": f"ltp_{i}",
+            "Stock_%_Change": f"tot_ch_{i}",
             "CE_OI": f"ce_{i}",
             "PE_OI": f"pe_{i}"
         })
+
     )
 
 df = dfs[0].merge(dfs[1], on=["Stock", "Strike"]) \
@@ -105,6 +107,14 @@ for c in df.columns:
 # ==================================================
 df["d_ce"] = df["ce_0"] - df["ce_1"]
 df["d_pe"] = df["pe_0"] - df["pe_1"]
+df["d_ce_23"] = df["ce_1"] - df["ce_2"]
+df["d_pe_23"] = df["pe_1"] - df["pe_2"]
+
+df["ce_x_23"] = (df["d_ce_23"] * df["Strike"]) / 10000
+df["pe_x_23"] = (df["d_pe_23"] * df["Strike"]) / 10000
+
+df["diff_23"] = df["pe_x_23"] - df["ce_x_23"]
+
 
 df["ch"] = ((df["ltp_0"] - df["ltp_1"]) / df["ltp_1"]) * 100
 
@@ -134,19 +144,17 @@ for stk, g in df.groupby("Stock"):
         df.loc[g.loc[i, "index"], "sum_pe"] = pe_sum
         df.loc[g.loc[i, "index"], "diff"] = diff_val
 
-    # ATM just-above strike diff (repeated)
+    # ATM +-2 strike diff (repeated)
     ltp = g["ltp_0"].iloc[0]
-    strikes = g["Strike"].values
-
-    atm_above_idx = None
-    for i in range(len(strikes) - 1):
-        if strikes[i] <= ltp <= strikes[i + 1]:
-            atm_above_idx = i + 1
-            break
-
-    if atm_above_idx is not None:
-        atm_val = df.loc[g.loc[atm_above_idx, "index"], "diff"]
-        df.loc[g["index"], "atm_diff"] = atm_val
+    
+    atm_idx = (g["Strike"] - ltp).abs().idxmin()
+    
+    low = max(0, atm_idx - 2)
+    high = min(len(g) - 1, atm_idx + 2)
+    
+    atm_avg = g.loc[low:high, "diff"].mean()
+    
+    df.loc[g["index"], "atm_diff"] = atm_avg
 
 # ==================================================
 # FINAL TABLE (ALL STRIKES)
@@ -156,19 +164,20 @@ table = df[[
     "Strike",
     "ltp_0",
     "ch",
+    "total_ch",
     "d_ce",
     "d_pe",
     "ce_x",
     "pe_x",
-    "sum_ce",
-    "sum_pe",
     "diff",
+    "diff_23",
     "atm_diff"
 ]].rename(columns={
     "Stock": "stk",
     "Strike": "str",
     "ltp_0": "ltp"
 })
+
 
 # ==================================================
 # DISPLAY FILTER: 5 ABOVE + 5 BELOW LTP
@@ -225,6 +234,9 @@ fmt = {
     "sum_pe": "{:.2f}",
     "diff": "{:.2f}",
     "atm_diff": "{:.2f}",
+    "total_ch": "{:.2f}",
+    "diff_23": "{:.0f}"
+
 }
 
 # ==================================================
