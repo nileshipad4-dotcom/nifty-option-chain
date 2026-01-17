@@ -149,7 +149,7 @@ for stk, g in df.groupby("Stock"):
     # ATM +-2 strike diff (repeated)
     ltp = g["ltp_0"].iloc[0]
     
-    atm_idx = (g["Strike"] - ltp).abs().idxmin()
+    atm_idx = (g["Strike"] - ltp).abs().values.argmin()
     
     low = max(0, atm_idx - 2)
     high = min(len(g) - 1, atm_idx + 2)
