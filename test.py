@@ -148,6 +148,15 @@ for stk, g in df.groupby("Stock"):
         df.loc[g.loc[i, "index"], "sum_pe"] = pe_sum
         df.loc[g.loc[i, "index"], "diff"] = diff_val
 
+    # ---- OI WINDOW (ABSOLUTE OI, TS1, SAME WINDOW X) ----
+    ce_oi_sum = (g.loc[low:high, "ce_0"] * g.loc[low:high, "Strike"]).sum()
+    pe_oi_sum = (g.loc[low:high, "pe_0"] * g.loc[low:high, "Strike"]).sum()
+    
+    oi_diff_val = (pe_oi_sum - ce_oi_sum) / 10000
+    
+    df.loc[g.loc[i, "index"], "oi_window_diff"] = oi_diff_val
+
+
     # ATM +-2 strike diff (repeated)
     ltp = g["ltp_0"].iloc[0]
     
@@ -156,7 +165,7 @@ for stk, g in df.groupby("Stock"):
     low = max(0, atm_idx - 2)
     high = min(len(g) - 1, atm_idx + 2)
     
-    window = g.loc[low:high, "diff"]
+    window = g["diff"].iloc[low:high+1].fillna(0)
     
     if window.notna().any():
         atm_avg = window.mean()
@@ -165,13 +174,7 @@ for stk, g in df.groupby("Stock"):
     
     df.loc[g["index"], "atm_diff"] = atm_avg
 
-    ce_oi_sum = (g.loc[low:high, "ce_0"] * g.loc[low:high, "Strike"]).sum()
-    pe_oi_sum = (g.loc[low:high, "pe_0"] * g.loc[low:high, "Strike"]).sum()
-    
-    oi_diff_val = (pe_oi_sum - ce_oi_sum) / 10000
-    
-    orig_idx = g.loc[i, "index"]
-    df.at[orig_idx, "oi_window_diff"] = oi_diff_val
+
 
 
 
