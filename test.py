@@ -170,10 +170,13 @@ for stk, g in df.groupby("Stock"):
     
     oi_diff_val = (pe_oi_sum - ce_oi_sum) / 10000
     
-    df.loc[g.loc[i, "index"], "oi_window_diff"] = oi_diff_val
+    orig_idx = g.loc[i, "index"]
+    df.at[orig_idx, "oi_window_diff"] = oi_diff_val
+
 
 
 df["diff"] = pd.to_numeric(df["diff"], errors="coerce").fillna(0)
+df["oi_window_diff"] = pd.to_numeric(df["oi_window_diff"], errors="coerce").fillna(0)
 
 # ==================================================
 # FINAL TABLE (ALL STRIKES)
