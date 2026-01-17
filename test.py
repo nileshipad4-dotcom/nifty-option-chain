@@ -272,3 +272,49 @@ st.dataframe(
     .format(fmt, na_rep=""),
     use_container_width=True
 )
+
+st.markdown("---")
+st.subheader("📈 Stock Presence in Top Diff Strikes")
+
+cA, cB = st.columns(2)
+
+TOP_N = cA.number_input(
+    "Top N Strikes to Consider",
+    min_value=10,
+    max_value=500,
+    value=150,
+    step=10
+)
+
+TOP_FIRST = cB.toggle("Top First (Descending Diff)", value=False)
+
+if TOP_FIRST:
+    sorted_df = table.sort_values("diff", ascending=False)
+else:
+    sorted_df = table.sort_values("diff", ascending=True)
+
+top_n_df = sorted_df.head(TOP_N)
+
+stock_summary = (
+    top_n_df
+    .groupby("stk")
+    .agg(
+        count=("diff", "size"),
+        total_ch=("total_ch", "first"),
+        ch=("ch", "first")
+    )
+    .reset_index()
+    .sort_values("count", ascending=False)
+)
+fmt2 = {
+    "count": "{:.0f}",
+    "total_ch": "{:.2f}",
+    "ch": "{:.2f}"
+}
+
+st.dataframe(
+    stock_summary
+    .style
+    .format(fmt2, na_rep=""),
+    use_container_width=True
+)
