@@ -123,6 +123,7 @@ df["ch"] = ((df["ltp_0"] - df["ltp_1"]) / df["ltp_1"]) * 100
 
 df["ce_x"] = (df["d_ce"] * df["Strike"]) / 10000
 df["pe_x"] = (df["d_pe"] * df["Strike"]) / 10000
+df["oi_window_diff"] = np.nan
 
 # ==================================================
 # SLIDING WINDOW SUM (STRIKE-BASED)
@@ -164,6 +165,14 @@ for stk, g in df.groupby("Stock"):
     
     df.loc[g["index"], "atm_diff"] = atm_avg
 
+    ce_oi_sum = (g.loc[low:high, "ce_0"] * g.loc[low:high, "Strike"]).sum()
+    pe_oi_sum = (g.loc[low:high, "pe_0"] * g.loc[low:high, "Strike"]).sum()
+    
+    oi_diff_val = (pe_oi_sum - ce_oi_sum) / 10000
+    
+    df.loc[g.loc[i, "index"], "oi_window_diff"] = oi_diff_val
+
+
 df["diff"] = pd.to_numeric(df["diff"], errors="coerce").fillna(0)
 
 # ==================================================
@@ -181,7 +190,9 @@ table = df[[
     "pe_x",
     "diff",
     "diff_23",
-    "atm_diff"
+    "atm_diff",
+    "oi_window_diff"
+
 ]].rename(columns={
     "Stock": "stk",
     "Strike": "str",
@@ -245,7 +256,9 @@ fmt = {
     "diff": "{:.2f}",
     "atm_diff": "{:.2f}",
     "total_ch": "{:.2f}",
-    "diff_23": "{:.0f}"
+    "diff_23": "{:.0f}",
+    "oi_window_diff": "{:.0f}"
+
 
 }
 
