@@ -276,24 +276,26 @@ st.dataframe(
 st.markdown("---")
 st.subheader("📈 Stock Presence in Top Diff Strikes")
 
-cA, cB = st.columns(2)
+cA, cB, cC = st.columns(3)
 
 TOP_N = cA.number_input(
-    "Top N Strikes to Consider",
+    "Top N Strikes",
     min_value=10,
     max_value=500,
     value=150,
     step=10
 )
 
-TOP_FIRST = cB.toggle("Top First (Descending Diff)", value=False)
-MIN_COUNT = st.number_input(
-    "Minimum Count Filter",
+MIN_COUNT = cB.number_input(
+    "Min Count",
     min_value=1,
     max_value=20,
     value=3,
     step=1
 )
+
+TOP_FIRST = cC.toggle("Top First", value=False)
+
 
 
 if TOP_FIRST:
@@ -336,6 +338,13 @@ stock_summary_23 = (
 
 stock_summary_23 = stock_summary_23[stock_summary_23["count"] >= MIN_COUNT]
 stock_summary_23 = stock_summary_23.sort_values("count", ascending=False)
+common_stocks = set(stock_summary["stk"]) & set(stock_summary_23["stk"])
+
+
+def highlight_common(data, common_stocks):
+    styles = pd.DataFrame("", index=data.index, columns=data.columns)
+    styles.loc[data["stk"].isin(common_stocks), :] = "background-color:#1f4e79;color:white"
+    return styles
 
 fmt2 = {
     "count": "{:.0f}",
@@ -356,6 +365,7 @@ with c1:
     st.dataframe(
         stock_summary
         .style
+        .apply(highlight_common, common_stocks=common_stocks, axis=None)
         .format(fmt2, na_rep=""),
         use_container_width=True
     )
@@ -368,4 +378,37 @@ with c2:
         .format({"count": "{:.0f}"}, na_rep=""),
         use_container_width=True
     )
+
+st.markdown("---")
+st.subheader("🔍 Stock Detail View")
+
+stock_list = [""] + sorted(display_df["stk"].unique().tolist())
+
+c1, c2 = st.columns(2)
+
+stock_a = c1.selectbox("Select Stock A", stock_list, index=0)
+stock_b = c2.selectbox("Select Stock B", stock_list, index=0)
+
+def show_stock_table(stock_name):
+    if stock_name == "":
+        return
+
+    stock_df = display_df[display_df["stk"] == stock_name]
+
+    st.dataframe(
+        stock_df
+        .style
+        .apply(atm_blue, axis=None)
+        .format(fmt, na_rep=""),
+        use_container_width=True
+    )
+if stock_a or stock_b:
+    c1, c2 = st.columns(2)
+
+    with c1:
+        show_stock_table(stock_a)
+
+    with c2:
+        show_stock_table(stock_b)
+
 
