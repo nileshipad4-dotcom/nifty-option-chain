@@ -192,8 +192,7 @@ table = df[[
     "pe_x",
     "diff",
     "diff_23",
-    "atm_diff",
-    "oi_window_diff"
+    "atm_diff"
 
 ]].rename(columns={
     "Stock": "stk",
@@ -258,8 +257,7 @@ fmt = {
     "diff": "{:.0f}",
     "atm_diff": "{:.0f}",
     "total_ch": "{:.2f}",
-    "diff_23": "{:.0f}",
-    "oi_window_diff": "{:.0f}"
+    "diff_23": "{:.0f}"
 
 
 }
