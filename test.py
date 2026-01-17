@@ -163,7 +163,9 @@ for stk, g in df.groupby("Stock"):
     low = max(0, atm_idx - 2)
     high = min(len(g) - 1, atm_idx + 2)
 
-    window = g["diff"].iloc[low:high+1].fillna(0)
+    orig_indices = g.loc[low:high, "index"]
+    window = df.loc[orig_indices, "diff"].fillna(0)
+
     atm_avg = window.mean()
 
     df.loc[g["index"], "atm_diff"] = atm_avg
