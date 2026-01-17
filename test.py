@@ -303,7 +303,7 @@ if TOP_FIRST:
 else:
     sorted_df = table.sort_values("diff", ascending=True)
 
-top_n_df = sorted_df.head(TOP_N)
+top_n_df = sorted_df[sorted_df["stk"].isin(display_df["stk"])].head(TOP_N)
 
 stock_summary = (
     top_n_df
@@ -325,7 +325,7 @@ if TOP_FIRST:
 else:
     sorted_df_23 = table.sort_values("diff_23", ascending=True)
 
-top_n_df_23 = sorted_df_23.head(TOP_N)
+top_n_df_23 = sorted_df_23[sorted_df_23["stk"].isin(display_df["stk"])].head(TOP_N)
 
 stock_summary_23 = (
     top_n_df_23
