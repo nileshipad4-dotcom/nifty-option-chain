@@ -287,6 +287,14 @@ TOP_N = cA.number_input(
 )
 
 TOP_FIRST = cB.toggle("Top First (Descending Diff)", value=False)
+MIN_COUNT = st.number_input(
+    "Minimum Count Filter",
+    min_value=1,
+    max_value=20,
+    value=3,
+    step=1
+)
+
 
 if TOP_FIRST:
     sorted_df = table.sort_values("diff", ascending=False)
@@ -304,17 +312,60 @@ stock_summary = (
         ch=("ch", "first")
     )
     .reset_index()
-    .sort_values("count", ascending=False)
 )
+
+stock_summary = stock_summary[stock_summary["count"] >= MIN_COUNT]
+stock_summary = stock_summary.sort_values("count", ascending=False)
+# --- SECOND SUMMARY (BASED ON diff_23) ---
+
+if TOP_FIRST:
+    sorted_df_23 = table.sort_values("diff_23", ascending=False)
+else:
+    sorted_df_23 = table.sort_values("diff_23", ascending=True)
+
+top_n_df_23 = sorted_df_23.head(TOP_N)
+
+stock_summary_23 = (
+    top_n_df_23
+    .groupby("stk")
+    .agg(
+        count=("diff_23", "size")
+    )
+    .reset_index()
+)
+
+stock_summary_23 = stock_summary_23[stock_summary_23["count"] >= MIN_COUNT]
+stock_summary_23 = stock_summary_23.sort_values("count", ascending=False)
+
 fmt2 = {
     "count": "{:.0f}",
     "total_ch": "{:.2f}",
     "ch": "{:.2f}"
 }
 
-st.dataframe(
-    stock_summary
-    .style
-    .format(fmt2, na_rep=""),
-    use_container_width=True
-)
+c1, c2 = st.columns(2)
+
+fmt2 = {
+    "count": "{:.0f}",
+    "total_ch": "{:.2f}",
+    "ch": "{:.2f}"
+}
+
+with c1:
+    st.subheader("📊 Based on diff")
+    st.dataframe(
+        stock_summary
+        .style
+        .format(fmt2, na_rep=""),
+        use_container_width=True
+    )
+
+with c2:
+    st.subheader("📊 Based on diff_23")
+    st.dataframe(
+        stock_summary_23
+        .style
+        .format({"count": "{:.0f}"}, na_rep=""),
+        use_container_width=True
+    )
+
