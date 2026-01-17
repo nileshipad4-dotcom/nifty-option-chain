@@ -99,8 +99,9 @@ df = dfs[0].merge(dfs[1], on=["Stock", "Strike"]) \
 # NUMERIC SAFETY
 # ==================================================
 for c in df.columns:
-    if any(x in c for x in ["ltp", "ce", "pe", "Strike"]):
+    if any(x in c for x in ["ltp", "ce", "pe", "Strike", "tot_ch", "total_ch"]):
         df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
+
 
 # ==================================================
 # CORE CALCULATIONS
@@ -154,9 +155,16 @@ for stk, g in df.groupby("Stock"):
     low = max(0, atm_idx - 2)
     high = min(len(g) - 1, atm_idx + 2)
     
-    atm_avg = g.loc[low:high, "diff"].mean()
+    window = g.loc[low:high, "diff"]
+    
+    if window.notna().any():
+        atm_avg = window.mean()
+    else:
+        atm_avg = 0
     
     df.loc[g["index"], "atm_diff"] = atm_avg
+
+df["diff"] = pd.to_numeric(df["diff"], errors="coerce").fillna(0)
 
 # ==================================================
 # FINAL TABLE (ALL STRIKES)
