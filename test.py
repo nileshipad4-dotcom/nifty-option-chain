@@ -290,7 +290,7 @@ MIN_COUNT = cB.number_input(
     "Min Count",
     min_value=1,
     max_value=20,
-    value=3,
+    value=6,
     step=1
 )
 
