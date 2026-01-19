@@ -411,13 +411,7 @@ st.subheader("📋 Detailed View – Stocks from 'Based on diff'")
 
 detail_df = display_df[display_df["stk"].isin(diff_stocks)]
 
-st.dataframe(
-    detail_df
-    .style
-    .apply(atm_blue, axis=None)
-    .format(fmt, na_rep=""),
-    use_container_width=True
-)
+
 
 st.markdown("---")
 st.subheader("🔍 Stock Detail View")
