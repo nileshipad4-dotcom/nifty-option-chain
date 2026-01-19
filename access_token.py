@@ -3,8 +3,8 @@ from kiteconnect import KiteConnect
 
 st.title("Zerodha Kite Access Token Generator")
 
-api_key = "bkgv59vaazn56c42"
-api_secret = "sb1sxe6s2p9qbmajwnlfe8bxmxfzbzbf"
+api_key = "48u6v9ed04hmb7ya"
+api_secret = "vdiugn92vfvx1jdrii0o891ox9c0gqv9"
 
 st.markdown(
     '<a href="https://kite.zerodha.com/connect/login?api_key=bkgv59vaazn56c42&v=3" target="_blank">Login to Zerodha</a>',
