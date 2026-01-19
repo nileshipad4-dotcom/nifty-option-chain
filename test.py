@@ -406,8 +406,7 @@ st.dataframe(
 # ==================================================
 # DETAILED TABLE FOR "BASED ON diff" STOCKS
 # ==================================================
-st.markdown("---")
-st.subheader("📋 Detailed View – Stocks from 'Based on diff'")
+
 
 detail_df = display_df[display_df["stk"].isin(diff_stocks)]
 
