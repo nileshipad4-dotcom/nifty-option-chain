@@ -323,6 +323,8 @@ stock_summary = (
 
 stock_summary = stock_summary[stock_summary["count"] >= MIN_COUNT]
 stock_summary = stock_summary.sort_values("count", ascending=False)
+diff_stocks = stock_summary["stk"].tolist()
+
 # --- SECOND SUMMARY (BASED ON diff_23) ---
 
 if TOP_FIRST:
@@ -388,6 +390,34 @@ with c2:
         .format({"count": "{:.0f}"}, na_rep=""),
         use_container_width=True
     )
+
+st.markdown("---")
+st.subheader("📋 Detailed View – Stocks from 'Based on diff'")
+detail_df = display_df[display_df["stk"].isin(diff_stocks)]
+
+st.dataframe(
+    detail_df
+    .style
+    .apply(atm_blue, axis=None)
+    .format(fmt, na_rep=""),
+    use_container_width=True
+)
+
+# ==================================================
+# DETAILED TABLE FOR "BASED ON diff" STOCKS
+# ==================================================
+st.markdown("---")
+st.subheader("📋 Detailed View – Stocks from 'Based on diff'")
+
+detail_df = display_df[display_df["stk"].isin(diff_stocks)]
+
+st.dataframe(
+    detail_df
+    .style
+    .apply(atm_blue, axis=None)
+    .format(fmt, na_rep=""),
+    use_container_width=True
+)
 
 st.markdown("---")
 st.subheader("🔍 Stock Detail View")
