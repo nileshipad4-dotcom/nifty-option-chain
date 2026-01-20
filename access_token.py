@@ -7,7 +7,7 @@ api_key = "48u6v9ed04hmb7ya"
 api_secret = "gouxec13l4jrl3mhp65cwuxrsyvj48cl"
 
 st.markdown(
-    '<a href="https://kite.zerodha.com/connect/login?api_key=bkgv59vaazn56c42&v=3" target="_blank">Login to Zerodha</a>',
+    '<a href="https://kite.zerodha.com/connect/login?api_key=48u6v9ed04hmb7ya&v=3" target="_blank">Login to Zerodha</a>',
     unsafe_allow_html=True
 )
 
