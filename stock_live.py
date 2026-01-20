@@ -18,7 +18,7 @@ ACCESS_TOKEN = KITE_ACCESS_TOKEN
 st.set_page_config(page_title="LIVE Option Chain Snapshot", layout="wide")
 st.title("📊 LIVE Option Chain → Kite + Dhan")
 
-refresh_tick = st_autorefresh(interval=300_000, key="live_refresh")
+refresh_tick = st_autorefresh(interval=600_000, key="live_refresh")
 
 # ==================================================
 # TIMEZONE
