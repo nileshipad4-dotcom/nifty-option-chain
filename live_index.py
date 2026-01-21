@@ -49,7 +49,7 @@ def extract_time(ts):
 filtered_ts = []
 for ts in timestamps_all:
     t = extract_time(ts)
-    if t and time(8, 0) <= t <= time(16, 0):
+    if t and time(3, 0) <= t <= time(16, 0):
         filtered_ts.append(ts)
 
 if len(filtered_ts) < 3:
