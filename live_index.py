@@ -23,8 +23,6 @@ YAHOO_MAP = {
     "MIDCPNIFTY": "NIFTY_MID_SELECT.NS"
 }
 
-STRIKE_WINDOW = 10   # 10 above + 10 below ATM
-
 # ==================================================
 # LIVE SPOT + % CHANGE
 # ==================================================
@@ -42,7 +40,7 @@ def get_yahoo_data(symbol):
         return None, None
 
 # ==================================================
-# LOAD FILES
+# LOAD CSV FILES
 # ==================================================
 def load_csv_files():
     files = []
@@ -62,27 +60,22 @@ timestamps_all = [ts for ts, _ in csv_files]
 file_map = dict(csv_files)
 
 # ==================================================
-# TIME FILTER
+# SAFE TIME FILTER
 # ==================================================
-def extract_time(ts):
-    try:
-        hh, mm = map(int, ts.split("_")[-1].split("-")[:2])
-        return time(hh, mm)
-    except:
-        return None
-
-filtered_ts = timestamps_all[:30]   # safer than strict time filtering
+filtered_ts = timestamps_all[:30]   # last 30 snapshots only
 
 # ==================================================
 # USER CONTROLS
 # ==================================================
-st.subheader("🕒 Timestamp Selection")
+st.subheader("🕒 Timestamp & Window Settings")
 
-c1, c2, c3 = st.columns(3)
+c1, c2, c3, c4 = st.columns(4)
 
 t1 = c1.selectbox("TS1 (Latest)", filtered_ts, 0)
 t2 = c2.selectbox("TS2", filtered_ts, 1)
 t3 = c3.selectbox("TS3", filtered_ts, 2)
+
+X = c4.number_input("Strike Window X", min_value=1, max_value=20, value=10, step=1)
 
 # SAFETY CHECK
 if t1 not in file_map or t2 not in file_map or t3 not in file_map:
@@ -144,7 +137,7 @@ df["pe_x_23"] = (df["d_pe_23"] * df["Strike"]) / 10000
 df["diff_23"] = df["pe_x_23"] - df["ce_x_23"]
 
 # ==================================================
-# NEW DELTA COLUMNS
+# DELTA COLUMNS
 # ==================================================
 df["Δ CE Vol"] = (df["ce_vol_0"] - df["ce_vol_1"]) / 1000
 df["Δ PE Vol"] = (df["pe_vol_0"] - df["pe_vol_1"]) / 1000
@@ -168,9 +161,9 @@ table = df.rename(columns={
 ]]
 
 # ==================================================
-# FILTER NEAR ATM (±10 strikes)
+# FILTER NEAR ATM (±X strikes)
 # ==================================================
-def filter_near_spot(df, live_spot, n=10):
+def filter_near_spot(df, live_spot, n):
     g = df.sort_values("str").reset_index(drop=True)
     atm_idx = (g["str"] - live_spot).abs().idxmin()
 
@@ -227,7 +220,7 @@ for idx in INDEX_LIST:
         st.error(f"{idx} live price not available")
         continue
 
-    display_df = filter_near_spot(idx_df, live_spot, n=STRIKE_WINDOW)
+    display_df = filter_near_spot(idx_df, live_spot, n=X)
 
     st.markdown(f"## 📌 {idx}")
     st.markdown(
