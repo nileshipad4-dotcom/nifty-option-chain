@@ -27,7 +27,7 @@ IST = pytz.timezone("Asia/Kolkata")
 
 
 
-STOCKS = ["NIFTY", "BANKNIFTY", "SENSEX"]
+STOCKS = ["NIFTY", "BANKNIFTY", "MIDCPNIFTY"]
     
 
 
