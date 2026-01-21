@@ -121,8 +121,8 @@ df["d_pe"] = (df["pe_0"] - df["pe_1"]) / 100000
 df["d_ce_23"] = df["ce_1"] - df["ce_2"]
 df["d_pe_23"] = df["pe_1"] - df["pe_2"]
 
-df["ce_x"] = (df["d_ce"] * df["Strike"]) / 10000000
-df["pe_x"] = (df["d_pe"] * df["Strike"]) / 10000000
+df["ce_x"] = (df["d_ce"] * df["Strike"]) / 100000
+df["pe_x"] = (df["d_pe"] * df["Strike"]) / 100000
 
 df["ce_x_23"] = (df["d_ce_23"] * df["Strike"]) / 100000000
 df["pe_x_23"] = (df["d_pe_23"] * df["Strike"]) / 100000000
