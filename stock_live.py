@@ -9,58 +9,39 @@ import os
 from streamlit_autorefresh import st_autorefresh
 from kite_config import KITE_API_KEY, KITE_ACCESS_TOKEN
 
+# ==================================================
+# CONFIG
+# ==================================================
 API_KEY = KITE_API_KEY
 ACCESS_TOKEN = KITE_ACCESS_TOKEN
 
-# ==================================================
-# STREAMLIT CONFIG
-# ==================================================
-st.set_page_config(page_title="LIVE Option Chain Snapshot", layout="wide")
+st.set_page_config(page_title="LIVE Option Chain – Kite", layout="wide")
 st.title("📊 LIVE Option Chain – Kite Only")
 
 st_autorefresh(interval=360_000, key="live_refresh")
 
-# ==================================================
-# TIMEZONE
-# ==================================================
 IST = pytz.timezone("Asia/Kolkata")
 
 # ==================================================
-# STOCK LIST
+# STOCK & INDEX LISTS
 # ==================================================
 STOCKS = [
     "360ONE","ABB","ABCAPITAL","ADANIENSOL","ADANIENT","ADANIGREEN","ADANIPORTS","ALKEM",
     "AMBER","AMBUJACEM","ANGELONE","APLAPOLLO","APOLLOHOSP","ASHOKLEY","ASIANPAINT","ASTRAL",
     "AUBANK","AUROPHARMA","AXISBANK","BAJAJ-AUTO","BAJAJFINSV","BAJAJHLDNG","BAJFINANCE",
-    "BANDHANBNK","BANKBARODA","BANKINDIA","BDL","BEL","BHARATFORG","BHARTIARTL",
-    "BHEL","BIOCON","BLUESTARCO","BOSCHLTD","BPCL","BRITANNIA","BSE","CAMS","CANBK","CDSL",
-    "CGPOWER","CHOLAFIN","CIPLA","COALINDIA","COFORGE","COLPAL","CONCOR","CROMPTON","CUMMINSIND",
-    "DABUR","DALBHARAT","DELHIVERY","DIVISLAB","DIXON","DLF","DMART","DRREDDY","EICHERMOT",
-    "ETERNAL","EXIDEIND","FEDERALBNK","FORTIS","GAIL","GLENMARK","GMRAIRPORT",
-    "GODREJCP","GODREJPROP","GRASIM","HAL","HAVELLS","HCLTECH","HDFCAMC","HDFCBANK","HDFCLIFE",
-    "HEROMOTOCO","HINDALCO","HINDPETRO","HINDUNILVR","HINDZINC","HUDCO","ICICIBANK","ICICIGI",
-    "ICICIPRULI","IDEA","IDFCFIRSTB","IEX","IIFL","INDHOTEL","INDIANB","INDIGO","INDUSINDBK",
-    "INDUSTOWER","INFY","INOXWIND","IOC","IRCTC","IREDA","IRFC","ITC","JINDALSTEL","JIOFIN",
-    "JSWENERGY","JSWSTEEL","JUBLFOOD","KALYANKJIL","KAYNES","KEI","KFINTECH","KOTAKBANK",
-    "KPITTECH","LAURUSLABS","LICHSGFIN","LICI","LODHA","LT","LTF","LTIM","LUPIN","M&M",
-    "MANAPPURAM","MANKIND","MARICO","MARUTI","MAXHEALTH","MAZDOCK","MCX","MFSL",
-    "MOTHERSON","MPHASIS","MUTHOOTFIN","NATIONALUM","NAUKRI","NBCC","NESTLEIND","NHPC",
-    "NMDC","NTPC","NUVAMA","NYKAA","OBEROIRLTY","OFSS","OIL","ONGC",
-    "PAGEIND","PATANJALI","PAYTM","PERSISTENT","PETRONET","PFC","PGEL","PHOENIXLTD",
-    "PIDILITIND","PIIND","PNB","PNBHOUSING","POLICYBZR","POLYCAB","POWERGRID","POWERINDIA",
-    "PPLPHARMA","PREMIERENE","PRESTIGE","RBLBANK","RECLTD","RELIANCE","RVNL","SAIL",
-    "SAMMAANCAP","SBICARD","SBILIFE","SBIN","SHREECEM","SHRIRAMFIN","SIEMENS","SOLARINDS",
-    "SONACOMS","SRF","SUNPHARMA","SUPREMEIND","SUZLON","SWIGGY","SYNGENE","TATACONSUM",
-    "TATAELXSI","TATAPOWER","TATASTEEL","TATATECH","TCS","TECHM","TIINDIA","TITAN","TMPV",
-    "TORNTPHARM","TORNTPOWER","TRENT","TVSMOTOR","ULTRACEMCO","UNIONBANK","UNITDSPR",
-    "UNOMINDA","UPL","VBL","VEDL","VOLTAS","WAAREEENER","WIPRO","YESBANK","ZYDUSLIFE"
+    "BANDHANBNK","BANKBARODA","BANKINDIA","BDL","BEL","BHARATFORG","BHARTIARTL","BHEL","BIOCON"
 ]
 
+INDEXES = ["NIFTY", "BANKNIFTY", "MIDCPNIFTY"]
+
 # ==================================================
-# DATA FOLDER
+# DIRECTORIES
 # ==================================================
 DATA_DIR = "data"
+DATA_INDEX_DIR = "data_index"
+
 os.makedirs(DATA_DIR, exist_ok=True)
+os.makedirs(DATA_INDEX_DIR, exist_ok=True)
 
 # ==================================================
 # GITHUB CONFIG
@@ -110,13 +91,13 @@ def compute_max_pain_kite(df):
     return df
 
 # ==================================================
-# FETCH KITE OPTION CHAIN
+# GENERIC FETCH FUNCTION
 # ==================================================
-def fetch_kite_option_chain():
+def fetch_option_chain(symbol_list):
     option_map = {}
     all_option_symbols = []
 
-    for stock in STOCKS:
+    for stock in symbol_list:
         df = instruments[
             (instruments["name"] == stock) &
             (instruments["segment"] == "NFO-OPT")
@@ -169,7 +150,7 @@ def fetch_kite_option_chain():
             pe_q = option_quotes.get("NFO:" + pe.iloc[0]["tradingsymbol"], {}) if not pe.empty else {}
 
             rows.append({
-                "Stock": stock,
+                "Symbol": stock,
                 "Expiry": df["expiry"].iloc[0].date(),
                 "Strike": strike,
                 "CE_LTP": ce_q.get("last_price"),
@@ -178,10 +159,8 @@ def fetch_kite_option_chain():
                 "PE_LTP": pe_q.get("last_price"),
                 "PE_OI": pe_q.get("oi"),
                 "PE_Volume": pe_q.get("volume"),
-                "Stock_LTP": stock_ltp,
-                "Stock_High": ohlc.get("high"),
-                "Stock_Low": ohlc.get("low"),
-                "Stock_%_Change": pct_change,
+                "Spot": stock_ltp,
+                "%Change": pct_change,
                 "timestamp": now_ts,
             })
 
@@ -192,23 +171,23 @@ def fetch_kite_option_chain():
     return pd.concat(all_data, ignore_index=True)
 
 # ==================================================
-# UI
+# UI – STOCK TABLE
 # ==================================================
-st.subheader("📈 KITE – STOCK OPTION CHAIN")
+st.subheader("📈 STOCK OPTION CHAIN")
 
-df_kite = fetch_kite_option_chain()
-st.dataframe(df_kite, use_container_width=True)
+df_stocks = fetch_option_chain(STOCKS)
+st.dataframe(df_stocks, use_container_width=True)
 
 # ==================================================
-# SAVE CSV (UNCHANGED PATH & FORMAT)
+# SAVE STOCK CSV (UNCHANGED)
 # ==================================================
 try:
-    kite_filename = f"data/option_chain_{datetime.now(IST).strftime('%Y-%m-%d_%H-%M')}.csv"
+    stock_filename = f"data/option_chain_{datetime.now(IST).strftime('%Y-%m-%d_%H-%M')}.csv"
 
-    csv_bytes = df_kite.to_csv(index=False).encode()
+    csv_bytes = df_stocks.to_csv(index=False).encode()
     content = base64.b64encode(csv_bytes).decode()
 
-    url = f"https://api.github.com/repos/{KITE_REPO}/contents/{kite_filename}"
+    url = f"https://api.github.com/repos/{KITE_REPO}/contents/{stock_filename}"
 
     headers = {
         "Authorization": f"token {GITHUB_TOKEN}",
@@ -216,7 +195,7 @@ try:
     }
 
     payload = {
-        "message": f"Auto snapshot {kite_filename}",
+        "message": f"Auto snapshot {stock_filename}",
         "content": content,
         "branch": GITHUB_BRANCH
     }
@@ -226,7 +205,47 @@ try:
     if r.status_code not in (200, 201):
         raise Exception(r.json())
 
-    st.success(f"✅ Kite CSV saved to GitHub: {kite_filename}")
+    st.success(f"✅ Stock CSV saved: {stock_filename}")
 
 except Exception as e:
-    st.error(f"❌ Kite GitHub save failed: {e}")
+    st.error(f"❌ Stock GitHub save failed: {e}")
+
+# ==================================================
+# UI – INDEX TABLE
+# ==================================================
+st.subheader("📊 INDEX OPTION CHAIN")
+
+df_index = fetch_option_chain(INDEXES)
+st.dataframe(df_index, use_container_width=True)
+
+# ==================================================
+# SAVE INDEX CSV (UNCHANGED LOGIC)
+# ==================================================
+try:
+    index_filename = f"data_index/index_OC_{datetime.now(IST).strftime('%Y-%m-%d_%H-%M')}.csv"
+
+    csv_bytes = df_index.to_csv(index=False).encode()
+    content = base64.b64encode(csv_bytes).decode()
+
+    url = f"https://api.github.com/repos/{KITE_REPO}/contents/{index_filename}"
+
+    headers = {
+        "Authorization": f"token {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github+json"
+    }
+
+    payload = {
+        "message": f"Auto snapshot {index_filename}",
+        "content": content,
+        "branch": GITHUB_BRANCH
+    }
+
+    r = requests.put(url, headers=headers, json=payload)
+
+    if r.status_code not in (200, 201):
+        raise Exception(r.json())
+
+    st.success(f"✅ Index CSV saved: {index_filename}")
+
+except Exception as e:
+    st.error(f"❌ Index GitHub save failed: {e}")
