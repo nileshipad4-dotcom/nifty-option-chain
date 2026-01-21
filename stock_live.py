@@ -121,7 +121,19 @@ def fetch_option_chain(symbol_list):
             st.warning(f"Option quote batch failed: {e}")
 
     try:
-        spot_quotes = kite.quote([f"NSE:{s}" for s in option_map.keys()])
+        INDEX_SPOT_MAP = {
+            "NIFTY": "NSE:NIFTY 50",
+            "BANKNIFTY": "NSE:NIFTY BANK",
+            "MIDCPNIFTY": "NSE:NIFTY MIDCAP SELECT"
+        }
+        
+        spot_symbols = []
+        for s in option_map.keys():
+            spot_symbols.append(INDEX_SPOT_MAP.get(s, f"NSE:{s}"))
+        
+        spot_quotes = kite.quote(spot_symbols)
+
+        
     except Exception as e:
         st.error(f"Kite spot quote failed: {e}")
         spot_quotes = {}
@@ -132,7 +144,9 @@ def fetch_option_chain(symbol_list):
     for stock, df in option_map.items():
         rows = []
 
-        spot = spot_quotes.get(f"NSE:{stock}", {})
+        spot_key = INDEX_SPOT_MAP.get(stock, f"NSE:{stock}")
+        spot = spot_quotes.get(spot_key, {})
+
         stock_ltp = spot.get("last_price")
         ohlc = spot.get("ohlc", {})
         prev_close = ohlc.get("close")
