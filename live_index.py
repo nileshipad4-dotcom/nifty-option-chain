@@ -4,6 +4,7 @@ import numpy as np
 import os
 from datetime import time
 from streamlit_autorefresh import st_autorefresh
+import yfinance as yf
 
 st_autorefresh(interval=3600_000, key="auto_refresh")
 
@@ -15,6 +16,23 @@ st.title("📊 Index OI Weighted Strike Tables")
 
 DATA_DIR = "data_index"
 INDEX_LIST = ["NIFTY", "BANKNIFTY", "MIDCPNIFTY"]
+
+YAHOO_MAP = {
+    "NIFTY": "^NSEI",
+    "BANKNIFTY": "^NSEBANK",
+    "MIDCPNIFTY": "NIFTY_MID_SELECT.NS"
+}
+
+# ==================================================
+# LIVE SPOT PRICE (YAHOO)
+# ==================================================
+@st.cache_data(ttl=30)
+def get_yahoo_price(symbol):
+    try:
+        data = yf.Ticker(symbol).history(period="1d", interval="1m")
+        return float(data["Close"].iloc[-1]) if not data.empty else None
+    except Exception:
+        return None
 
 # ==================================================
 # LOAD FILES FROM data_index/
@@ -37,7 +55,7 @@ timestamps_all = [ts for ts, _ in csv_files]
 file_map = {ts: path for ts, path in csv_files}
 
 # ==================================================
-# TIME FILTER (08:00–16:00)
+# TIME FILTER (03:00–16:00)
 # ==================================================
 def extract_time(ts):
     try:
@@ -53,7 +71,7 @@ for ts in timestamps_all:
         filtered_ts.append(ts)
 
 if len(filtered_ts) < 3:
-    st.error("Not enough CSV files between 08:00–16:00")
+    st.error("Not enough CSV files between 03:00–16:00")
     st.stop()
 
 # ==================================================
@@ -144,21 +162,21 @@ def filter_near_ltp(df, n=5):
 display_df = filter_near_ltp(table, n=5)
 
 # ==================================================
-# ATM BLUE HIGHLIGHT
+# ATM BLUE HIGHLIGHT (USING LIVE SPOT)
 # ==================================================
-def atm_blue(data):
+def atm_blue_live(data, live_spot):
     styles = pd.DataFrame("", index=data.index, columns=data.columns)
 
-    for stk in data["stk"].unique():
-        sdf = data[data["stk"] == stk].sort_values("str")
-        ltp = sdf["ltp"].iloc[0]
-        strikes = sdf["str"].values
+    if live_spot is None:
+        return styles
 
-        for i in range(len(strikes) - 1):
-            if strikes[i] <= ltp <= strikes[i + 1]:
-                styles.loc[sdf.index[i]] = "background-color:#003366;color:white"
-                styles.loc[sdf.index[i + 1]] = "background-color:#003366;color:white"
-                break
+    strikes = data["str"].values
+
+    for i in range(len(strikes) - 1):
+        if strikes[i] <= live_spot <= strikes[i + 1]:
+            styles.loc[data.index[i]] = "background-color:#003366;color:white"
+            styles.loc[data.index[i + 1]] = "background-color:#003366;color:white"
+            break
 
     return styles
 
@@ -177,23 +195,24 @@ fmt = {
 }
 
 # ==================================================
-# DISPLAY 3 INDEX TABLES
+# DISPLAY 3 INDEX TABLES (WITH LIVE SPOT)
 # ==================================================
 for idx in INDEX_LIST:
+
     idx_df = display_df[display_df["stk"] == idx]
 
     if idx_df.empty:
         continue
 
-    spot = idx_df["ltp"].iloc[0]
+    live_spot = get_yahoo_price(YAHOO_MAP[idx])
 
     st.markdown(f"## 📌 {idx}")
-    st.markdown(f"### 💹 Spot Price: **{spot:.2f}**")
+    st.markdown(f"### 💹 Live Spot Price: **{int(live_spot) if live_spot else 'N/A'}**")
 
     st.dataframe(
         idx_df
         .style
-        .apply(atm_blue, axis=None)
+        .apply(atm_blue_live, live_spot=live_spot, axis=None)
         .format(fmt, na_rep=""),
         use_container_width=True
     )
