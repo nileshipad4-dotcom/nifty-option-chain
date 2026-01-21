@@ -127,17 +127,29 @@ for c in df.columns:
 df["d_ce"] = df["ce_0"] - df["ce_1"]
 df["d_pe"] = df["pe_0"] - df["pe_1"]
 
+df["d_ce_23"] = df["ce_1"] - df["ce_2"]
+df["d_pe_23"] = df["pe_1"] - df["pe_2"]
+
 df["ce_x"] = (df["d_ce"] * df["Strike"]) / 10000
 df["pe_x"] = (df["d_pe"] * df["Strike"]) / 10000
 df["diff"] = df["pe_x"] - df["ce_x"]
 
+df["ce_x_23"] = (df["d_ce_23"] * df["Strike"]) / 10000
+df["pe_x_23"] = (df["d_pe_23"] * df["Strike"]) / 10000
+df["diff_23"] = df["pe_x_23"] - df["ce_x_23"]
+
 # ==================================================
-# FINAL TABLE
+# FINAL TABLE (diff_23 ADDED)
 # ==================================================
 table = df.rename(columns={
     "Symbol": "stk",
     "Strike": "str"
-})[["stk","str","d_ce","d_pe","ce_x","pe_x","diff"]]
+})[[
+    "stk","str",
+    "d_ce","d_pe",
+    "ce_x","pe_x","diff",
+    "diff_23"
+]]
 
 # ==================================================
 # FILTER NEAR ATM (USING LIVE SPOT)
@@ -175,7 +187,8 @@ fmt = {
     "d_pe": "{:.0f}",
     "ce_x": "{:.0f}",
     "pe_x": "{:.0f}",
-    "diff": "{:.0f}"
+    "diff": "{:.0f}",
+    "diff_23": "{:.0f}"
 }
 
 # ==================================================
