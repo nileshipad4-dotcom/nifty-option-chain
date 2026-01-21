@@ -24,7 +24,7 @@ YAHOO_MAP = {
 }
 
 # ==================================================
-# LIVE SPOT + % CHANGE (YAHOO)
+# LIVE SPOT + % CHANGE
 # ==================================================
 @st.cache_data(ttl=30)
 def get_yahoo_data(symbol):
@@ -36,7 +36,7 @@ def get_yahoo_data(symbol):
         prev = float(data["Close"].iloc[-2])
         pct = ((spot - prev) / prev) * 100 if prev else 0
         return spot, pct
-    except Exception:
+    except:
         return None, None
 
 # ==================================================
@@ -104,10 +104,17 @@ df3 = pd.read_csv(file_map[t3])
 dfs = []
 for i, d in enumerate([df1, df2, df3]):
     dfs.append(
-        d[["Symbol", "Strike", "CE_OI", "PE_OI"]]
-        .rename(columns={
+        d[[
+            "Symbol", "Strike",
+            "CE_OI", "PE_OI",
+            "CE_Volume", "PE_Volume",
+            "Max Pain"
+        ]].rename(columns={
             "CE_OI": f"ce_{i}",
-            "PE_OI": f"pe_{i}"
+            "PE_OI": f"pe_{i}",
+            "CE_Volume": f"ce_vol_{i}",
+            "PE_Volume": f"pe_vol_{i}",
+            "Max Pain": f"mp_{i}"
         })
     )
 
@@ -118,7 +125,7 @@ df = dfs[0].merge(dfs[1], on=["Symbol", "Strike"]) \
 # NUMERIC SAFETY
 # ==================================================
 for c in df.columns:
-    if any(x in c for x in ["ce", "pe", "Strike"]):
+    if c != "Symbol":
         df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
 
 # ==================================================
@@ -139,7 +146,16 @@ df["pe_x_23"] = (df["d_pe_23"] * df["Strike"]) / 10000
 df["diff_23"] = df["pe_x_23"] - df["ce_x_23"]
 
 # ==================================================
-# FINAL TABLE (diff_23 ADDED)
+# NEW DELTA COLUMNS (ONLY 4)
+# ==================================================
+df["Δ CE Vol"] = (df["ce_vol_0"] - df["ce_vol_1"]) / 1000
+df["Δ PE Vol"] = (df["pe_vol_0"] - df["pe_vol_1"]) / 1000
+
+df["Δ MP 1"] = (df["mp_0"] - df["mp_1"]) / 100
+df["Δ MP 2"] = (df["mp_1"] - df["mp_2"]) / 100
+
+# ==================================================
+# FINAL TABLE
 # ==================================================
 table = df.rename(columns={
     "Symbol": "stk",
@@ -148,11 +164,13 @@ table = df.rename(columns={
     "stk","str",
     "d_ce","d_pe",
     "ce_x","pe_x","diff",
-    "diff_23"
+    "diff_23",
+    "Δ CE Vol","Δ PE Vol",
+    "Δ MP 1","Δ MP 2"
 ]]
 
 # ==================================================
-# FILTER NEAR ATM (USING LIVE SPOT)
+# FILTER NEAR ATM
 # ==================================================
 def filter_near_spot(df, live_spot, n=5):
     g = df.sort_values("str").reset_index(drop=True)
@@ -164,7 +182,7 @@ def filter_near_spot(df, live_spot, n=5):
     return g.iloc[start:end + 1]
 
 # ==================================================
-# ATM BLUE HIGHLIGHT (LIVE SPOT)
+# ATM BLUE HIGHLIGHT
 # ==================================================
 def atm_blue_live(data, live_spot):
     styles = pd.DataFrame("", index=data.index, columns=data.columns)
@@ -188,7 +206,11 @@ fmt = {
     "ce_x": "{:.0f}",
     "pe_x": "{:.0f}",
     "diff": "{:.0f}",
-    "diff_23": "{:.0f}"
+    "diff_23": "{:.0f}",
+    "Δ CE Vol": "{:.0f}",
+    "Δ PE Vol": "{:.0f}",
+    "Δ MP 1": "{:.0f}",
+    "Δ MP 2": "{:.0f}"
 }
 
 # ==================================================
