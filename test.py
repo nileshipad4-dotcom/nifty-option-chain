@@ -265,6 +265,17 @@ fmt = {
 # ==================================================
 # DISPLAY
 # ==================================================
+# ==================================================
+# MARKET BREADTH SUMMARY (UP COUNTS)
+# ==================================================
+up_diff = display_df[display_df["diff"] > 0]["stk"].nunique()
+up_diff_23 = display_df[display_df["diff_23"] > 0]["stk"].nunique()
+
+st.markdown(
+    f"### 🟢 UP 1 : {up_diff} &nbsp;&nbsp; | &nbsp;&nbsp; 🟢 UP 2 : {up_diff_23}"
+)
+
+
 st.dataframe(
     display_df
     .style
