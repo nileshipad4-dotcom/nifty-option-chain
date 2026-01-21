@@ -265,15 +265,13 @@ fmt = {
 # ==================================================
 # DISPLAY
 # ==================================================
-# ==================================================
-# MARKET BREADTH SUMMARY (UP COUNTS)
-# ==================================================
-# ==================================================
-# MARKET BREADTH SUMMARY (ATM DIFF)
-# ==================================================
-up_atm = display_df[display_df["atm_diff"] > 0]["stk"].nunique()
 
-st.markdown(f"### 🟢 UP : {up_atm}")
+
+up_atm = display_df[display_df["atm_diff"] > 0]["stk"].nunique()
+sum_atm = display_df["atm_diff"].sum() / 1000
+
+st.markdown(f"### 🟢 UP : {up_atm} &nbsp;&nbsp; | &nbsp;&nbsp; Σ ATM : {sum_atm:.0f}")
+
 
 
 st.dataframe(
