@@ -59,10 +59,7 @@ if len(csv_files) < 3:
 timestamps_all = [ts for ts, _ in csv_files]
 file_map = dict(csv_files)
 
-# ==================================================
-# SAFE TIME FILTER
-# ==================================================
-filtered_ts = timestamps_all[:30]   # last 30 snapshots only
+filtered_ts = timestamps_all[:30]
 
 # ==================================================
 # USER CONTROLS
@@ -75,12 +72,7 @@ t1 = c1.selectbox("TS1 (Latest)", filtered_ts, 0)
 t2 = c2.selectbox("TS2", filtered_ts, 1)
 t3 = c3.selectbox("TS3", filtered_ts, 2)
 
-X = c4.number_input("Strike Window X", min_value=1, max_value=20, value=10, step=1)
-
-# SAFETY CHECK
-if t1 not in file_map or t2 not in file_map or t3 not in file_map:
-    st.error("Selected timestamps not found in data_index. Refresh app.")
-    st.stop()
+X = c4.number_input("Strike Window X (For Calculations)", 1, 20, 4)
 
 # ==================================================
 # LOAD DATA
@@ -130,11 +122,32 @@ df["d_pe_23"] = df["pe_1"] - df["pe_2"]
 
 df["ce_x"] = (df["d_ce"] * df["Strike"]) / 10000
 df["pe_x"] = (df["d_pe"] * df["Strike"]) / 10000
-df["diff"] = df["pe_x"] - df["ce_x"]
 
 df["ce_x_23"] = (df["d_ce_23"] * df["Strike"]) / 10000
 df["pe_x_23"] = (df["d_pe_23"] * df["Strike"]) / 10000
-df["diff_23"] = df["pe_x_23"] - df["ce_x_23"]
+
+# ==================================================
+# SLIDING WINDOW (LIKE STOCK CODE)
+# ==================================================
+df["diff"] = np.nan
+df["diff_23"] = np.nan
+
+for idx, g in df.groupby("Symbol"):
+    g = g.sort_values("Strike").reset_index()
+
+    for i in range(len(g)):
+        low = max(0, i - X)
+        high = min(len(g) - 1, i + X)
+
+        ce_sum = g.loc[low:high, "ce_x"].sum()
+        pe_sum = g.loc[low:high, "pe_x"].sum()
+
+        ce_sum_23 = g.loc[low:high, "ce_x_23"].sum()
+        pe_sum_23 = g.loc[low:high, "pe_x_23"].sum()
+
+        orig = g.loc[i, "index"]
+        df.at[orig, "diff"] = pe_sum - ce_sum
+        df.at[orig, "diff_23"] = pe_sum_23 - ce_sum_23
 
 # ==================================================
 # DELTA COLUMNS
@@ -161,9 +174,9 @@ table = df.rename(columns={
 ]]
 
 # ==================================================
-# FILTER NEAR ATM (±X strikes)
+# FIXED DISPLAY: 10 ABOVE + 10 BELOW ATM
 # ==================================================
-def filter_near_spot(df, live_spot, n):
+def filter_near_spot_fixed(df, live_spot, n=10):
     g = df.sort_values("str").reset_index(drop=True)
     atm_idx = (g["str"] - live_spot).abs().idxmin()
 
@@ -220,7 +233,7 @@ for idx in INDEX_LIST:
         st.error(f"{idx} live price not available")
         continue
 
-    display_df = filter_near_spot(idx_df, live_spot, n=X)
+    display_df = filter_near_spot_fixed(idx_df, live_spot, n=10)
 
     st.markdown(f"## 📌 {idx}")
     st.markdown(
