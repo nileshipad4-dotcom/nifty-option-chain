@@ -99,6 +99,23 @@ df2 = pd.read_csv(file_map[t2])
 df3 = pd.read_csv(file_map[t3])
 
 # ==================================================
+# NORMALIZE COLUMN NAMES
+# ==================================================
+def normalize_cols(d):
+    d = d.copy()
+    d.columns = (
+        d.columns
+        .str.strip()
+        .str.replace(" ", "_")
+        .str.replace("%", "Pct")
+    )
+    return d
+
+df1 = normalize_cols(df1)
+df2 = normalize_cols(df2)
+df3 = normalize_cols(df3)
+
+# ==================================================
 # BUILD BASE TABLE
 # ==================================================
 dfs = []
@@ -108,13 +125,13 @@ for i, d in enumerate([df1, df2, df3]):
             "Symbol", "Strike",
             "CE_OI", "PE_OI",
             "CE_Volume", "PE_Volume",
-            "Max Pain"
+            "Max_Pain"
         ]].rename(columns={
             "CE_OI": f"ce_{i}",
             "PE_OI": f"pe_{i}",
             "CE_Volume": f"ce_vol_{i}",
             "PE_Volume": f"pe_vol_{i}",
-            "Max Pain": f"mp_{i}"
+            "Max_Pain": f"mp_{i}"
         })
     )
 
@@ -175,10 +192,8 @@ table = df.rename(columns={
 def filter_near_spot(df, live_spot, n=5):
     g = df.sort_values("str").reset_index(drop=True)
     atm_idx = (g["str"] - live_spot).abs().idxmin()
-
     start = max(0, atm_idx - n)
     end = min(len(g) - 1, atm_idx + n)
-
     return g.iloc[start:end + 1]
 
 # ==================================================
