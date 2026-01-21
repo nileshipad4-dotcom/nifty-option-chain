@@ -2,4 +2,6 @@ streamlit
 kiteconnect
 pandas
 streamlit-autorefresh
+yfinance
+
 
