@@ -268,12 +268,12 @@ fmt = {
 # ==================================================
 # MARKET BREADTH SUMMARY (UP COUNTS)
 # ==================================================
-up_diff = display_df[display_df["diff"] > 0]["stk"].nunique()
-up_diff_23 = display_df[display_df["diff_23"] > 0]["stk"].nunique()
+# ==================================================
+# MARKET BREADTH SUMMARY (ATM DIFF)
+# ==================================================
+up_atm = display_df[display_df["atm_diff"] > 0]["stk"].nunique()
 
-st.markdown(
-    f"### 🟢 UP 1 : {up_diff} &nbsp;&nbsp; | &nbsp;&nbsp; 🟢 UP 2 : {up_diff_23}"
-)
+st.markdown(f"### 🟢 UP : {up_atm}")
 
 
 st.dataframe(
