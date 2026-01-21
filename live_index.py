@@ -120,11 +120,11 @@ df["d_pe"] = df["pe_0"] - df["pe_1"]
 df["d_ce_23"] = df["ce_1"] - df["ce_2"]
 df["d_pe_23"] = df["pe_1"] - df["pe_2"]
 
-df["ce_x"] = (df["d_ce"] * df["Strike"]) / 10000
-df["pe_x"] = (df["d_pe"] * df["Strike"]) / 10000
+df["ce_x"] = (df["d_ce"] * df["Strike"]) / 10000000
+df["pe_x"] = (df["d_pe"] * df["Strike"]) / 10000000
 
-df["ce_x_23"] = (df["d_ce_23"] * df["Strike"]) / 10000
-df["pe_x_23"] = (df["d_pe_23"] * df["Strike"]) / 10000
+df["ce_x_23"] = (df["d_ce_23"] * df["Strike"]) / 10000000
+df["pe_x_23"] = (df["d_pe_23"] * df["Strike"]) / 10000000
 
 # ==================================================
 # SLIDING WINDOW (LIKE STOCK CODE)
@@ -152,11 +152,11 @@ for idx, g in df.groupby("Symbol"):
 # ==================================================
 # DELTA COLUMNS
 # ==================================================
-df["Δ CE Vol"] = (df["ce_vol_0"] - df["ce_vol_1"]) / 1000
-df["Δ PE Vol"] = (df["pe_vol_0"] - df["pe_vol_1"]) / 1000
+df["Δ CE Vol"] = (df["ce_vol_0"] - df["ce_vol_1"]) / 1000000
+df["Δ PE Vol"] = (df["pe_vol_0"] - df["pe_vol_1"]) / 1000000
 
-df["Δ MP 1"] = (df["mp_0"] - df["mp_1"]) / 100
-df["Δ MP 2"] = (df["mp_1"] - df["mp_2"]) / 100
+df["Δ MP 1"] = (df["mp_0"] - df["mp_1"]) / 10000
+df["Δ MP 2"] = (df["mp_1"] - df["mp_2"]) / 10000
 
 # ==================================================
 # FINAL TABLE
