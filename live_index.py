@@ -189,7 +189,7 @@ table = df.rename(columns={
 # ==================================================
 # FILTER NEAR ATM
 # ==================================================
-def filter_near_spot(df, live_spot, n=5):
+def filter_near_spot(df, live_spot, n=10):
     g = df.sort_values("str").reset_index(drop=True)
     atm_idx = (g["str"] - live_spot).abs().idxmin()
     start = max(0, atm_idx - n)
