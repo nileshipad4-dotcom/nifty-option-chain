@@ -24,18 +24,23 @@ YAHOO_MAP = {
 }
 
 # ==================================================
-# LIVE SPOT PRICE (YAHOO)
+# LIVE SPOT + % CHANGE (YAHOO)
 # ==================================================
 @st.cache_data(ttl=30)
-def get_yahoo_price(symbol):
+def get_yahoo_data(symbol):
     try:
-        data = yf.Ticker(symbol).history(period="1d", interval="1m")
-        return float(data["Close"].iloc[-1]) if not data.empty else None
+        data = yf.Ticker(symbol).history(period="2d", interval="1m")
+        if data.empty:
+            return None, None
+        spot = float(data["Close"].iloc[-1])
+        prev = float(data["Close"].iloc[-2])
+        pct = ((spot - prev) / prev) * 100 if prev else 0
+        return spot, pct
     except Exception:
-        return None
+        return None, None
 
 # ==================================================
-# LOAD FILES FROM data_index/
+# LOAD FILES
 # ==================================================
 def load_csv_files():
     files = []
@@ -55,7 +60,7 @@ timestamps_all = [ts for ts, _ in csv_files]
 file_map = {ts: path for ts, path in csv_files}
 
 # ==================================================
-# TIME FILTER (03:00–16:00)
+# TIME FILTER
 # ==================================================
 def extract_time(ts):
     try:
@@ -64,14 +69,13 @@ def extract_time(ts):
     except:
         return None
 
-filtered_ts = []
-for ts in timestamps_all:
-    t = extract_time(ts)
-    if t and time(3, 0) <= t <= time(16, 0):
-        filtered_ts.append(ts)
+filtered_ts = [
+    ts for ts in timestamps_all
+    if extract_time(ts) and time(3, 0) <= extract_time(ts) <= time(16, 0)
+]
 
 if len(filtered_ts) < 3:
-    st.error("Not enough CSV files between 03:00–16:00")
+    st.error("Not enough CSV files in time range")
     st.stop()
 
 # ==================================================
@@ -81,11 +85,11 @@ st.subheader("🕒 Timestamp & Window Settings")
 
 c1, c2, c3, c4 = st.columns(4)
 
-t1 = c1.selectbox("TS1", filtered_ts, index=0)
-t2 = c2.selectbox("TS2", filtered_ts, index=1)
-t3 = c3.selectbox("TS3", filtered_ts, index=2)
+t1 = c1.selectbox("TS1", filtered_ts, 0)
+t2 = c2.selectbox("TS2", filtered_ts, 1)
+t3 = c3.selectbox("TS3", filtered_ts, 2)
 
-X = c4.number_input("Strike Window X", min_value=1, max_value=10, value=4, step=1)
+X = c4.number_input("Strike Window X", 1, 10, 4)
 
 # ==================================================
 # LOAD DATA
@@ -100,10 +104,8 @@ df3 = pd.read_csv(file_map[t3])
 dfs = []
 for i, d in enumerate([df1, df2, df3]):
     dfs.append(
-        d[["Symbol", "Strike", "Spot", "%Change", "CE_OI", "PE_OI"]]
+        d[["Symbol", "Strike", "CE_OI", "PE_OI"]]
         .rename(columns={
-            "Spot": f"ltp_{i}",
-            "%Change": f"tot_ch_{i}",
             "CE_OI": f"ce_{i}",
             "PE_OI": f"pe_{i}"
         })
@@ -116,7 +118,7 @@ df = dfs[0].merge(dfs[1], on=["Symbol", "Strike"]) \
 # NUMERIC SAFETY
 # ==================================================
 for c in df.columns:
-    if any(x in c for x in ["ltp", "ce", "pe", "Strike", "tot_ch"]):
+    if any(x in c for x in ["ce", "pe", "Strike"]):
         df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
 
 # ==================================================
@@ -124,7 +126,6 @@ for c in df.columns:
 # ==================================================
 df["d_ce"] = df["ce_0"] - df["ce_1"]
 df["d_pe"] = df["pe_0"] - df["pe_1"]
-df["total_ch"] = df["tot_ch_0"]
 
 df["ce_x"] = (df["d_ce"] * df["Strike"]) / 10000
 df["pe_x"] = (df["d_pe"] * df["Strike"]) / 10000
@@ -135,41 +136,26 @@ df["diff"] = df["pe_x"] - df["ce_x"]
 # ==================================================
 table = df.rename(columns={
     "Symbol": "stk",
-    "Strike": "str",
-    "ltp_0": "ltp",
-    "tot_ch_0": "ch"
-})[[
-    "stk","str","ltp","ch","d_ce","d_pe","ce_x","pe_x","diff"
-]]
+    "Strike": "str"
+})[["stk","str","d_ce","d_pe","ce_x","pe_x","diff"]]
 
 # ==================================================
-# FILTER NEAR ATM (±5 strikes)
+# FILTER NEAR ATM (USING LIVE SPOT)
 # ==================================================
-def filter_near_ltp(df, n=5):
-    blocks = []
-    for stk, g in df.groupby("stk"):
-        g = g.sort_values("str").reset_index(drop=True)
-        ltp = g["ltp"].iloc[0]
-        atm_idx = (g["str"] - ltp).abs().idxmin()
+def filter_near_spot(df, live_spot, n=5):
+    g = df.sort_values("str").reset_index(drop=True)
+    atm_idx = (g["str"] - live_spot).abs().idxmin()
 
-        start = max(0, atm_idx - n)
-        end = min(len(g) - 1, atm_idx + n)
+    start = max(0, atm_idx - n)
+    end = min(len(g) - 1, atm_idx + n)
 
-        blocks.append(g.iloc[start:end + 1])
-
-    return pd.concat(blocks, ignore_index=True)
-
-display_df = filter_near_ltp(table, n=5)
+    return g.iloc[start:end + 1]
 
 # ==================================================
-# ATM BLUE HIGHLIGHT (USING LIVE SPOT)
+# ATM BLUE HIGHLIGHT (LIVE SPOT)
 # ==================================================
 def atm_blue_live(data, live_spot):
     styles = pd.DataFrame("", index=data.index, columns=data.columns)
-
-    if live_spot is None:
-        return styles
-
     strikes = data["str"].values
 
     for i in range(len(strikes) - 1):
@@ -185,8 +171,6 @@ def atm_blue_live(data, live_spot):
 # ==================================================
 fmt = {
     "str": "{:.0f}",
-    "ltp": "{:.2f}",
-    "ch": "{:.2f}",
     "d_ce": "{:.0f}",
     "d_pe": "{:.0f}",
     "ce_x": "{:.0f}",
@@ -195,22 +179,31 @@ fmt = {
 }
 
 # ==================================================
-# DISPLAY 3 INDEX TABLES (WITH LIVE SPOT)
+# DISPLAY
 # ==================================================
 for idx in INDEX_LIST:
 
-    idx_df = display_df[display_df["stk"] == idx]
+    idx_df = table[table["stk"] == idx]
 
     if idx_df.empty:
         continue
 
-    live_spot = get_yahoo_price(YAHOO_MAP[idx])
+    live_spot, live_pct = get_yahoo_data(YAHOO_MAP[idx])
+
+    if live_spot is None:
+        st.error(f"{idx} live price not available")
+        continue
+
+    display_df = filter_near_spot(idx_df, live_spot, n=X)
 
     st.markdown(f"## 📌 {idx}")
-    st.markdown(f"### 💹 Live Spot Price: **{int(live_spot) if live_spot else 'N/A'}**")
+    st.markdown(
+        f"### 💹 Spot: **{int(live_spot)}** &nbsp;&nbsp; "
+        f"📈 % Change: **{live_pct:.2f}%**"
+    )
 
     st.dataframe(
-        idx_df
+        display_df
         .style
         .apply(atm_blue_live, live_spot=live_spot, axis=None)
         .format(fmt, na_rep=""),
