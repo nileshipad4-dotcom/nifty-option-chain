@@ -71,12 +71,8 @@ def extract_time(ts):
 
 filtered_ts = [
     ts for ts in timestamps_all
-    if extract_time(ts) and time(3, 0) <= extract_time(ts) <= time(16, 0)
+    if extract_time(ts) and time(8, 0) <= extract_time(ts) <= time(16, 0)
 ]
-
-if len(filtered_ts) < 3:
-    st.error("Not enough CSV files in time range")
-    st.stop()
 
 # ==================================================
 # USER CONTROLS
@@ -85,11 +81,11 @@ st.subheader("🕒 Timestamp & Window Settings")
 
 c1, c2, c3, c4 = st.columns(4)
 
-t1 = c1.selectbox("TS1", filtered_ts, 0)
+t1 = c1.selectbox("TS1 (Latest)", filtered_ts, 0)
 t2 = c2.selectbox("TS2", filtered_ts, 1)
 t3 = c3.selectbox("TS3", filtered_ts, 2)
 
-X = c4.number_input("Strike Window X", 1, 10, 4)
+X = c4.number_input("Strike Window (±)", 5, 20, 10)
 
 # ==================================================
 # LOAD DATA
@@ -97,23 +93,6 @@ X = c4.number_input("Strike Window X", 1, 10, 4)
 df1 = pd.read_csv(file_map[t1])
 df2 = pd.read_csv(file_map[t2])
 df3 = pd.read_csv(file_map[t3])
-
-# ==================================================
-# NORMALIZE COLUMN NAMES
-# ==================================================
-def normalize_cols(d):
-    d = d.copy()
-    d.columns = (
-        d.columns
-        .str.strip()
-        .str.replace(" ", "_")
-        .str.replace("%", "Pct")
-    )
-    return d
-
-df1 = normalize_cols(df1)
-df2 = normalize_cols(df2)
-df3 = normalize_cols(df3)
 
 # ==================================================
 # BUILD BASE TABLE
@@ -125,13 +104,13 @@ for i, d in enumerate([df1, df2, df3]):
             "Symbol", "Strike",
             "CE_OI", "PE_OI",
             "CE_Volume", "PE_Volume",
-            "Max_Pain"
+            "Max Pain"
         ]].rename(columns={
             "CE_OI": f"ce_{i}",
             "PE_OI": f"pe_{i}",
             "CE_Volume": f"ce_vol_{i}",
             "PE_Volume": f"pe_vol_{i}",
-            "Max_Pain": f"mp_{i}"
+            "Max Pain": f"mp_{i}"
         })
     )
 
@@ -146,30 +125,48 @@ for c in df.columns:
         df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
 
 # ==================================================
-# CORE CALCULATIONS
+# CORE CALCULATIONS (SAME AS STOCK LOGIC)
 # ==================================================
 df["d_ce"] = df["ce_0"] - df["ce_1"]
 df["d_pe"] = df["pe_0"] - df["pe_1"]
 
-df["d_ce_23"] = df["ce_1"] - df["ce_2"]
-df["d_pe_23"] = df["pe_1"] - df["pe_2"]
-
 df["ce_x"] = (df["d_ce"] * df["Strike"]) / 10000
 df["pe_x"] = (df["d_pe"] * df["Strike"]) / 10000
-df["diff"] = df["pe_x"] - df["ce_x"]
-
-df["ce_x_23"] = (df["d_ce_23"] * df["Strike"]) / 10000
-df["pe_x_23"] = (df["d_pe_23"] * df["Strike"]) / 10000
-df["diff_23"] = df["pe_x_23"] - df["ce_x_23"]
 
 # ==================================================
-# NEW DELTA COLUMNS (ONLY 4)
+# SLIDING WINDOW (KEY PART)
 # ==================================================
-df["Δ CE Vol"] = (df["ce_vol_0"] - df["ce_vol_1"]) / 1000
-df["Δ PE Vol"] = (df["pe_vol_0"] - df["pe_vol_1"]) / 1000
+df["sum_ce"] = np.nan
+df["sum_pe"] = np.nan
+df["diff"] = np.nan
+df["atm_diff"] = np.nan
 
-df["Δ MP 1"] = (df["mp_0"] - df["mp_1"]) / 100
-df["Δ MP 2"] = (df["mp_1"] - df["mp_2"]) / 100
+for stk, g in df.groupby("Symbol"):
+    g = g.sort_values("Strike").reset_index()
+
+    for i in range(len(g)):
+        low = max(0, i - X)
+        high = min(len(g) - 1, i + X)
+
+        ce_sum = g.loc[low:high, "ce_x"].sum()
+        pe_sum = g.loc[low:high, "pe_x"].sum()
+
+        orig_idx = g.loc[i, "index"]
+        df.at[orig_idx, "sum_ce"] = ce_sum
+        df.at[orig_idx, "sum_pe"] = pe_sum
+        df.at[orig_idx, "diff"] = pe_sum - ce_sum
+
+    # ATM DIFF (±2 strikes)
+    strikes = g["Strike"].values
+    live_spot, _ = get_yahoo_data(YAHOO_MAP.get(stk, ""))
+    if live_spot:
+        atm_idx = (strikes - live_spot).abs().argmin()
+
+        low = max(0, atm_idx - 2)
+        high = min(len(g) - 1, atm_idx + 2)
+
+        atm_avg = df.loc[g.loc[low:high, "index"], "diff"].mean()
+        df.loc[g["index"], "atm_diff"] = atm_avg
 
 # ==================================================
 # FINAL TABLE
@@ -180,10 +177,9 @@ table = df.rename(columns={
 })[[
     "stk","str",
     "d_ce","d_pe",
-    "ce_x","pe_x","diff",
-    "diff_23",
-    "Δ CE Vol","Δ PE Vol",
-    "Δ MP 1","Δ MP 2"
+    "ce_x","pe_x",
+    "sum_ce","sum_pe",
+    "diff","atm_diff"
 ]]
 
 # ==================================================
@@ -192,9 +188,7 @@ table = df.rename(columns={
 def filter_near_spot(df, live_spot, n=10):
     g = df.sort_values("str").reset_index(drop=True)
     atm_idx = (g["str"] - live_spot).abs().idxmin()
-    start = max(0, atm_idx - n)
-    end = min(len(g) - 1, atm_idx + n)
-    return g.iloc[start:end + 1]
+    return g.iloc[max(0, atm_idx - n): atm_idx + n + 1]
 
 # ==================================================
 # ATM BLUE HIGHLIGHT
@@ -220,12 +214,10 @@ fmt = {
     "d_pe": "{:.0f}",
     "ce_x": "{:.0f}",
     "pe_x": "{:.0f}",
+    "sum_ce": "{:.0f}",
+    "sum_pe": "{:.0f}",
     "diff": "{:.0f}",
-    "diff_23": "{:.0f}",
-    "Δ CE Vol": "{:.0f}",
-    "Δ PE Vol": "{:.0f}",
-    "Δ MP 1": "{:.0f}",
-    "Δ MP 2": "{:.0f}"
+    "atm_diff": "{:.0f}"
 }
 
 # ==================================================
@@ -234,17 +226,14 @@ fmt = {
 for idx in INDEX_LIST:
 
     idx_df = table[table["stk"] == idx]
-
     if idx_df.empty:
         continue
 
     live_spot, live_pct = get_yahoo_data(YAHOO_MAP[idx])
-
     if live_spot is None:
-        st.error(f"{idx} live price not available")
         continue
 
-    display_df = filter_near_spot(idx_df, live_spot, n=X)
+    display_df = filter_near_spot(idx_df, live_spot, n=10)
 
     st.markdown(f"## 📌 {idx}")
     st.markdown(
