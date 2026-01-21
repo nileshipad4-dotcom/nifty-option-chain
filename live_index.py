@@ -17,7 +17,7 @@ DATA_DIR = "data_index"
 INDEX_LIST = ["NIFTY", "BANKNIFTY", "MIDCPNIFTY"]
 
 # ==================================================
-# LOAD FILES
+# LOAD FILES FROM data_index/
 # ==================================================
 def load_csv_files():
     files = []
@@ -30,11 +30,11 @@ def load_csv_files():
 csv_files = load_csv_files()
 
 if len(csv_files) < 3:
-    st.error("Need at least 3 index CSV files.")
+    st.error("Need at least 3 index CSV files in data_index/")
     st.stop()
 
 timestamps_all = [ts for ts, _ in csv_files]
-file_map = dict(csv_files)
+file_map = {ts: path for ts, path in csv_files}
 
 # ==================================================
 # TIME FILTER (08:00–16:00)
@@ -46,10 +46,15 @@ def extract_time(ts):
     except:
         return None
 
-filtered_ts = [
-    ts for ts in timestamps_all
-    if extract_time(ts) and time(8, 0) <= extract_time(ts) <= time(16, 0)
-]
+filtered_ts = []
+for ts in timestamps_all:
+    t = extract_time(ts)
+    if t and time(8, 0) <= t <= time(16, 0):
+        filtered_ts.append(ts)
+
+if len(filtered_ts) < 3:
+    st.error("Not enough CSV files between 08:00–16:00")
+    st.stop()
 
 # ==================================================
 # USER CONTROLS
@@ -58,9 +63,9 @@ st.subheader("🕒 Timestamp & Window Settings")
 
 c1, c2, c3, c4 = st.columns(4)
 
-t1 = c1.selectbox("TS1", filtered_ts, 0)
-t2 = c2.selectbox("TS2", filtered_ts, 1)
-t3 = c3.selectbox("TS3", filtered_ts, 2)
+t1 = c1.selectbox("TS1", filtered_ts, index=0)
+t2 = c2.selectbox("TS2", filtered_ts, index=1)
+t3 = c3.selectbox("TS3", filtered_ts, index=2)
 
 X = c4.number_input("Strike Window X", min_value=1, max_value=10, value=4, step=1)
 
@@ -101,33 +106,11 @@ for c in df.columns:
 # ==================================================
 df["d_ce"] = df["ce_0"] - df["ce_1"]
 df["d_pe"] = df["pe_0"] - df["pe_1"]
-df["d_ce_23"] = df["ce_1"] - df["ce_2"]
-df["d_pe_23"] = df["pe_1"] - df["pe_2"]
 df["total_ch"] = df["tot_ch_0"]
 
 df["ce_x"] = (df["d_ce"] * df["Strike"]) / 10000
 df["pe_x"] = (df["d_pe"] * df["Strike"]) / 10000
 df["diff"] = df["pe_x"] - df["ce_x"]
-
-# ==================================================
-# SLIDING WINDOW
-# ==================================================
-df["sum_ce"] = np.nan
-df["sum_pe"] = np.nan
-
-for idx, g in df.groupby("Symbol"):
-    g = g.sort_values("Strike").reset_index()
-
-    for i in range(len(g)):
-        low = max(0, i - X)
-        high = min(len(g) - 1, i + X)
-
-        ce_sum = g.loc[low:high, "ce_x"].sum()
-        pe_sum = g.loc[low:high, "pe_x"].sum()
-
-        orig_idx = g.loc[i, "index"]
-        df.at[orig_idx, "sum_ce"] = ce_sum
-        df.at[orig_idx, "sum_pe"] = pe_sum
 
 # ==================================================
 # FINAL TABLE
@@ -142,7 +125,7 @@ table = df.rename(columns={
 ]]
 
 # ==================================================
-# FILTER NEAR ATM
+# FILTER NEAR ATM (±5 strikes)
 # ==================================================
 def filter_near_ltp(df, n=5):
     blocks = []
