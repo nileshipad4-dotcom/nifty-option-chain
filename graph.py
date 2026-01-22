@@ -1,9 +1,7 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import os
 from datetime import datetime, time
-import matplotlib.pyplot as plt
 
 # ==================================================
 # CONFIG
@@ -46,11 +44,8 @@ def compute_atm_sum(file_path):
     for c in ["Strike", "Stock_LTP", "CE_OI", "PE_OI"]:
         df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
 
-    df["d_ce"] = df["CE_OI"]
-    df["d_pe"] = df["PE_OI"]
-
-    df["ce_x"] = (df["d_ce"] * df["Strike"]) / 10000
-    df["pe_x"] = (df["d_pe"] * df["Strike"]) / 10000
+    df["ce_x"] = (df["CE_OI"] * df["Strike"]) / 10000
+    df["pe_x"] = (df["PE_OI"] * df["Strike"]) / 10000
     df["diff"] = df["pe_x"] - df["ce_x"]
 
     atm_values = []
@@ -60,7 +55,6 @@ def compute_atm_sum(file_path):
         ltp = g["Stock_LTP"].iloc[0]
 
         atm_idx = (g["Strike"] - ltp).abs().idxmin()
-
         low = max(0, atm_idx - 2)
         high = min(len(g) - 1, atm_idx + 2)
 
@@ -101,17 +95,11 @@ if trend_df.empty:
     st.error("No data available in market hours range.")
     st.stop()
 
+trend_df = trend_df.set_index("Time")
+
 # ==================================================
-# PLOT
+# DISPLAY CHART
 # ==================================================
-fig, ax = plt.subplots(figsize=(13, 5))
+st.subheader("Σ ATM Diff (x1000) – Intraday Strength")
 
-ax.plot(trend_df["Time"], trend_df["ATM_Sum"], marker="o")
-ax.axhline(0)
-
-ax.set_title("ATM Diff Strength (09:15 – 15:30)")
-ax.set_xlabel("Time")
-ax.set_ylabel("Σ ATM Diff (x1000)")
-ax.grid(True)
-
-st.pyplot(fig)
+st.line_chart(trend_df["ATM_Sum"])
