@@ -53,7 +53,6 @@ STOCKS = [
     "UNOMINDA","UPL","VBL","VEDL","VOLTAS","WAAREEENER","WIPRO","YESBANK","ZYDUSLIFE"
 ]
 
-
 INDEXES = ["NIFTY"]
 
 # ==================================================
@@ -61,7 +60,6 @@ INDEXES = ["NIFTY"]
 # ==================================================
 DATA_DIR = "data"
 DATA_INDEX_DIR = "data_index"
-
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(DATA_INDEX_DIR, exist_ok=True)
 
@@ -87,7 +85,7 @@ instruments = load_instruments()
 # ==================================================
 # HELPERS
 # ==================================================
-def chunk(lst, size=100):
+def chunk(lst, size=40):
     for i in range(0, len(lst), size):
         yield lst[i:i + size]
 
@@ -113,9 +111,9 @@ def compute_max_pain_kite(df):
     return df
 
 # ==================================================
-# GENERIC FETCH FUNCTION
+# FETCH FUNCTION
 # ==================================================
-def fetch_option_chain(symbol_list):
+def fetch_option_chain(symbol_list, is_index=False):
     option_map = {}
     all_option_symbols = []
 
@@ -142,20 +140,15 @@ def fetch_option_chain(symbol_list):
         except Exception as e:
             st.warning(f"Option quote batch failed: {e}")
 
-    try:
-        INDEX_SPOT_MAP = {
-            "NIFTY": "NSE:NIFTY 50",
-            "BANKNIFTY": "NSE:NIFTY BANK",
-            "MIDCPNIFTY": "NSE:NIFTY MIDCAP SELECT"
-        }
-        
-        spot_symbols = []
-        for s in option_map.keys():
-            spot_symbols.append(INDEX_SPOT_MAP.get(s, f"NSE:{s}"))
-        
-        spot_quotes = kite.quote(spot_symbols)
+    INDEX_SPOT_MAP = {
+        "NIFTY": "NSE:NIFTY 50",
+        "BANKNIFTY": "NSE:NIFTY BANK",
+        "MIDCPNIFTY": "NSE:NIFTY MIDCAP SELECT"
+    }
 
-        
+    try:
+        spot_symbols = [INDEX_SPOT_MAP.get(s, f"NSE:{s}") for s in option_map.keys()]
+        spot_quotes = kite.quote(spot_symbols)
     except Exception as e:
         st.error(f"Kite spot quote failed: {e}")
         spot_quotes = {}
@@ -168,9 +161,9 @@ def fetch_option_chain(symbol_list):
 
         spot_key = INDEX_SPOT_MAP.get(stock, f"NSE:{stock}")
         spot = spot_quotes.get(spot_key, {})
+        ohlc = spot.get("ohlc", {})
 
         stock_ltp = spot.get("last_price")
-        ohlc = spot.get("ohlc", {})
         prev_close = ohlc.get("close")
 
         pct_change = (
@@ -185,20 +178,38 @@ def fetch_option_chain(symbol_list):
             ce_q = option_quotes.get("NFO:" + ce.iloc[0]["tradingsymbol"], {}) if not ce.empty else {}
             pe_q = option_quotes.get("NFO:" + pe.iloc[0]["tradingsymbol"], {}) if not pe.empty else {}
 
-            rows.append({
-                "Symbol": stock,
-                "Expiry": df["expiry"].iloc[0].date(),
-                "Strike": strike,
-                "CE_LTP": ce_q.get("last_price"),
-                "CE_OI": ce_q.get("oi"),
-                "CE_Volume": ce_q.get("volume"),
-                "PE_LTP": pe_q.get("last_price"),
-                "PE_OI": pe_q.get("oi"),
-                "PE_Volume": pe_q.get("volume"),
-                "Spot": stock_ltp,
-                "%Change": pct_change,
-                "timestamp": now_ts,
-            })
+            if is_index:
+                rows.append({
+                    "Symbol": stock,
+                    "Expiry": df["expiry"].iloc[0].date(),
+                    "Strike": strike,
+                    "CE_LTP": ce_q.get("last_price"),
+                    "CE_OI": ce_q.get("oi"),
+                    "CE_Volume": ce_q.get("volume"),
+                    "PE_LTP": pe_q.get("last_price"),
+                    "PE_OI": pe_q.get("oi"),
+                    "PE_Volume": pe_q.get("volume"),
+                    "Spot": stock_ltp,
+                    "%Change": pct_change,
+                    "timestamp": now_ts,
+                })
+            else:
+                rows.append({
+                    "Stock": stock,
+                    "Expiry": df["expiry"].iloc[0].date(),
+                    "Strike": strike,
+                    "CE_LTP": ce_q.get("last_price"),
+                    "CE_OI": ce_q.get("oi"),
+                    "CE_Volume": ce_q.get("volume"),
+                    "PE_LTP": pe_q.get("last_price"),
+                    "PE_OI": pe_q.get("oi"),
+                    "PE_Volume": pe_q.get("volume"),
+                    "Stock_LTP": stock_ltp,
+                    "Stock_High": ohlc.get("high"),
+                    "Stock_Low": ohlc.get("low"),
+                    "Stock_%_Change": pct_change,
+                    "timestamp": now_ts,
+                })
 
         stock_df = pd.DataFrame(rows).sort_values("Strike")
         stock_df = compute_max_pain_kite(stock_df)
@@ -210,32 +221,20 @@ def fetch_option_chain(symbol_list):
 # UI – STOCK TABLE
 # ==================================================
 st.subheader("📈 STOCK OPTION CHAIN")
-
-df_stocks = fetch_option_chain(STOCKS)
+df_stocks = fetch_option_chain(STOCKS, is_index=False)
 st.dataframe(df_stocks, use_container_width=True)
 
 # ==================================================
-# SAVE STOCK CSV (UNCHANGED)
+# SAVE STOCK CSV
 # ==================================================
 try:
     stock_filename = f"data/option_chain_{datetime.now(IST).strftime('%Y-%m-%d_%H-%M')}.csv"
-
-    csv_bytes = df_stocks.to_csv(index=False).encode()
-    content = base64.b64encode(csv_bytes).decode()
+    content = base64.b64encode(df_stocks.to_csv(index=False).encode()).decode()
 
     url = f"https://api.github.com/repos/{KITE_REPO}/contents/{stock_filename}"
+    headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github+json"}
 
-    headers = {
-        "Authorization": f"token {GITHUB_TOKEN}",
-        "Accept": "application/vnd.github+json"
-    }
-
-    payload = {
-        "message": f"Auto snapshot {stock_filename}",
-        "content": content,
-        "branch": GITHUB_BRANCH
-    }
-
+    payload = {"message": f"Auto snapshot {stock_filename}", "content": content, "branch": GITHUB_BRANCH}
     r = requests.put(url, headers=headers, json=payload)
 
     if r.status_code not in (200, 201):
@@ -250,32 +249,20 @@ except Exception as e:
 # UI – INDEX TABLE
 # ==================================================
 st.subheader("📊 INDEX OPTION CHAIN")
-
-df_index = fetch_option_chain(INDEXES)
+df_index = fetch_option_chain(INDEXES, is_index=True)
 st.dataframe(df_index, use_container_width=True)
 
 # ==================================================
-# SAVE INDEX CSV (UNCHANGED LOGIC)
+# SAVE INDEX CSV
 # ==================================================
 try:
     index_filename = f"data_index/index_OC_{datetime.now(IST).strftime('%Y-%m-%d_%H-%M')}.csv"
-
-    csv_bytes = df_index.to_csv(index=False).encode()
-    content = base64.b64encode(csv_bytes).decode()
+    content = base64.b64encode(df_index.to_csv(index=False).encode()).decode()
 
     url = f"https://api.github.com/repos/{KITE_REPO}/contents/{index_filename}"
+    headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github+json"}
 
-    headers = {
-        "Authorization": f"token {GITHUB_TOKEN}",
-        "Accept": "application/vnd.github+json"
-    }
-
-    payload = {
-        "message": f"Auto snapshot {index_filename}",
-        "content": content,
-        "branch": GITHUB_BRANCH
-    }
-
+    payload = {"message": f"Auto snapshot {index_filename}", "content": content, "branch": GITHUB_BRANCH}
     r = requests.put(url, headers=headers, json=payload)
 
     if r.status_code not in (200, 201):
