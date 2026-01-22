@@ -15,8 +15,8 @@ DATA_DIR = "data"
 STRIKE_WINDOW = 3      # FIXED
 ATM_WINDOW = 2        # ±2 strikes
 
-MARKET_START = time(9, 15)
-MARKET_END   = time(15, 30)
+MARKET_START = time(9, 00)
+MARKET_END   = time(15, 45)
 
 # ==================================================
 # LOAD FILES
@@ -68,7 +68,7 @@ current_time = start_file[0]
 selected.append(start_file)
 
 while current_time.time() < MARKET_END:
-    target = current_time + timedelta(minutes=15)
+    target = current_time + timedelta(minutes=10)
 
     next_file = next(
         (x for x in file_times if x[0] >= target),
