@@ -148,7 +148,7 @@ for idx, g in df.groupby("Symbol"):
 
         orig = g.loc[i, "index"]
         df.at[orig, "diff"] = pe_sum - ce_sum
-        df.at[orig, "diff_23"] = (pe_sum_23 - ce_sum_23) / 1000
+        df.at[orig, "diff_23"] = (pe_sum_23 - ce_sum_23) / 10
 
 # ==================================================
 # DELTA COLUMNS
