@@ -54,7 +54,7 @@ STOCKS = [
 ]
 
 
-INDEXES = ["NIFTY", "BANKNIFTY", "MIDCPNIFTY"]
+INDEXES = ["NIFTY"]
 
 # ==================================================
 # DIRECTORIES
