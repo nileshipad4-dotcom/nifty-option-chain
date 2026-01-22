@@ -1,22 +1,110 @@
+import streamlit as st
+import pandas as pd
+import numpy as np
+import os
+from datetime import datetime, time, timedelta
+import traceback
+
+# ==================================================
+# APP START
+# ==================================================
+st.set_page_config(page_title="ATM Diff Trend", layout="wide")
+st.title("📈 ATM Diff Strength – 15 Min Interval (09:15 to 15:30)")
+st.write("🚀 Graph app started")
+
+DATA_DIR = "data"
+
+STRIKE_WINDOW = 3
+ATM_WINDOW = 2
+
+MARKET_START = time(9, 0)
+MARKET_END   = time(15, 45)
+
+# ==================================================
+# LOAD FILES
+# ==================================================
+def load_csv_files():
+    files = []
+    if not os.path.exists(DATA_DIR):
+        return files
+
+    for f in os.listdir(DATA_DIR):
+        if f.startswith("option_chain_") and f.endswith(".csv"):
+            ts = f.replace("option_chain_", "").replace(".csv", "")
+            files.append((ts, os.path.join(DATA_DIR, f)))
+    return sorted(files)
+
+csv_files = load_csv_files()
+
+if len(csv_files) < 2:
+    st.error("Not enough CSV files in /data")
+    st.stop()
+
+# ==================================================
+# PARSE TIMESTAMPS
+# ==================================================
+file_times = []
+
+for ts, path in csv_files:
+    try:
+        dt = datetime.strptime(ts, "%Y-%m-%d_%H-%M")
+        file_times.append((dt, path))
+    except:
+        continue
+
+file_times.sort()
+
+# ==================================================
+# PICK 15-MIN INTERVAL FILES
+# ==================================================
+selected = []
+
+start_file = next(
+    (x for x in file_times if x[0].time() >= MARKET_START),
+    None
+)
+
+if not start_file:
+    st.error("No files after 09:15")
+    st.stop()
+
+current_time = start_file[0]
+selected.append(start_file)
+
+while current_time.time() < MARKET_END:
+    target = current_time + timedelta(minutes=10)
+
+    next_file = next(
+        (x for x in file_times if x[0] >= target),
+        None
+    )
+
+    if not next_file:
+        break
+
+    selected.append(next_file)
+    current_time = next_file[0]
+
+st.write(f"📂 Selected {len(selected)} files for analysis")
+
+# ==================================================
+# ATM DIFF CALCULATION (BULLETPROOF)
+# ==================================================
 def compute_atm_sum(file_path):
     df = pd.read_csv(file_path)
+
+    st.write(f"Processing: {file_path}")
+    st.write("Columns:", df.columns.tolist())
 
     # -------------------------------
     # COLUMN NORMALIZATION
     # -------------------------------
-
-    # Stock column
     if "Stock" not in df.columns and "Symbol" in df.columns:
         df["Stock"] = df["Symbol"]
 
-    # Stock LTP column
     if "Stock_LTP" not in df.columns:
-        if "Spot" in df.columns:
-            df["Stock_LTP"] = df["Spot"]
-        else:
-            df["Stock_LTP"] = 0   # fallback
+        df["Stock_LTP"] = df.get("Spot", 0)
 
-    # Required numeric columns
     for col in ["Strike", "CE_OI", "PE_OI"]:
         if col not in df.columns:
             df[col] = 0
@@ -57,3 +145,42 @@ def compute_atm_sum(file_path):
         df.loc[g["index"], "atm_diff"] = atm_avg
 
     return df["atm_diff"].sum() / 1000
+
+# ==================================================
+# BUILD SERIES
+# ==================================================
+times = []
+values = []
+
+with st.spinner("Calculating ATM Diff Trend..."):
+    for dt, path in selected:
+        try:
+            atm_sum = compute_atm_sum(path)
+            times.append(dt)
+            values.append(atm_sum)
+        except Exception:
+            st.error("❌ Error while processing file")
+            st.text(traceback.format_exc())
+            st.stop()
+
+trend_df = pd.DataFrame({"Time": times, "ATM_Sum": values}).set_index("Time")
+
+# ==================================================
+# INVERT FOR DIRECTION
+# ==================================================
+trend_df["ATM_Sum"] = -trend_df["ATM_Sum"]
+
+# ==================================================
+# DISPLAY
+# ==================================================
+st.subheader("Σ ATM Diff (×1000) – Intraday Strength")
+
+st.line_chart(trend_df["ATM_Sum"])
+
+st.markdown(
+    f"""
+**High:** {trend_df["ATM_Sum"].max():.1f}  
+**Low:** {trend_df["ATM_Sum"].min():.1f}  
+**Close:** {trend_df["ATM_Sum"].iloc[-1]:.1f}
+"""
+)
