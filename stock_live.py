@@ -9,6 +9,9 @@ import os
 from streamlit_autorefresh import st_autorefresh
 from kite_config import KITE_API_KEY, KITE_ACCESS_TOKEN
 
+# 🔴 FORCE CACHE RESET
+st.cache_data.clear()
+
 # ==================================================
 # CONFIG
 # ==================================================
@@ -218,35 +221,45 @@ def fetch_option_chain(symbol_list, is_index=False):
     return pd.concat(all_data, ignore_index=True)
 
 # ==================================================
-# UI – STOCK TABLE
+# UI – STOCK TABLE (FORCE RENAME)
 # ==================================================
 st.subheader("📈 STOCK OPTION CHAIN")
+
 df_stocks = fetch_option_chain(STOCKS, is_index=False)
+
+# 🔒 FORCE correct column names
+df_stocks = df_stocks.rename(columns={
+    "Symbol": "Stock",
+    "Spot": "Stock_LTP",
+    "%Change": "Stock_%_Change"
+})
+
+for col in ["Stock_High", "Stock_Low"]:
+    if col not in df_stocks.columns:
+        df_stocks[col] = None
+
+st.write("FINAL STOCK COLUMNS:", df_stocks.columns.tolist())
 st.dataframe(df_stocks, use_container_width=True)
 
 # ==================================================
 # SAVE STOCK CSV
 # ==================================================
-try:
-    stock_filename = f"data/option_chain_{datetime.now(IST).strftime('%Y-%m-%d_%H-%M')}.csv"
-    content = base64.b64encode(df_stocks.to_csv(index=False).encode()).decode()
+stock_filename = f"data/option_chain_{datetime.now(IST).strftime('%Y-%m-%d_%H-%M')}.csv"
+content = base64.b64encode(df_stocks.to_csv(index=False).encode()).decode()
 
-    url = f"https://api.github.com/repos/{KITE_REPO}/contents/{stock_filename}"
-    headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github+json"}
+url = f"https://api.github.com/repos/{KITE_REPO}/contents/{stock_filename}"
+headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github+json"}
 
-    payload = {"message": f"Auto snapshot {stock_filename}", "content": content, "branch": GITHUB_BRANCH}
-    r = requests.put(url, headers=headers, json=payload)
+payload = {"message": f"Auto snapshot {stock_filename}", "content": content, "branch": GITHUB_BRANCH}
+r = requests.put(url, headers=headers, json=payload)
 
-    if r.status_code not in (200, 201):
-        raise Exception(r.json())
-
+if r.status_code in (200, 201):
     st.success(f"✅ Stock CSV saved: {stock_filename}")
-
-except Exception as e:
-    st.error(f"❌ Stock GitHub save failed: {e}")
+else:
+    st.error(f"❌ Stock GitHub save failed: {r.text}")
 
 # ==================================================
-# UI – INDEX TABLE
+# UI – INDEX TABLE (UNCHANGED)
 # ==================================================
 st.subheader("📊 INDEX OPTION CHAIN")
 df_index = fetch_option_chain(INDEXES, is_index=True)
@@ -255,20 +268,14 @@ st.dataframe(df_index, use_container_width=True)
 # ==================================================
 # SAVE INDEX CSV
 # ==================================================
-try:
-    index_filename = f"data_index/index_OC_{datetime.now(IST).strftime('%Y-%m-%d_%H-%M')}.csv"
-    content = base64.b64encode(df_index.to_csv(index=False).encode()).decode()
+index_filename = f"data_index/index_OC_{datetime.now(IST).strftime('%Y-%m-%d_%H-%M')}.csv"
+content = base64.b64encode(df_index.to_csv(index=False).encode()).decode()
 
-    url = f"https://api.github.com/repos/{KITE_REPO}/contents/{index_filename}"
-    headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github+json"}
+url = f"https://api.github.com/repos/{KITE_REPO}/contents/{index_filename}"
+payload = {"message": f"Auto snapshot {index_filename}", "content": content, "branch": GITHUB_BRANCH}
+r = requests.put(url, headers=headers, json=payload)
 
-    payload = {"message": f"Auto snapshot {index_filename}", "content": content, "branch": GITHUB_BRANCH}
-    r = requests.put(url, headers=headers, json=payload)
-
-    if r.status_code not in (200, 201):
-        raise Exception(r.json())
-
+if r.status_code in (200, 201):
     st.success(f"✅ Index CSV saved: {index_filename}")
-
-except Exception as e:
-    st.error(f"❌ Index GitHub save failed: {e}")
+else:
+    st.error(f"❌ Index GitHub save failed: {r.text}")
