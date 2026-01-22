@@ -36,7 +36,7 @@ STOCKS = [
 ]
 
 
-#INDEXES = ["NIFTY"]
+INDEXES = ["NIFTY"]
 
 # ==================================================
 # DIRECTORIES
