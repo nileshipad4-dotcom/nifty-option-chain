@@ -15,7 +15,7 @@ DATA_DIR = "data"
 STRIKE_WINDOW = 3      # FIXED
 ATM_WINDOW = 2        # ±2 strikes
 
-MARKET_START = time(9, 00)
+MARKET_START = time(9, 0)
 MARKET_END   = time(15, 45)
 
 # ==================================================
@@ -54,7 +54,6 @@ file_times.sort()
 # ==================================================
 selected = []
 
-# First file after 09:15
 start_file = next(
     (x for x in file_times if x[0].time() >= MARKET_START),
     None
@@ -82,20 +81,37 @@ while current_time.time() < MARKET_END:
     current_time = next_file[0]
 
 # ==================================================
-# ATM_DIFF CALCULATION (YOUR LOGIC)
+# ATM_DIFF CALCULATION (ERROR-PROOF)
 # ==================================================
 def compute_atm_sum(file_path):
     df = pd.read_csv(file_path)
 
+    # 🔒 Handle both old & new CSV formats
+    if "Stock_LTP" not in df.columns and "Spot" in df.columns:
+        df["Stock_LTP"] = df["Spot"]
+
+    if "Stock_%_Change" not in df.columns and "%Change" in df.columns:
+        df["Stock_%_Change"] = df["%Change"]
+
+    # 🔒 Validate required columns
+    required_cols = ["Stock", "Strike", "Stock_LTP", "CE_OI", "PE_OI"]
+    missing = [c for c in required_cols if c not in df.columns]
+
+    if missing:
+        raise Exception(f"Missing columns in CSV: {missing}")
+
+    # 🔢 Convert to numeric
     for c in ["Strike", "Stock_LTP", "CE_OI", "PE_OI"]:
         df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
 
+    # 📊 Weighted OI
     df["ce_x"] = (df["CE_OI"] * df["Strike"]) / 10000
     df["pe_x"] = (df["PE_OI"] * df["Strike"]) / 10000
 
     df["diff"] = np.nan
     df["atm_diff"] = np.nan
 
+    # 🧠 Your original logic (unchanged)
     for stk, g in df.groupby("Stock"):
         g = g.sort_values("Strike").reset_index()
 
