@@ -80,9 +80,9 @@ price_df["Δ%"] = np.where(
     0
 )
 
-# 🔒 remove decimals
-price_df["Total_%"] = price_df["Total_%"].round(0).astype(int)
-price_df["Δ%"] = price_df["Δ%"].round(0).astype(int)
+# integers only
+price_df["Total_%"] = price_df["Total_%"].fillna(0).round(0).astype(int)
+price_df["Δ%"] = price_df["Δ%"].fillna(0).round(0).astype(int)
 
 price_df = price_df.set_index("stock")[["Total_%", "Δ%"]]
 
@@ -127,7 +127,8 @@ def compute_atm_per_stock(ts1, ts2, X):
         )
 
     out = df.groupby("Stock")["atm_diff"].first()
-    return out.round(0).astype(int)   # 🔒 integers only
+    out = out.replace([np.inf, -np.inf], np.nan).fillna(0)
+    return out.round(0).astype(int)
 
 # ==================================================
 # BUILD STOCK_DF
@@ -160,6 +161,7 @@ stock_df.to_csv(stock_path, index=False)
 # PIVOT
 # ==================================================
 pivot_df = stock_df.pivot(index="stock", columns="time", values="atm_diff").sort_index()
+pivot_df = pivot_df.fillna(0).astype(int)
 cols = list(pivot_df.columns)
 
 # ==================================================
@@ -190,17 +192,14 @@ for stock in pivot_df.index:
 
     for start in range(len(values) - Y + 1):
         w = values[start:start+Y]
-        if np.isnan(w).any():
-            continue
-
-        target_cols = cols[start:start+Y]
 
         if lis_length(w) >= K:
-            style_mask.loc[stock, target_cols] = "background-color:#c6efce"
-            gcols.update(target_cols)
+            style_mask.loc[stock, cols[start:start+Y]] = "background-color:#c6efce"
+            gcols.update(cols[start:start+Y])
+
         elif lds_length(w) >= K:
-            style_mask.loc[stock, target_cols] = "background-color:#ffc7ce"
-            rcols.update(target_cols)
+            style_mask.loc[stock, cols[start:start+Y]] = "background-color:#ffc7ce"
+            rcols.update(cols[start:start+Y])
 
     green_count[stock] = len(gcols)
     red_count[stock] = len(rcols)
@@ -223,6 +222,6 @@ st.markdown("### 📊 ATM Diff Pattern Table")
 st.dataframe(styled, use_container_width=True)
 
 st.caption(
-    f"All values shown as integers | "
+    "All values shown as integers | "
     f"Window={Y}, Subsequence≥{K} | Ref TS2={t2}"
 )
