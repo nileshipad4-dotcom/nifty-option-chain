@@ -72,7 +72,7 @@ current_time = start_file[0]
 selected.append(start_file)
 
 while current_time.time() < MARKET_END:
-    target = current_time + timedelta(minutes=10)
+    target = current_time + timedelta(minutes=3)
 
     next_file = next(
         (x for x in file_times if x[0] >= target),
