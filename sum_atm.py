@@ -228,18 +228,29 @@ final = meta.join(pivot)
 # HIGHLIGHT
 # ==================================================
 def highlight(df):
+    # full shape styler (MUST match final exactly)
     sty = pd.DataFrame("", index=df.index, columns=df.columns)
-    for s in pivot.index:
-        v=pivot.loc[s].values
-        for i in range(len(v)-Y+1):
-            w=v[i:i+Y]
-            if np.isnan(w).any(): continue
-            cols=times[i:i+Y]
-            if lis(w)>=K:
-                sty.loc[s, cols]="background-color:#c6efce"
-            elif lds(w)>=K:
-                sty.loc[s, cols]="background-color:#ffc7ce"
+
+    atm_cols = list(pivot.columns)  # ONLY time columns
+
+    for stock in pivot.index:
+        values = pivot.loc[stock].values
+
+        for i in range(len(values) - Y + 1):
+            window = values[i:i+Y]
+
+            if np.isnan(window).any():
+                continue
+
+            cols = atm_cols[i:i+Y]
+
+            if lis(window) >= K:
+                sty.loc[stock, cols] = "background-color:#c6efce"
+            elif lds(window) >= K:
+                sty.loc[stock, cols] = "background-color:#ffc7ce"
+
     return sty
+
 
 st.subheader("ATM Diff Pattern Table")
 st.dataframe(
