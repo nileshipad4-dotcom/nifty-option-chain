@@ -2,8 +2,6 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import os
-import base64
-import requests
 from datetime import time
 
 # ==================================================
@@ -15,13 +13,6 @@ st.title("📊 ATM Diff Dashboard")
 DATA_DIR = "data"
 CACHE_DIR = "data_atm"
 os.makedirs(CACHE_DIR, exist_ok=True)
-
-# ==================================================
-# GITHUB CONFIG
-# ==================================================
-GITHUB_TOKEN = st.secrets["GITHUB_TOKEN"]
-KITE_REPO = st.secrets["KITE_REPO"]
-GITHUB_BRANCH = st.secrets.get("GITHUB_BRANCH", "main")
 
 # ==================================================
 # LOAD CSV FILES
@@ -73,6 +64,29 @@ Y = c4.number_input("Window Y", 4, 20, 6)
 K = 4
 
 # ==================================================
+# PRICE CONTEXT (% CHANGE)
+# ==================================================
+df1 = pd.read_csv(file_map[t1])[["Stock", "Stock_%_Change", "Stock_LTP"]]
+df2 = pd.read_csv(file_map[t2])[["Stock", "Stock_LTP"]]
+
+df1.columns = ["stock", "Total_%", "ltp1"]
+df2.columns = ["stock", "ltp2"]
+
+price_df = df1.merge(df2, on="stock", how="left")
+
+price_df["Δ%"] = np.where(
+    price_df["ltp2"] != 0,
+    ((price_df["ltp1"] - price_df["ltp2"]) / price_df["ltp2"]) * 100,
+    0
+)
+
+# 🔒 remove decimals
+price_df["Total_%"] = price_df["Total_%"].round(0).astype(int)
+price_df["Δ%"] = price_df["Δ%"].round(0).astype(int)
+
+price_df = price_df.set_index("stock")[["Total_%", "Δ%"]]
+
+# ==================================================
 # ATM CALCULATION
 # ==================================================
 def compute_atm_per_stock(ts1, ts2, X):
@@ -112,7 +126,8 @@ def compute_atm_per_stock(ts1, ts2, X):
             g.loc[max(0,atm_i-2):atm_i+2,"diff"].mean()
         )
 
-    return df.groupby("Stock")["atm_diff"].first()
+    out = df.groupby("Stock")["atm_diff"].first()
+    return out.round(0).astype(int)   # 🔒 integers only
 
 # ==================================================
 # BUILD STOCK_DF
@@ -136,7 +151,7 @@ for ts in valid_ts:
 
     series = compute_atm_per_stock(ts, t2, X)
     for stk, v in series.items():
-        stock_df.loc[len(stock_df)] = [t_str, stk, round(v,2)]
+        stock_df.loc[len(stock_df)] = [t_str, stk, v]
 
 stock_df = stock_df.drop_duplicates(["time","stock"])
 stock_df.to_csv(stock_path, index=False)
@@ -154,19 +169,20 @@ def lis_length(arr):
     d = []
     for x in arr:
         i = np.searchsorted(d, x)
-        if i == len(d): d.append(x)
-        else: d[i] = x
+        if i == len(d):
+            d.append(x)
+        else:
+            d[i] = x
     return len(d)
 
 def lds_length(arr):
     return lis_length([-x for x in arr])
 
 # ==================================================
-# HIGHLIGHT + COUNTS (PURE)
+# HIGHLIGHT + COUNTS
 # ==================================================
 style_mask = pd.DataFrame("", index=pivot_df.index, columns=pivot_df.columns)
-green_count = {}
-red_count = {}
+green_count, red_count = {}, {}
 
 for stock in pivot_df.index:
     values = pivot_df.loc[stock, cols].values
@@ -182,7 +198,6 @@ for stock in pivot_df.index:
         if lis_length(w) >= K:
             style_mask.loc[stock, target_cols] = "background-color:#c6efce"
             gcols.update(target_cols)
-
         elif lds_length(w) >= K:
             style_mask.loc[stock, target_cols] = "background-color:#ffc7ce"
             rcols.update(target_cols)
@@ -193,10 +208,9 @@ for stock in pivot_df.index:
 # ==================================================
 # FINAL TABLE
 # ==================================================
-meta = pd.DataFrame({
-    "Green_TS1_TS2": pd.Series(green_count),
-    "Red_TS1_TS2": pd.Series(red_count)
-})
+meta = price_df.copy()
+meta["Green_TS1_TS2"] = pd.Series(green_count)
+meta["Red_TS1_TS2"] = pd.Series(red_count)
 
 final = meta.join(pivot_df)
 
@@ -209,6 +223,6 @@ st.markdown("### 📊 ATM Diff Pattern Table")
 st.dataframe(styled, use_container_width=True)
 
 st.caption(
-    f"Window={Y}, Subsequence≥{K} | "
-    f"Green=Increasing, Red=Decreasing | Ref TS2={t2}"
+    f"All values shown as integers | "
+    f"Window={Y}, Subsequence≥{K} | Ref TS2={t2}"
 )
