@@ -106,12 +106,12 @@ df["diff"] = np.nan
 df["atm_diff"] = np.nan
 
 # ==================================================
-# SLIDING WINDOW + ATM (FIXED)
+# SLIDING WINDOW + ATM (FIXED, EXACT)
 # ==================================================
 for stk, g in df.groupby("Stock"):
     g = g.sort_values("Strike").reset_index()
 
-    # ---- sliding window diff ----
+    # Sliding window diff (±X)
     for i in range(len(g)):
         low = max(0, i - X)
         high = min(len(g) - 1, i + X)
@@ -119,10 +119,10 @@ for stk, g in df.groupby("Stock"):
         diff_val = g.loc[low:high, "pe_x"].sum() - g.loc[low:high, "ce_x"].sum()
         df.at[g.loc[i, "index"], "diff"] = diff_val
 
-    # 🔑 RELOAD diff INTO g (THIS WAS MISSING)
+    # 🔑 Sync diff back to g
     g["diff"] = df.loc[g["index"], "diff"].values
 
-    # ---- ATM diff (±2 fixed) ----
+    # ATM diff (FIXED ±2)
     ltp = g["ltp_0"].iloc[0]
     atm_idx = (g["Strike"] - ltp).abs().values.argmin()
 
@@ -135,7 +135,7 @@ for stk, g in df.groupby("Stock"):
 df["atm_diff"] = df["atm_diff"].fillna(0)
 
 # ==================================================
-# FINAL OUTPUT
+# FINAL RESULT
 # ==================================================
 result = (
     df.groupby("Stock", as_index=False)["atm_diff"]
@@ -143,5 +143,16 @@ result = (
     .sort_values("atm_diff", ascending=False)
 )
 
+# ==================================================
+# Σ ATM_DIFF (/100)
+# ==================================================
+sum_atm_diff = result["atm_diff"].sum() / 100
+
+st.markdown(f"### Σ ATM_DIFF : **{sum_atm_diff:.0f}**")
+
+# ==================================================
+# DISPLAY TABLE
+# ==================================================
 st.dataframe(result, use_container_width=True)
-st.caption(f"TS1: {t1} | TS2: {t2} | X: {X}")
+
+st.caption(f"TS1: {t1} | TS2: {t2} | Strike Window X: {X}")
