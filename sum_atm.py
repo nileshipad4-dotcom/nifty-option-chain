@@ -34,7 +34,6 @@ HEADERS = {
 # ==================================================
 def push_file_to_github(local_path, repo_path, msg):
     url = f"{GITHUB_API}/repos/{KITE_REPO}/contents/{repo_path}"
-
     with open(local_path, "rb") as f:
         content = base64.b64encode(f.read()).decode("utf-8")
 
@@ -134,12 +133,27 @@ def compute_atm_per_stock(ts1, ts2, X):
     return df.groupby("Stock")["atm_diff"].first()
 
 # ==================================================
-# STOCK_REF CSV (SINGLE FILE PER TS2)
+# Σ ATM_DIFF OVER TIME (TABLE 1)
 # ==================================================
-st.markdown("---")
-st.subheader("📈 Stock-wise ATM_DIFF Over Time (Cached)")
+st.markdown("### 🟢 Σ ATM_DIFF Over Time")
 
 ref_time = extract_time(t2).strftime("%H%M")
+date_str = datetime.now().strftime("%Y-%m-%d")
+sigma_csv = f"atm_{date_str}_ref_{ref_time}.csv"
+sigma_path = os.path.join(CACHE_DIR, sigma_csv)
+
+if os.path.exists(sigma_path):
+    sigma_df = pd.read_csv(sigma_path)
+    st.dataframe(
+        sigma_df[["time","sigma_atm_diff"]],
+        use_container_width=True
+    )
+else:
+    st.info("Σ ATM_DIFF cache not found yet.")
+
+# ==================================================
+# STOCK_REF CSV BUILD (IF NEEDED)
+# ==================================================
 stock_csv = f"stock_ref_{ref_time}.csv"
 stock_path = os.path.join(CACHE_DIR, stock_csv)
 repo_stock_path = f"{CACHE_DIR}/{stock_csv}"
@@ -147,11 +161,11 @@ repo_stock_path = f"{CACHE_DIR}/{stock_csv}"
 if os.path.exists(stock_path):
     stock_df = pd.read_csv(stock_path)
 else:
-    stock_df = pd.DataFrame(columns=["time", "stock", "atm_diff"])
+    stock_df = pd.DataFrame(columns=["time","stock","atm_diff"])
 
 valid_ts = [
     ts for ts in filtered_ts
-    if time(9,16) <= extract_time(ts) <= time(11,45)
+    if time(9,16) <= extract_time(ts) <= time(15,45)
     and ts > t2
 ]
 
@@ -161,50 +175,32 @@ for i, ts in enumerate(valid_ts, start=1):
     progress.progress(i / len(valid_ts))
     t_str = extract_time(ts).strftime("%H:%M")
 
-    existing_times = stock_df[stock_df["time"] == t_str]["stock"].tolist()
+    existing = stock_df[stock_df["time"] == t_str]
+    if not existing.empty:
+        continue
 
-    atm_series = None
-    missing_stocks = []
+    atm_series = compute_atm_per_stock(ts, t2, X)
+    for stk, val in atm_series.items():
+        stock_df.loc[len(stock_df)] = [t_str, stk, round(val, 2)]
 
-    # Determine which stocks need calculation
-    if not existing_times:
-        missing_stocks = None  # calculate all
-    else:
-        all_stocks = compute_atm_per_stock(t1, t2, X).index.tolist()
-        missing_stocks = [s for s in all_stocks if s not in existing_times]
-
-    if missing_stocks is None or missing_stocks:
-        atm_series = compute_atm_per_stock(ts, t2, X)
-
-        for stk, val in atm_series.items():
-            if missing_stocks is None or stk in missing_stocks:
-                stock_df.loc[len(stock_df)] = [
-                    t_str,
-                    stk,
-                    round(val, 2)
-                ]
-
-        stock_df.to_csv(stock_path, index=False)
-
-        push_file_to_github(
-            stock_path,
-            repo_stock_path,
-            f"Update stock_ref ATM cache ref {ref_time}"
-        )
-
-# ==================================================
-# DISPLAY (STOCK FILTER)
-# ==================================================
-available_stocks = sorted(stock_df["stock"].unique().tolist())
-selected_stock = st.selectbox("Select Stock", available_stocks)
-
-if selected_stock:
-    view_df = stock_df[stock_df["stock"] == selected_stock] \
-        .sort_values("time")
-
-    st.dataframe(
-        view_df[["time", "atm_diff"]],
-        use_container_width=True
+    stock_df.to_csv(stock_path, index=False)
+    push_file_to_github(
+        stock_path,
+        repo_stock_path,
+        f"Update stock_ref ATM cache ref {ref_time}"
     )
 
-st.caption(f"Stock cache CSV: {stock_csv}")
+# ==================================================
+# DISPLAY TABLE 2 (PIVOT VIEW)
+# ==================================================
+st.markdown("### 📊 Stock-wise ATM_DIFF (Pivoted View)")
+
+pivot_df = (
+    stock_df
+    .pivot(index="stock", columns="time", values="atm_diff")
+    .sort_index()
+)
+
+st.dataframe(pivot_df, use_container_width=True)
+
+st.caption(f"Reference TS2: {t2} | Strike Window X: {X}")
