@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import os
+import base64
+import requests
 from datetime import time, datetime
 
 # ==================================================
@@ -15,7 +17,45 @@ CACHE_DIR = "data_atm"
 os.makedirs(CACHE_DIR, exist_ok=True)
 
 # ==================================================
-# LOAD CSV FILES
+# GITHUB CONFIG (FROM SECRETS)
+# ==================================================
+GITHUB_TOKEN = st.secrets["GITHUB_TOKEN"]
+KITE_REPO = st.secrets["KITE_REPO"]
+GITHUB_BRANCH = st.secrets.get("GITHUB_BRANCH", "main")
+
+GITHUB_API = "https://api.github.com"
+HEADERS = {
+    "Authorization": f"token {GITHUB_TOKEN}",
+    "Accept": "application/vnd.github.v3+json"
+}
+
+# ==================================================
+# GITHUB UPLOAD / UPDATE FILE
+# ==================================================
+def push_file_to_github(local_path, repo_path, commit_msg):
+    url = f"{GITHUB_API}/repos/{KITE_REPO}/contents/{repo_path}"
+
+    with open(local_path, "rb") as f:
+        content = base64.b64encode(f.read()).decode("utf-8")
+
+    # Check if file exists
+    r = requests.get(url, headers=HEADERS)
+    sha = r.json().get("sha") if r.status_code == 200 else None
+
+    payload = {
+        "message": commit_msg,
+        "content": content,
+        "branch": GITHUB_BRANCH
+    }
+    if sha:
+        payload["sha"] = sha
+
+    r = requests.put(url, headers=HEADERS, json=payload)
+    if r.status_code not in (200, 201):
+        st.error(f"GitHub push failed: {r.text}")
+
+# ==================================================
+# LOAD OPTION CHAIN FILES
 # ==================================================
 def load_csv_files():
     files = []
@@ -30,26 +70,20 @@ timestamps_all = [ts for ts, _ in csv_files]
 file_map = dict(csv_files)
 
 # ==================================================
-# TIME PARSER
+# TIME HELPERS
 # ==================================================
 def extract_time(ts):
     hh, mm = map(int, ts.split("_")[-1].split("-")[:2])
     return time(hh, mm)
 
-# ==================================================
-# FILTERED TIMESTAMPS
-# ==================================================
 filtered_ts = [
     ts for ts in timestamps_all
-    if time(8,0) <= extract_time(ts) <= time(16,0)
+    if time(8, 0) <= extract_time(ts) <= time(16, 0)
 ]
 
-# ==================================================
-# DEFAULT TS2 → FIRST AFTER 09:16
-# ==================================================
 def first_after_916(ts_list):
     for ts in ts_list:
-        if extract_time(ts) >= time(9,16):
+        if extract_time(ts) >= time(9, 16):
             return ts
     return ts_list[0]
 
@@ -59,8 +93,7 @@ default_ts2 = first_after_916(filtered_ts)
 # USER INPUT
 # ==================================================
 c1, c2, c3 = st.columns(3)
-
-t1 = c1.selectbox("Timestamp 1 (Current)", filtered_ts, index=len(filtered_ts)-1)
+t1 = c1.selectbox("Timestamp 1", filtered_ts, index=len(filtered_ts)-1)
 t2 = c2.selectbox("Timestamp 2 (Reference)", filtered_ts, index=filtered_ts.index(default_ts2))
 X = c3.number_input("Strike Window X", 1, 10, 4)
 
@@ -85,7 +118,6 @@ def compute_sigma_atm(ts1, ts2, X):
 
     df["ce_x"] = (df["ce_0"] - df["ce_1"]) * df["Strike"] / 10000
     df["pe_x"] = (df["pe_0"] - df["pe_1"]) * df["Strike"] / 10000
-
     df["diff"] = np.nan
     df["atm_diff"] = np.nan
 
@@ -96,11 +128,11 @@ def compute_sigma_atm(ts1, ts2, X):
             low = max(0, i - X)
             high = min(len(g)-1, i + X)
             df.at[g.loc[i,"index"], "diff"] = (
-                g.loc[low:high,"pe_x"].sum() - g.loc[low:high,"ce_x"].sum()
+                g.loc[low:high,"pe_x"].sum()
+                - g.loc[low:high,"ce_x"].sum()
             )
 
         g["diff"] = df.loc[g["index"], "diff"].values
-
         ltp = g["ltp_0"].iloc[0]
         atm_idx = (g["Strike"] - ltp).abs().values.argmin()
         atm_avg = g.loc[max(0,atm_idx-2):atm_idx+2, "diff"].mean()
@@ -109,69 +141,57 @@ def compute_sigma_atm(ts1, ts2, X):
     return df.groupby("Stock")["atm_diff"].first().sum() / 100
 
 # ==================================================
-# CURRENT SNAPSHOT
-# ==================================================
-current_sigma = compute_sigma_atm(t1, t2, X)
-st.markdown(f"### Σ ATM_DIFF : **{current_sigma:.2f}**")
-
-# ==================================================
-# CACHE FILE (PER DATE + TS2)
+# CACHE FILE (DATE + TS2)
 # ==================================================
 date_str = datetime.now().strftime("%Y-%m-%d")
 ref_time = extract_time(t2).strftime("%H%M")
-cache_file = os.path.join(CACHE_DIR, f"atm_{date_str}_ref_{ref_time}.csv")
+cache_name = f"atm_{date_str}_ref_{ref_time}.csv"
+cache_path = os.path.join(CACHE_DIR, cache_name)
+repo_path = f"{CACHE_DIR}/{cache_name}"
 
-if os.path.exists(cache_file):
-    cache_df = pd.read_csv(cache_file)
+if os.path.exists(cache_path):
+    cache_df = pd.read_csv(cache_path)
 else:
     cache_df = pd.DataFrame(columns=["timestamp1","time","sigma_atm_diff"])
 
 # ==================================================
-# TIME SERIES (LOOKUP → CALCULATE → APPEND)
+# TIME SERIES WITH CACHE + GITHUB PUSH
 # ==================================================
-st.markdown("---")
 st.subheader("🕒 Σ ATM_DIFF Over Time (Fixed Reference)")
-
 progress = st.progress(0)
 status = st.empty()
 
-rows = []
 valid_ts = [
     ts for ts in filtered_ts
     if time(9,16) <= extract_time(ts) <= time(15,45)
     and ts > t2
 ]
 
-total = len(valid_ts)
-
 for i, ts in enumerate(valid_ts, start=1):
+    progress.progress(i / len(valid_ts))
     t = extract_time(ts)
-    progress.progress(i / total)
 
-    cached_row = cache_df[cache_df["timestamp1"] == ts]
-
-    if not cached_row.empty:
-        sigma_val = cached_row["sigma_atm_diff"].iloc[0]
+    row = cache_df[cache_df["timestamp1"] == ts]
+    if not row.empty:
+        sigma = row["sigma_atm_diff"].iloc[0]
         status.write(f"⚡ Loaded {t.strftime('%H:%M')} from cache")
     else:
-        status.write(f"⏳ Calculating {t.strftime('%H:%M')} ...")
-        sigma_val = compute_sigma_atm(ts, t2, X)
+        status.write(f"⏳ Calculating {t.strftime('%H:%M')}")
+        sigma = compute_sigma_atm(ts, t2, X)
 
         cache_df.loc[len(cache_df)] = [
-            ts,
-            t.strftime("%H:%M"),
-            round(sigma_val, 2)
+            ts, t.strftime("%H:%M"), round(sigma, 2)
         ]
-        cache_df.to_csv(cache_file, index=False)
+        cache_df.to_csv(cache_path, index=False)
 
-    rows.append({
-        "Time": t.strftime("%H:%M"),
-        "Σ ATM_DIFF": round(sigma_val, 2)
-    })
+        # 🔥 PUSH TO GITHUB
+        push_file_to_github(
+            cache_path,
+            repo_path,
+            f"Update ATM cache ({date_str} ref {ref_time})"
+        )
 
 status.write("✅ Completed")
 
-time_series_df = pd.DataFrame(rows)
-st.dataframe(time_series_df, use_container_width=True)
-
-st.caption(f"Reference TS2: {t2} | Cached file: {os.path.basename(cache_file)}")
+st.dataframe(cache_df, use_container_width=True)
+st.caption(f"Saved & pushed to GitHub: `{repo_path}`")
