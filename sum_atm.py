@@ -23,12 +23,6 @@ GITHUB_TOKEN = st.secrets["GITHUB_TOKEN"]
 KITE_REPO = st.secrets["KITE_REPO"]
 GITHUB_BRANCH = st.secrets.get("GITHUB_BRANCH", "main")
 
-GITHUB_API = "https://api.github.com"
-HEADERS = {
-    "Authorization": f"token {GITHUB_TOKEN}",
-    "Accept": "application/vnd.github.v3+json"
-}
-
 # ==================================================
 # LOAD CSV FILES
 # ==================================================
@@ -41,6 +35,10 @@ def load_csv_files():
     return sorted(files)
 
 csv_files = load_csv_files()
+if not csv_files:
+    st.error("No option_chain CSV files found")
+    st.stop()
+
 timestamps_all = [ts for ts, _ in csv_files]
 file_map = dict(csv_files)
 
@@ -72,11 +70,10 @@ t1 = c1.selectbox("Timestamp 1 (Current)", filtered_ts, index=len(filtered_ts)-1
 t2 = c2.selectbox("Timestamp 2 (Reference)", filtered_ts, index=filtered_ts.index(default_ts2))
 X = c3.number_input("Strike Window X", 1, 10, 4)
 Y = c4.number_input("Window Y", 4, 20, 6)
-
 K = 4
 
 # ==================================================
-# ATM CALC
+# ATM CALCULATION
 # ==================================================
 def compute_atm_per_stock(ts1, ts2, X):
     df1 = pd.read_csv(file_map[ts1])
@@ -165,45 +162,37 @@ def lds_length(arr):
     return lis_length([-x for x in arr])
 
 # ==================================================
-# HIGHLIGHT + COUNTS (SINGLE PASS)
+# HIGHLIGHT + COUNTS (PURE)
 # ==================================================
+style_mask = pd.DataFrame("", index=pivot_df.index, columns=pivot_df.columns)
 green_count = {}
 red_count = {}
 
-def highlight_segments(data):
-    styles = pd.DataFrame("", index=data.index, columns=data.columns)
+for stock in pivot_df.index:
+    values = pivot_df.loc[stock, cols].values
+    gcols, rcols = set(), set()
 
-    for stock in data.index:
-        values = data.loc[stock, cols].values
-        gcols, rcols = set(), set()
+    for start in range(len(values) - Y + 1):
+        w = values[start:start+Y]
+        if np.isnan(w).any():
+            continue
 
-        for start in range(len(values) - Y + 1):
-            w = values[start:start+Y]
-            if np.isnan(w).any():
-                continue
+        target_cols = cols[start:start+Y]
 
-            target_cols = cols[start:start+Y]
+        if lis_length(w) >= K:
+            style_mask.loc[stock, target_cols] = "background-color:#c6efce"
+            gcols.update(target_cols)
 
-            if lis_length(w) >= K:
-                styles.loc[stock, target_cols] = "background-color:#c6efce"
-                gcols.update(target_cols)
+        elif lds_length(w) >= K:
+            style_mask.loc[stock, target_cols] = "background-color:#ffc7ce"
+            rcols.update(target_cols)
 
-            elif lds_length(w) >= K:
-                styles.loc[stock, target_cols] = "background-color:#ffc7ce"
-                rcols.update(target_cols)
-
-        green_count[stock] = len(gcols)
-        red_count[stock] = len(rcols)
-
-    return styles
+    green_count[stock] = len(gcols)
+    red_count[stock] = len(rcols)
 
 # ==================================================
-# DISPLAY
+# FINAL TABLE
 # ==================================================
-st.markdown("### 📊 ATM Diff Pattern Table")
-
-styled = pivot_df.style.apply(highlight_segments, axis=None)
-
 meta = pd.DataFrame({
     "Green_TS1_TS2": pd.Series(green_count),
     "Red_TS1_TS2": pd.Series(red_count)
@@ -211,12 +200,15 @@ meta = pd.DataFrame({
 
 final = meta.join(pivot_df)
 
-st.dataframe(
-    final.style.apply(highlight_segments, axis=None),
-    use_container_width=True
+styled = final.style.apply(
+    lambda _: style_mask.loc[_.index, _.columns.intersection(style_mask.columns)],
+    axis=None
 )
+
+st.markdown("### 📊 ATM Diff Pattern Table")
+st.dataframe(styled, use_container_width=True)
 
 st.caption(
     f"Window={Y}, Subsequence≥{K} | "
-    f"Green=Increasing, Red=Decreasing | Ref={t2}"
+    f"Green=Increasing, Red=Decreasing | Ref TS2={t2}"
 )
