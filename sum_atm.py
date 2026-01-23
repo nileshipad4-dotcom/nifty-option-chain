@@ -89,7 +89,7 @@ c1, c2, c3, c4 = st.columns(4)
 t1 = c1.selectbox("Timestamp 1 (Current)", filtered_ts, index=len(filtered_ts)-1)
 t2 = c2.selectbox("Timestamp 2 (Reference)", filtered_ts, index=filtered_ts.index(default_ts2))
 X = c3.number_input("Strike Window X", 1, 10, 4)
-Y = c4.number_input("Lookback Y (stocks)", 3, 20, 6)
+Y = c4.number_input("Lookback Y (time columns)", 3, 20, 6)
 
 # ==================================================
 # ATM CALC (PER STOCK)
@@ -200,30 +200,35 @@ pivot_df = (
 )
 
 # ==================================================
-# BREADTH LOGIC (INCREASING / DECREASING)
+# BREADTH LOGIC + PARTIAL HIGHLIGHT
 # ==================================================
 recent_cols = pivot_df.columns[-Y:]
-delta = pivot_df[recent_cols[-1]] - pivot_df[recent_cols[0]]
 
+delta = pivot_df[recent_cols[-1]] - pivot_df[recent_cols[0]]
 inc_count = (delta > 0).sum()
 dec_count = (delta < 0).sum()
 
-def highlight_breadth(df):
-    if inc_count >= 4:
-        return df.style.set_properties(**{"background-color": "#c6efce"})
-    elif dec_count >= 4:
-        return df.style.set_properties(**{"background-color": "#ffc7ce"})
-    else:
-        return df.style
-
 st.markdown(
-    f"**Breadth:** Increasing = {inc_count}, Decreasing = {dec_count} "
+    f"**Breadth:** Increasing = {inc_count}, "
+    f"Decreasing = {dec_count} "
     f"(Threshold = 4 out of {Y})"
 )
 
+def highlight_breadth_part(data):
+    styles = pd.DataFrame("", index=data.index, columns=data.columns)
+
+    if inc_count >= 4:
+        styles[recent_cols] = "background-color:#c6efce"
+    elif dec_count >= 4:
+        styles[recent_cols] = "background-color:#ffc7ce"
+
+    return styles
+
 st.dataframe(
-    highlight_breadth(pivot_df),
+    pivot_df.style.apply(highlight_breadth_part, axis=None),
     use_container_width=True
 )
 
-st.caption(f"Reference TS2: {t2} | Strike Window X: {X} | Lookback Y: {Y}")
+st.caption(
+    f"Reference TS2: {t2} | Strike Window X: {X} | Lookback Y: {Y}"
+)
