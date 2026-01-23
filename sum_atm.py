@@ -85,11 +85,12 @@ default_ts2 = first_after_916(filtered_ts)
 # USER INPUT
 # ==================================================
 c1, c2, c3, c4 = st.columns(4)
-
 t1 = c1.selectbox("Timestamp 1 (Current)", filtered_ts, index=len(filtered_ts)-1)
 t2 = c2.selectbox("Timestamp 2 (Reference)", filtered_ts, index=filtered_ts.index(default_ts2))
 X = c3.number_input("Strike Window X", 1, 10, 4)
-Y = c4.number_input("Lookback Y (time columns)", 3, 20, 6)
+Y = c4.number_input("Window Y", 4, 20, 6)
+
+K = 4  # fixed by design
 
 # ==================================================
 # ATM CALC (PER STOCK)
@@ -135,27 +136,11 @@ def compute_atm_per_stock(ts1, ts2, X):
     return df.groupby("Stock")["atm_diff"].first()
 
 # ==================================================
-# Σ ATM_DIFF OVER TIME (TABLE 1)
+# BUILD stock_ref CSV
 # ==================================================
-st.markdown("### 🟢 Σ ATM_DIFF Over Time")
-
 ref_time = extract_time(t2).strftime("%H%M")
-date_str = datetime.now().strftime("%Y-%m-%d")
-sigma_csv = f"atm_{date_str}_ref_{ref_time}.csv"
-sigma_path = os.path.join(CACHE_DIR, sigma_csv)
-
-if os.path.exists(sigma_path):
-    sigma_df = pd.read_csv(sigma_path)
-    st.dataframe(sigma_df[["time","sigma_atm_diff"]], use_container_width=True)
-else:
-    st.info("Σ ATM_DIFF cache not found yet.")
-
-# ==================================================
-# STOCK_REF CSV BUILD
-# ==================================================
 stock_csv = f"stock_ref_{ref_time}.csv"
 stock_path = os.path.join(CACHE_DIR, stock_csv)
-repo_stock_path = f"{CACHE_DIR}/{stock_csv}"
 
 if os.path.exists(stock_path):
     stock_df = pd.read_csv(stock_path)
@@ -168,12 +153,8 @@ valid_ts = [
     and ts > t2
 ]
 
-progress = st.progress(0)
-
-for i, ts in enumerate(valid_ts, start=1):
-    progress.progress(i / len(valid_ts))
+for ts in valid_ts:
     t_str = extract_time(ts).strftime("%H:%M")
-
     if not stock_df[stock_df["time"] == t_str].empty:
         continue
 
@@ -181,18 +162,11 @@ for i, ts in enumerate(valid_ts, start=1):
     for stk, val in atm_series.items():
         stock_df.loc[len(stock_df)] = [t_str, stk, round(val, 2)]
 
-    stock_df.to_csv(stock_path, index=False)
-    push_file_to_github(
-        stock_path,
-        repo_stock_path,
-        f"Update stock_ref ATM cache ref {ref_time}"
-    )
+stock_df.to_csv(stock_path, index=False)
 
 # ==================================================
-# PIVOT TABLE
+# PIVOT
 # ==================================================
-st.markdown("### 📊 Stock-wise ATM_DIFF (Pivoted View)")
-
 pivot_df = (
     stock_df
     .pivot(index="stock", columns="time", values="atm_diff")
@@ -200,35 +174,61 @@ pivot_df = (
 )
 
 # ==================================================
-# BREADTH LOGIC + PARTIAL HIGHLIGHT
+# LIS / LDS HELPERS
 # ==================================================
-recent_cols = pivot_df.columns[-Y:]
+def lis_length(arr):
+    dp = []
+    for x in arr:
+        i = np.searchsorted(dp, x)
+        if i == len(dp):
+            dp.append(x)
+        else:
+            dp[i] = x
+    return len(dp)
 
-delta = pivot_df[recent_cols[-1]] - pivot_df[recent_cols[0]]
-inc_count = (delta > 0).sum()
-dec_count = (delta < 0).sum()
+def lds_length(arr):
+    return lis_length([-x for x in arr])
 
-st.markdown(
-    f"**Breadth:** Increasing = {inc_count}, "
-    f"Decreasing = {dec_count} "
-    f"(Threshold = 4 out of {Y})"
-)
+# ==================================================
+# FINAL SEGMENT HIGHLIGHT (INCREASING + DECREASING)
+# ==================================================
+cols = list(pivot_df.columns)
 
-def highlight_breadth_part(data):
+def highlight_segments(data):
     styles = pd.DataFrame("", index=data.index, columns=data.columns)
 
-    if inc_count >= 4:
-        styles[recent_cols] = "background-color:#c6efce"
-    elif dec_count >= 4:
-        styles[recent_cols] = "background-color:#ffc7ce"
+    for stock in data.index:
+        values = data.loc[stock, cols].values
+
+        for start in range(0, len(values) - Y + 1):
+            window = values[start:start+Y]
+
+            if np.isnan(window).any():
+                continue
+
+            inc = lis_length(window)
+            dec = lds_length(window)
+
+            target_cols = cols[start:start+Y]
+
+            if inc >= K:
+                styles.loc[stock, target_cols] = "background-color:#c6efce"
+            elif dec >= K:
+                styles.loc[stock, target_cols] = "background-color:#ffc7ce"
 
     return styles
 
+# ==================================================
+# DISPLAY
+# ==================================================
+st.markdown("### 📊 Stock-wise ATM_DIFF (Pattern-based Highlight)")
+
 st.dataframe(
-    pivot_df.style.apply(highlight_breadth_part, axis=None),
+    pivot_df.style.apply(highlight_segments, axis=None),
     use_container_width=True
 )
 
 st.caption(
-    f"Reference TS2: {t2} | Strike Window X: {X} | Lookback Y: {Y}"
+    f"Rule: window={Y}, remove={Y-K}, subsequence≥{K} | "
+    f"Green=Increasing, Red=Decreasing | Ref TS2={t2}"
 )
