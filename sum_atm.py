@@ -76,7 +76,7 @@ t2 = c2.selectbox(
 X = c3.number_input("Strike Window X", 1, 10, 4)
 
 # ==================================================
-# ATM DIFF CALC FUNCTION (REUSED)
+# ATM CALC FUNCTION
 # ==================================================
 def compute_sigma_atm(ts1, ts2, X):
     df1 = pd.read_csv(file_map[ts1])
@@ -103,97 +103,63 @@ def compute_sigma_atm(ts1, ts2, X):
     for stk, g in df.groupby("Stock"):
         g = g.sort_values("Strike").reset_index()
 
-        # Sliding window diff (±X)
         for i in range(len(g)):
             low = max(0, i - X)
-            high = min(len(g) - 1, i + X)
-            diff_val = g.loc[low:high, "pe_x"].sum() - g.loc[low:high, "ce_x"].sum()
-            df.at[g.loc[i,"index"], "diff"] = diff_val
+            high = min(len(g)-1, i + X)
+            df.at[g.loc[i,"index"], "diff"] = (
+                g.loc[low:high,"pe_x"].sum()
+                - g.loc[low:high,"ce_x"].sum()
+            )
 
         g["diff"] = df.loc[g["index"], "diff"].values
 
-        # ATM diff (±2 fixed)
         ltp = g["ltp_0"].iloc[0]
         atm_idx = (g["Strike"] - ltp).abs().values.argmin()
 
-        low = max(0, atm_idx - 2)
-        high = min(len(g)-1, atm_idx + 2)
-
-        atm_avg = g.loc[low:high, "diff"].mean()
+        atm_avg = g.loc[max(0,atm_idx-2):atm_idx+2, "diff"].mean()
         df.loc[g["index"], "atm_diff"] = atm_avg
 
-    result = df.groupby("Stock")["atm_diff"].first()
-    return result.sum() / 100   # divide by 100 as requested
+    return df.groupby("Stock")["atm_diff"].first().sum() / 100
+
 
 # ==================================================
-# CURRENT SNAPSHOT TABLE
+# CURRENT SNAPSHOT
 # ==================================================
 current_sigma = compute_sigma_atm(t1, t2, X)
-
-df1 = pd.read_csv(file_map[t1])
-df2 = pd.read_csv(file_map[t2])
-
-df1 = df1[["Stock","Strike","Stock_LTP","CE_OI","PE_OI"]]
-df2 = df2[["Stock","Strike","Stock_LTP","CE_OI","PE_OI"]]
-
-df1.columns = ["Stock","Strike","ltp_0","ce_0","pe_0"]
-df2.columns = ["Stock","Strike","ltp_1","ce_1","pe_1"]
-
-df = df1.merge(df2, on=["Stock","Strike"])
-
-for c in df.columns:
-    if c != "Stock":
-        df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
-
-df["ce_x"] = (df["ce_0"] - df["ce_1"]) * df["Strike"] / 10000
-df["pe_x"] = (df["pe_0"] - df["pe_1"]) * df["Strike"] / 10000
-
-df["diff"] = np.nan
-df["atm_diff"] = np.nan
-
-for stk, g in df.groupby("Stock"):
-    g = g.sort_values("Strike").reset_index()
-
-    for i in range(len(g)):
-        low = max(0, i - X)
-        high = min(len(g)-1, i + X)
-        df.at[g.loc[i,"index"], "diff"] = (
-            g.loc[low:high,"pe_x"].sum() - g.loc[low:high,"ce_x"].sum()
-        )
-
-    g["diff"] = df.loc[g["index"], "diff"].values
-
-    ltp = g["ltp_0"].iloc[0]
-    atm_idx = (g["Strike"] - ltp).abs().values.argmin()
-    atm_avg = g.loc[max(0,atm_idx-2):atm_idx+2, "diff"].mean()
-
-    df.loc[g["index"], "atm_diff"] = atm_avg
-
-result_table = df.groupby("Stock", as_index=False)["atm_diff"].first()
-
 st.markdown(f"### Σ ATM_DIFF : **{current_sigma:.2f}**")
-st.dataframe(result_table, use_container_width=True)
 
 # ==================================================
-# TIME SERIES TABLE (FIXED TS2)
+# TIME SERIES WITH LIVE PROGRESS
 # ==================================================
 st.markdown("---")
 st.subheader("🕒 Σ ATM_DIFF Over Time (Fixed Reference)")
 
+progress = st.progress(0)
+status = st.empty()
+
 rows = []
+valid_ts = [
+    ts for ts in filtered_ts
+    if extract_time(ts) >= time(9,16)
+    and extract_time(ts) <= time(15,45)
+    and ts > t2
+]
 
-for ts in filtered_ts:
+total = len(valid_ts)
+
+for i, ts in enumerate(valid_ts, start=1):
     t = extract_time(ts)
+    status.write(f"⏳ Calculating for {t.strftime('%H:%M')} ...")
 
-    if (
-        time(9,16) <= t <= time(15,45)
-        and ts > t2
-    ):
-        sigma_val = compute_sigma_atm(ts, t2, X)
-        rows.append({
-            "Time": t.strftime("%H:%M"),
-            "Σ ATM_DIFF": round(sigma_val, 2)
-        })
+    sigma_val = compute_sigma_atm(ts, t2, X)
+    rows.append({
+        "Time": t.strftime("%H:%M"),
+        "Σ ATM_DIFF": round(sigma_val, 2)
+    })
+
+    progress.progress(i / total)
+
+status.write("✅ Calculation complete")
 
 time_series_df = pd.DataFrame(rows)
 
