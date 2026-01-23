@@ -4,7 +4,7 @@ import numpy as np
 import os
 import base64
 import requests
-from datetime import time, datetime
+from datetime import time
 
 # ==================================================
 # CONFIG
@@ -45,7 +45,7 @@ def push_file(local_path, repo_path, msg):
     requests.put(url, headers=HEADERS, json=payload)
 
 # ==================================================
-# LOAD OPTION CHAIN FILES
+# LOAD CSV FILES
 # ==================================================
 def load_csvs():
     out = []
@@ -68,7 +68,7 @@ def ts_time(ts):
 
 valid_ts = [
     ts for ts in timestamps
-    if time(9,16) <= ts_time(ts) <= time(11,45)
+    if time(9,16) <= ts_time(ts) <= time(15,45)
 ]
 
 def default_ts2(ts_list):
@@ -83,16 +83,17 @@ def default_ts2(ts_list):
 c1, c2, c3, c4 = st.columns(4)
 t1 = c1.selectbox("TS1", valid_ts, index=len(valid_ts)-1)
 t2 = c2.selectbox("TS2", valid_ts, index=valid_ts.index(default_ts2(valid_ts)))
-X = c3.number_input("X", 1, 10, 4)
-Y = c4.number_input("Y", 4, 20, 6)
+X = c3.number_input("Strike X", 1, 10, 4)
+Y = c4.number_input("Window Y", 4, 20, 6)
 
-K = 4
+K = 4  # subsequence length
 
 # ==================================================
 # PRICE CONTEXT
 # ==================================================
 df1 = pd.read_csv(file_map[t1])[["Stock","Stock_%_Change","Stock_LTP"]]
 df2 = pd.read_csv(file_map[t2])[["Stock","Stock_LTP"]]
+
 df1.columns = ["stock","tot%","ltp1"]
 df2.columns = ["stock","ltp2"]
 
@@ -101,7 +102,7 @@ price_df["Δ%"] = ((price_df["ltp1"] - price_df["ltp2"]) / price_df["ltp2"]) * 1
 price_df = price_df.set_index("stock")[["tot%","Δ%"]]
 
 # ==================================================
-# ATM CALC
+# ATM CALCULATION
 # ==================================================
 def atm_calc(ts1, ts2):
     d1 = pd.read_csv(file_map[ts1])
@@ -109,6 +110,7 @@ def atm_calc(ts1, ts2):
 
     d1 = d1[["Stock","Strike","Stock_LTP","CE_OI","PE_OI"]]
     d2 = d2[["Stock","Strike","Stock_LTP","CE_OI","PE_OI"]]
+
     d1.columns = ["Stock","Strike","ltp0","ce0","pe0"]
     d2.columns = ["Stock","Strike","ltp1","ce1","pe1"]
 
@@ -120,10 +122,11 @@ def atm_calc(ts1, ts2):
     df["ce_x"] = (df["ce0"] - df["ce1"]) * df["Strike"] / 10000
     df["pe_x"] = (df["pe0"] - df["pe1"]) * df["Strike"] / 10000
     df["diff"] = np.nan
-    df["atm"] = np.nan
+    df["atm_diff"] = np.nan
 
     for s, g in df.groupby("Stock"):
         g = g.sort_values("Strike").reset_index()
+
         for i in range(len(g)):
             lo, hi = max(0,i-X), min(len(g)-1,i+X)
             df.at[g.loc[i,"index"],"diff"] = (
@@ -132,11 +135,11 @@ def atm_calc(ts1, ts2):
 
         ltp = g["ltp0"].iloc[0]
         atm_i = (g["Strike"]-ltp).abs().idxmin()
-        df.loc[g.loc[atm_i,"index"],"atm"] = (
+        df.loc[g.loc[atm_i,"index"],"atm_diff"] = (
             g.loc[max(0,atm_i-2):atm_i+2,"diff"].mean()
         )
 
-    return df.groupby("Stock")["atm"].first()
+    return df.groupby("Stock")["atm_diff"].first()
 
 # ==================================================
 # CACHE CSV (STOCK_REF)
@@ -148,7 +151,7 @@ cache_path = os.path.join(CACHE_DIR, cache_file)
 if os.path.exists(cache_path):
     stock_df = pd.read_csv(cache_path)
 else:
-    stock_df = pd.DataFrame(columns=["time","stock","atm"])
+    stock_df = pd.DataFrame(columns=["time","stock","atm_diff"])
 
 for ts in valid_ts:
     if ts_time(ts) < ts_time(t2) or ts_time(ts) > ts_time(t1):
@@ -169,10 +172,10 @@ push_file(cache_path, f"{CACHE_DIR}/{cache_file}", f"update {cache_file}")
 # Σ ATM_DIFF TABLE
 # ==================================================
 sigma = (
-    stock_df.groupby("time")["atm"]
+    stock_df.groupby("time")["atm_diff"]
     .sum()
     .reset_index()
-    .rename(columns={"atm":"Σ_ATM"})
+    .rename(columns={"atm_diff":"Σ_ATM"})
 )
 sigma["Σ_ATM"] /= 100
 
@@ -182,7 +185,7 @@ st.dataframe(sigma, use_container_width=True)
 # ==================================================
 # PIVOT
 # ==================================================
-pivot = stock_df.pivot(index="stock", columns="time", values="atm").sort_index()
+pivot = stock_df.pivot(index="stock", columns="time", values="atm_diff").sort_index()
 times = list(pivot.columns)
 
 # ==================================================
@@ -239,4 +242,7 @@ def highlight(df):
     return sty
 
 st.subheader("ATM Diff Pattern Table")
-st.dataframe(final.style.apply(highlight, axis=None), use_container_width=True)
+st.dataframe(
+    final.style.apply(highlight, axis=None),
+    use_container_width=True
+)
