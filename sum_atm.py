@@ -7,8 +7,8 @@ from datetime import time
 # ==================================================
 # CONFIG
 # ==================================================
-st.set_page_config(page_title="Σ ATM", layout="centered")
-st.title("📊 Σ ATM")
+st.set_page_config(page_title="Σ ATM Debug", layout="wide")
+st.title("📊 Σ ATM – Debug View (Per Stock)")
 
 DATA_DIR = "data"
 
@@ -24,16 +24,11 @@ def load_csv_files():
     return sorted(files, reverse=True)
 
 csv_files = load_csv_files()
-
-if len(csv_files) < 2:
-    st.error("Need at least 2 CSV files")
-    st.stop()
-
 timestamps_all = [ts for ts, _ in csv_files]
 file_map = dict(csv_files)
 
 # ==================================================
-# TIME FILTER (08:30–16:00)
+# TIME PARSER + FILTER (08:30–16:00)
 # ==================================================
 def extract_time(ts):
     try:
@@ -44,35 +39,34 @@ def extract_time(ts):
 
 filtered_ts = [
     ts for ts in timestamps_all
-    if extract_time(ts) and time(8,30) <= extract_time(ts) <= time(16,0)
+    if extract_time(ts)
+    and time(8,30) <= extract_time(ts) <= time(16,0)
 ]
 
 # ==================================================
-# AUTO TS2 → FIRST AFTER 09:16
+# DEFAULT TS2 → FIRST AFTER 09:16
 # ==================================================
 def first_after_916(ts_list):
-    for ts in ts_list:
+    for ts in reversed(ts_list):
         if extract_time(ts) >= time(9,16):
             return ts
-    return ts_list[0]
+    return ts_list[-1]
 
 default_ts2 = first_after_916(filtered_ts)
 
 # ==================================================
 # USER INPUT
 # ==================================================
-c1, c2 = st.columns(2)
+c1, c2, c3 = st.columns(3)
 
 ts1 = c1.selectbox("Timestamp 1", filtered_ts, index=0)
-ts2 = c2.selectbox("Timestamp 2", filtered_ts, index=filtered_ts.index(default_ts2))
-
-X = st.number_input(
-    "Strike Window X",
-    min_value=1,
-    max_value=10,
-    value=4,
-    step=1
+ts2 = c2.selectbox(
+    "Timestamp 2 (Ref)",
+    filtered_ts,
+    index=filtered_ts.index(default_ts2)
 )
+
+X = c3.number_input("Strike Window X", 1, 10, 4)
 
 # ==================================================
 # LOAD DATA
@@ -96,31 +90,30 @@ for c in df.columns:
         df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
 
 # ==================================================
-# CORE CALCULATIONS (UNCHANGED)
+# CORE CALC (UNCHANGED)
 # ==================================================
 df["d_ce"] = df["ce_0"] - df["ce_1"]
 df["d_pe"] = df["pe_0"] - df["pe_1"]
 
 df["ce_x"] = (df["d_ce"] * df["Strike"]) / 10000
 df["pe_x"] = (df["d_pe"] * df["Strike"]) / 10000
-df["diff"] = df["pe_x"] - df["ce_x"]
-
+df["diff"] = np.nan
 df["atm_diff"] = np.nan
 
 # ==================================================
-# SLIDING WINDOW + ATM (EXACT LOGIC)
+# SLIDING WINDOW + ATM (EXACT)
 # ==================================================
 for stk, g in df.groupby("Stock"):
     g = g.sort_values("Strike").reset_index()
 
-    # --- sliding window (needed for diff) ---
+    # Sliding window diff
     for i in range(len(g)):
         low = max(0, i - X)
         high = min(len(g)-1, i + X)
-        diff_val = g.loc[low:high, "diff"].sum()
-        df.at[g.loc[i,"index"], "diff"] = diff_val
+        diff_sum = g.loc[low:high, "pe_x"].sum() - g.loc[low:high, "ce_x"].sum()
+        df.at[g.loc[i,"index"], "diff"] = diff_sum
 
-    # --- ATM FIXED ±2 ---
+    # ATM ±2
     ltp = g["ltp_0"].iloc[0]
     atm_idx = (g["Strike"] - ltp).abs().values.argmin()
 
@@ -147,13 +140,32 @@ def filter_near_ltp(df, n=5):
 display_df = filter_near_ltp(df, n=5)
 
 # ==================================================
-# FINAL Σ ATM (MATCHES ORIGINAL)
+# PER-STOCK Σ ATM BREAKDOWN
 # ==================================================
-sum_atm = display_df["atm_diff"].sum() / 1000
+summary = (
+    display_df
+    .groupby("Stock")
+    .agg(
+        atm_diff=("atm_diff","first"),
+        rows=("atm_diff","size")
+    )
+    .reset_index()
+)
+
+summary["contribution"] = (summary["atm_diff"] * summary["rows"]) / 1000
+
+sigma_atm = summary["contribution"].sum()
 
 # ==================================================
-# OUTPUT ONLY
+# DISPLAY
 # ==================================================
+st.subheader("📋 Σ ATM – Stock Wise Breakdown")
+
+st.dataframe(
+    summary.sort_values("contribution", ascending=False),
+    use_container_width=True
+)
+
 st.markdown("## Σ ATM")
-st.markdown(f"### **{sum_atm:.0f}**")
-st.caption(f"TS1: {ts1} | TS2: {ts2} | X: {X}")
+st.markdown(f"### **{sigma_atm:.0f}**")
+st.caption(f"TS1={ts1} | TS2={ts2} | X={X}")
