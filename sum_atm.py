@@ -23,7 +23,7 @@ CACHE_DIR = "data_atm"
 os.makedirs(CACHE_DIR, exist_ok=True)
 
 # ==================================================
-# GITHUB CONFIG (SECRETS)
+# GITHUB CONFIG
 # ==================================================
 GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN")
 KITE_REPO = st.secrets.get("KITE_REPO")
@@ -35,23 +35,16 @@ HEADERS = {
     "Accept": "application/vnd.github.v3+json"
 }
 
-# ==================================================
-# SAFE GITHUB PUSH
-# ==================================================
 def push_file(local_path, repo_path, msg):
     if not GITHUB_TOKEN or not KITE_REPO:
         return
-
     url = f"{GITHUB_API}/repos/{KITE_REPO}/contents/{repo_path}"
     content = base64.b64encode(open(local_path, "rb").read()).decode()
-
     r = requests.get(url, headers=HEADERS)
     sha = r.json().get("sha") if r.status_code == 200 else None
-
     payload = {"message": msg, "content": content, "branch": GITHUB_BRANCH}
     if sha:
         payload["sha"] = sha
-
     requests.put(url, headers=HEADERS, json=payload)
 
 # ==================================================
@@ -59,9 +52,6 @@ def push_file(local_path, repo_path, msg):
 # ==================================================
 def load_csvs():
     files = []
-    if not os.path.exists(DATA_DIR):
-        return files
-
     for f in os.listdir(DATA_DIR):
         if f.startswith("option_chain_") and f.endswith(".csv"):
             ts = f.replace("option_chain_", "").replace(".csv", "")
@@ -85,10 +75,6 @@ def ts_time(ts):
 
 all_ts = [ts for ts in timestamps if time(8, 0) <= ts_time(ts) <= time(16, 0)]
 atm_ts = [ts for ts in all_ts if time(9, 16) <= ts_time(ts) <= time(15, 45)]
-
-if not all_ts or not atm_ts:
-    st.error("No valid timestamps in trading window")
-    st.stop()
 
 def default_ts2(ts_list):
     for ts in ts_list:
@@ -121,7 +107,6 @@ price_df["Δ%"] = np.where(
     (price_df["ltp1"] - price_df["ltp2"]) / price_df["ltp2"] * 100,
     0
 )
-
 price_df = price_df.set_index("stock")[["tot%", "Δ%"]]
 
 # ==================================================
@@ -166,50 +151,98 @@ def atm_calc(ts1, ts2):
     return df.groupby("Stock")["atm_diff"].first()
 
 # ==================================================
-# CACHE
+# BUILD STOCK_DF
 # ==================================================
 ref_tag = ts_time(t2).strftime("%H%M")
 cache_file = f"stock_ref_{ref_tag}.csv"
 cache_path = os.path.join(CACHE_DIR, cache_file)
 
-if os.path.exists(cache_path):
-    stock_df = pd.read_csv(cache_path)
-else:
-    stock_df = pd.DataFrame(columns=["time", "stock", "atm_diff"])
+stock_df = pd.read_csv(cache_path) if os.path.exists(cache_path) else \
+           pd.DataFrame(columns=["time", "stock", "atm_diff"])
 
 valid_range = [ts for ts in atm_ts if ts_time(t2) <= ts_time(ts) <= ts_time(t1)]
-
 progress = st.progress(0.0)
 
 for i, ts in enumerate(valid_range, 1):
     progress.progress(i / len(valid_range))
     t_str = ts_time(ts).strftime("%H:%M")
 
-    if (stock_df["time"] == t_str).any():
+    if ((stock_df["time"] == t_str) & (stock_df["stock"].notna())).any():
         continue
 
     series = atm_calc(ts, t2)
     for stk, v in series.items():
         stock_df.loc[len(stock_df)] = [t_str, stk, round(v, 2)]
 
+stock_df = stock_df.drop_duplicates(subset=["time", "stock"], keep="last")
 stock_df.to_csv(cache_path, index=False)
 push_file(cache_path, f"{CACHE_DIR}/{cache_file}", f"update {cache_file}")
 
 # ==================================================
-# Σ ATM
-# ==================================================
-sigma = stock_df.groupby("time")["atm_diff"].sum().reset_index()
-sigma["Σ_ATM"] = sigma["atm_diff"] / 100
-sigma.drop(columns="atm_diff", inplace=True)
-
-st.subheader("Σ ATM_DIFF Over Time")
-st.dataframe(sigma, use_container_width=True)
-
-# ==================================================
-# PIVOT + META
+# PIVOT
 # ==================================================
 pivot = stock_df.pivot(index="stock", columns="time", values="atm_diff").sort_index()
-final = price_df.join(pivot)
+t2_col = ts_time(t2).strftime("%H:%M")
+pivot = pivot.drop(columns=[t2_col], errors="ignore")
+times = list(pivot.columns)
+
+# ==================================================
+# LIS / LDS
+# ==================================================
+def lis(a):
+    d = []
+    for x in a:
+        i = np.searchsorted(d, x)
+        if i == len(d):
+            d.append(x)
+        else:
+            d[i] = x
+    return len(d)
+
+def lds(a):
+    return lis([-x for x in a])
+
+# ==================================================
+# STYLE MASK + TS1–TS2 COUNTS
+# ==================================================
+style_mask = pd.DataFrame("", index=pivot.index, columns=pivot.columns)
+
+green_count = {}
+red_count = {}
+
+for s in pivot.index:
+    v = pivot.loc[s].values
+    gcols, rcols = set(), set()
+
+    for i in range(len(v) - Y + 1):
+        w = v[i:i + Y]
+        if np.isnan(w).any():
+            continue
+
+        cols = times[i:i + Y]
+
+        if lis(w) >= K:
+            style_mask.loc[s, cols] = "background-color:#c6efce"
+            gcols.update(cols)
+        elif lds(w) >= K:
+            style_mask.loc[s, cols] = "background-color:#ffc7ce"
+            rcols.update(cols)
+
+    green_count[s] = len(gcols)
+    red_count[s] = len(rcols)
+
+# ==================================================
+# FINAL TABLE
+# ==================================================
+final = price_df.copy()
+final["Green_TS1_TS2"] = pd.Series(green_count)
+final["Red_TS1_TS2"] = pd.Series(red_count)
+final = final.join(pivot)
+
+styled = final.style.apply(
+    lambda _: style_mask.loc[_.index, _.columns],
+    axis=None
+)
 
 st.subheader("ATM Diff Pattern Table")
-st.dataframe(final, use_container_width=True)
+st.dataframe(styled, use_container_width=True)
