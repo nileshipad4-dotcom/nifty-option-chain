@@ -261,10 +261,14 @@ for s in pivot.index:
 # ==================================================
 st.subheader("ATM Diff Pattern Table")
 
-st.dataframe(
-    final.style.apply(
-        lambda _: style_mask.loc[_.index, _.columns],
-        axis=None
-    ),
-    use_container_width=True
+st.subheader("ATM Diff Pattern Table")
+
+styled = final.style.apply(
+    lambda _: style_mask.loc[_.index, _.columns],
+    axis=None
+)
+
+st.markdown(
+    styled.to_html(),
+    unsafe_allow_html=True
 )
