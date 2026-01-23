@@ -13,7 +13,7 @@ st.title("📊 ATM Diff (Stock-wise)")
 DATA_DIR = "data"
 
 # ==================================================
-# LOAD CSV FILES
+# LOAD FILES
 # ==================================================
 def load_csv_files():
     files = []
@@ -65,18 +65,12 @@ c1, c2, c3 = st.columns(3)
 
 t1 = c1.selectbox("Timestamp 1", filtered_ts, index=0)
 t2 = c2.selectbox(
-    "Timestamp 2 (Ref)",
+    "Timestamp 2 (Reference)",
     filtered_ts,
     index=filtered_ts.index(default_ts2)
 )
 
-X = c3.number_input(
-    "Strike Window X",
-    min_value=1,
-    max_value=10,
-    value=4,
-    step=1
-)
+X = c3.number_input("Strike Window X", 1, 10, 4)
 
 # ==================================================
 # LOAD DATA
@@ -84,13 +78,13 @@ X = c3.number_input(
 df1 = pd.read_csv(file_map[t1])
 df2 = pd.read_csv(file_map[t2])
 
-df1 = df1[["Stock", "Strike", "Stock_LTP", "CE_OI", "PE_OI"]]
-df2 = df2[["Stock", "Strike", "Stock_LTP", "CE_OI", "PE_OI"]]
+df1 = df1[["Stock","Strike","Stock_LTP","CE_OI","PE_OI"]]
+df2 = df2[["Stock","Strike","Stock_LTP","CE_OI","PE_OI"]]
 
-df1.columns = ["Stock", "Strike", "ltp_0", "ce_0", "pe_0"]
-df2.columns = ["Stock", "Strike", "ltp_1", "ce_1", "pe_1"]
+df1.columns = ["Stock","Strike","ltp_0","ce_0","pe_0"]
+df2.columns = ["Stock","Strike","ltp_1","ce_1","pe_1"]
 
-df = df1.merge(df2, on=["Stock", "Strike"])
+df = df1.merge(df2, on=["Stock","Strike"])
 
 # ==================================================
 # NUMERIC SAFETY
@@ -100,7 +94,7 @@ for c in df.columns:
         df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
 
 # ==================================================
-# CORE CALCULATIONS (SAME AS ORIGINAL)
+# CORE CALCULATIONS
 # ==================================================
 df["d_ce"] = df["ce_0"] - df["ce_1"]
 df["d_pe"] = df["pe_0"] - df["pe_1"]
@@ -112,22 +106,23 @@ df["diff"] = np.nan
 df["atm_diff"] = np.nan
 
 # ==================================================
-# SLIDING WINDOW + ATM (EXACT LOGIC)
+# SLIDING WINDOW + ATM (FIXED)
 # ==================================================
 for stk, g in df.groupby("Stock"):
     g = g.sort_values("Strike").reset_index()
 
-    # Sliding window diff (±X)
+    # ---- sliding window diff ----
     for i in range(len(g)):
         low = max(0, i - X)
         high = min(len(g) - 1, i + X)
 
-        ce_sum = g.loc[low:high, "ce_x"].sum()
-        pe_sum = g.loc[low:high, "pe_x"].sum()
+        diff_val = g.loc[low:high, "pe_x"].sum() - g.loc[low:high, "ce_x"].sum()
+        df.at[g.loc[i, "index"], "diff"] = diff_val
 
-        df.at[g.loc[i, "index"], "diff"] = pe_sum - ce_sum
+    # 🔑 RELOAD diff INTO g (THIS WAS MISSING)
+    g["diff"] = df.loc[g["index"], "diff"].values
 
-    # ATM diff (FIXED ±2 strikes)
+    # ---- ATM diff (±2 fixed) ----
     ltp = g["ltp_0"].iloc[0]
     atm_idx = (g["Strike"] - ltp).abs().values.argmin()
 
@@ -140,7 +135,7 @@ for stk, g in df.groupby("Stock"):
 df["atm_diff"] = df["atm_diff"].fillna(0)
 
 # ==================================================
-# FINAL OUTPUT (2 COLUMNS ONLY)
+# FINAL OUTPUT
 # ==================================================
 result = (
     df.groupby("Stock", as_index=False)["atm_diff"]
@@ -149,5 +144,4 @@ result = (
 )
 
 st.dataframe(result, use_container_width=True)
-
-st.caption(f"TS1: {t1} | TS2: {t2} | Strike Window X: {X}")
+st.caption(f"TS1: {t1} | TS2: {t2} | X: {X}")
