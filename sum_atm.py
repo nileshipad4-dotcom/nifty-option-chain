@@ -57,14 +57,14 @@ default_ts2 = first_after_916(filtered_ts)
 # USER INPUT
 # ==================================================
 c1, c2, c3, c4 = st.columns(4)
-t1 = c1.selectbox("Timestamp 1 (Current)", filtered_ts, index=len(filtered_ts)-1)
+t1 = c1.selectbox("Timestamp 1 (Current)", filtered_ts, index=len(filtered_ts) - 1)
 t2 = c2.selectbox("Timestamp 2 (Reference)", filtered_ts, index=filtered_ts.index(default_ts2))
 X = c3.number_input("Strike Window X", 1, 10, 4)
 Y = c4.number_input("Window Y", 4, 20, 6)
 K = 4
 
 # ==================================================
-# PRICE CONTEXT (% CHANGE)
+# PRICE CONTEXT (% COLUMNS)
 # ==================================================
 df1 = pd.read_csv(file_map[t1])[["Stock", "Stock_%_Change", "Stock_LTP"]]
 df2 = pd.read_csv(file_map[t2])[["Stock", "Stock_LTP"]]
@@ -76,11 +76,10 @@ price_df = df1.merge(df2, on="stock", how="left")
 
 price_df["Δ%"] = np.where(
     price_df["ltp2"] != 0,
-    ((price_df["ltp1"] - price_df["ltp2"]) / price_df["ltp2"]) * 100,
+    (price_df["ltp1"] - price_df["ltp2"]) / price_df["ltp2"] * 100,
     0
 )
 
-# integers only
 price_df["Total_%"] = price_df["Total_%"].fillna(0).round(0).astype(int)
 price_df["Δ%"] = price_df["Δ%"].fillna(0).round(0).astype(int)
 
@@ -93,13 +92,13 @@ def compute_atm_per_stock(ts1, ts2, X):
     df1 = pd.read_csv(file_map[ts1])
     df2 = pd.read_csv(file_map[ts2])
 
-    df1 = df1[["Stock","Strike","Stock_LTP","CE_OI","PE_OI"]]
-    df2 = df2[["Stock","Strike","Stock_LTP","CE_OI","PE_OI"]]
+    df1 = df1[["Stock", "Strike", "Stock_LTP", "CE_OI", "PE_OI"]]
+    df2 = df2[["Stock", "Strike", "Stock_LTP", "CE_OI", "PE_OI"]]
 
-    df1.columns = ["Stock","Strike","ltp0","ce0","pe0"]
-    df2.columns = ["Stock","Strike","ltp1","ce1","pe1"]
+    df1.columns = ["Stock", "Strike", "ltp0", "ce0", "pe0"]
+    df2.columns = ["Stock", "Strike", "ltp1", "ce1", "pe1"]
 
-    df = df1.merge(df2, on=["Stock","Strike"])
+    df = df1.merge(df2, on=["Stock", "Strike"])
 
     for c in df.columns:
         if c != "Stock":
@@ -114,16 +113,15 @@ def compute_atm_per_stock(ts1, ts2, X):
         g = g.sort_values("Strike").reset_index()
 
         for i in range(len(g)):
-            lo, hi = max(0, i-X), min(len(g)-1, i+X)
-            df.at[g.loc[i,"index"], "diff"] = (
-                g.loc[lo:hi,"pe_x"].sum()
-                - g.loc[lo:hi,"ce_x"].sum()
+            lo, hi = max(0, i - X), min(len(g) - 1, i + X)
+            df.at[g.loc[i, "index"], "diff"] = (
+                g.loc[lo:hi, "pe_x"].sum() - g.loc[lo:hi, "ce_x"].sum()
             )
 
         ltp = g["ltp0"].iloc[0]
         atm_i = (g["Strike"] - ltp).abs().idxmin()
-        df.loc[g.loc[atm_i,"index"], "atm_diff"] = (
-            g.loc[max(0,atm_i-2):atm_i+2,"diff"].mean()
+        df.loc[g.loc[atm_i, "index"], "atm_diff"] = (
+            g.loc[max(0, atm_i - 2):atm_i + 2, "diff"].mean()
         )
 
     out = df.groupby("Stock")["atm_diff"].first()
@@ -137,7 +135,7 @@ ref_time = extract_time(t2).strftime("%H%M")
 stock_path = os.path.join(CACHE_DIR, f"stock_ref_{ref_time}.csv")
 
 stock_df = pd.read_csv(stock_path) if os.path.exists(stock_path) \
-    else pd.DataFrame(columns=["time","stock","atm_diff"])
+    else pd.DataFrame(columns=["time", "stock", "atm_diff"])
 
 valid_ts = [
     ts for ts in filtered_ts
@@ -154,14 +152,13 @@ for ts in valid_ts:
     for stk, v in series.items():
         stock_df.loc[len(stock_df)] = [t_str, stk, v]
 
-stock_df = stock_df.drop_duplicates(["time","stock"])
+stock_df = stock_df.drop_duplicates(["time", "stock"])
 stock_df.to_csv(stock_path, index=False)
 
 # ==================================================
 # PIVOT
 # ==================================================
-pivot_df = stock_df.pivot(index="stock", columns="time", values="atm_diff").sort_index()
-pivot_df = pivot_df.fillna(0).astype(int)
+pivot_df = stock_df.pivot(index="stock", columns="time", values="atm_diff").fillna(0).astype(int)
 cols = list(pivot_df.columns)
 
 # ==================================================
@@ -190,16 +187,16 @@ for stock in pivot_df.index:
     values = pivot_df.loc[stock, cols].values
     gcols, rcols = set(), set()
 
-    for start in range(len(values) - Y + 1):
-        w = values[start:start+Y]
+    for i in range(len(values) - Y + 1):
+        w = values[i:i + Y]
+        target_cols = cols[i:i + Y]
 
         if lis_length(w) >= K:
-            style_mask.loc[stock, cols[start:start+Y]] = "background-color:#c6efce"
-            gcols.update(cols[start:start+Y])
-
+            style_mask.loc[stock, target_cols] = "background-color:#c6efce"
+            gcols.update(target_cols)
         elif lds_length(w) >= K:
-            style_mask.loc[stock, cols[start:start+Y]] = "background-color:#ffc7ce"
-            rcols.update(cols[start:start+Y])
+            style_mask.loc[stock, target_cols] = "background-color:#ffc7ce"
+            rcols.update(target_cols)
 
     green_count[stock] = len(gcols)
     red_count[stock] = len(rcols)
@@ -218,8 +215,19 @@ styled = final.style.apply(
     axis=None
 )
 
+# ==================================================
+# DISPLAY (HTML — REQUIRED)
+# ==================================================
 st.markdown("### 📊 ATM Diff Pattern Table")
-st.dataframe(styled, use_container_width=True)
+
+st.markdown(
+    f"""
+    <div style="overflow-x:auto">
+        {styled.to_html()}
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
 st.caption(
     "All values shown as integers | "
