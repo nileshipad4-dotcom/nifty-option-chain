@@ -5,6 +5,12 @@ import os
 import base64
 import requests
 from datetime import time
+from streamlit_autorefresh import st_autorefresh
+
+# ==================================================
+# AUTO REFRESH
+# ==================================================
+st_autorefresh(interval=3600_000, key="auto_refresh")
 
 # ==================================================
 # CONFIG
@@ -35,6 +41,7 @@ HEADERS = {
 def push_file(local_path, repo_path, msg):
     url = f"{GITHUB_API}/repos/{KITE_REPO}/contents/{repo_path}"
     content = base64.b64encode(open(local_path,"rb").read()).decode()
+
     r = requests.get(url, headers=HEADERS)
     sha = r.json().get("sha") if r.status_code == 200 else None
 
@@ -45,15 +52,15 @@ def push_file(local_path, repo_path, msg):
     requests.put(url, headers=HEADERS, json=payload)
 
 # ==================================================
-# LOAD CSV FILES
+# LOAD OPTION CHAIN FILES
 # ==================================================
 def load_csvs():
-    out = []
+    files = []
     for f in os.listdir(DATA_DIR):
         if f.startswith("option_chain_") and f.endswith(".csv"):
             ts = f.replace("option_chain_","").replace(".csv","")
-            out.append((ts, os.path.join(DATA_DIR,f)))
-    return sorted(out)
+            files.append((ts, os.path.join(DATA_DIR,f)))
+    return sorted(files)
 
 csv_files = load_csvs()
 file_map = dict(csv_files)
@@ -66,8 +73,13 @@ def ts_time(ts):
     hh, mm = map(int, ts.split("_")[-1].split("-")[:2])
     return time(hh, mm)
 
-valid_ts = [
+all_ts = [
     ts for ts in timestamps
+    if time(8,0) <= ts_time(ts) <= time(16,0)
+]
+
+atm_ts = [
+    ts for ts in all_ts
     if time(9,16) <= ts_time(ts) <= time(15,45)
 ]
 
@@ -81,11 +93,10 @@ def default_ts2(ts_list):
 # USER INPUT
 # ==================================================
 c1, c2, c3, c4 = st.columns(4)
-t1 = c1.selectbox("TS1", valid_ts, index=len(valid_ts)-1)
-t2 = c2.selectbox("TS2", valid_ts, index=valid_ts.index(default_ts2(valid_ts)))
+t1 = c1.selectbox("TS1", all_ts, index=len(all_ts)-1)
+t2 = c2.selectbox("TS2", atm_ts, index=atm_ts.index(default_ts2(atm_ts)))
 X = c3.number_input("Strike X", 1, 10, 4)
 Y = c4.number_input("Window Y", 4, 20, 6)
-
 K = 4  # subsequence length
 
 # ==================================================
@@ -153,11 +164,16 @@ if os.path.exists(cache_path):
 else:
     stock_df = pd.DataFrame(columns=["time","stock","atm_diff"])
 
-for ts in valid_ts:
-    if ts_time(ts) < ts_time(t2) or ts_time(ts) > ts_time(t1):
-        continue
+progress = st.progress(0)
+valid_range = [
+    ts for ts in atm_ts
+    if ts_time(t2) <= ts_time(ts) <= ts_time(t1)
+]
 
+for i, ts in enumerate(valid_range, start=1):
+    progress.progress(i / len(valid_range))
     t_str = ts_time(ts).strftime("%H:%M")
+
     if (stock_df["time"] == t_str).any():
         continue
 
@@ -225,35 +241,30 @@ meta["R#"]=pd.Series(R)
 final = meta.join(pivot)
 
 # ==================================================
-# HIGHLIGHT
+# PRECOMPUTE STYLE MASK (STREAMLIT SAFE)
 # ==================================================
-def highlight(df):
-    # full shape styler (MUST match final exactly)
-    sty = pd.DataFrame("", index=df.index, columns=df.columns)
+style_mask = pd.DataFrame("", index=final.index, columns=final.columns)
 
-    atm_cols = list(pivot.columns)  # ONLY time columns
+for s in pivot.index:
+    v=pivot.loc[s].values
+    for i in range(len(v)-Y+1):
+        w=v[i:i+Y]
+        if np.isnan(w).any(): continue
+        cols=times[i:i+Y]
+        if lis(w)>=K:
+            style_mask.loc[s, cols] = "background-color:#c6efce"
+        elif lds(w)>=K:
+            style_mask.loc[s, cols] = "background-color:#ffc7ce"
 
-    for stock in pivot.index:
-        values = pivot.loc[stock].values
-
-        for i in range(len(values) - Y + 1):
-            window = values[i:i+Y]
-
-            if np.isnan(window).any():
-                continue
-
-            cols = atm_cols[i:i+Y]
-
-            if lis(window) >= K:
-                sty.loc[stock, cols] = "background-color:#c6efce"
-            elif lds(window) >= K:
-                sty.loc[stock, cols] = "background-color:#ffc7ce"
-
-    return sty
-
-
+# ==================================================
+# DISPLAY FINAL TABLE
+# ==================================================
 st.subheader("ATM Diff Pattern Table")
+
 st.dataframe(
-    final.style.apply(highlight, axis=None),
+    final.style.apply(
+        lambda _: style_mask.loc[_.index, _.columns],
+        axis=None
+    ),
     use_container_width=True
 )
