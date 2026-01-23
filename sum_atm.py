@@ -169,7 +169,7 @@ status = st.empty()
 rows = []
 valid_ts = [
     ts for ts in filtered_ts
-    if time(9,16) <= extract_time(ts) <= time(15,45)
+    if time(9,16) <= extract_time(ts) <= time(11,45)
     and ts > t2
 ]
 
