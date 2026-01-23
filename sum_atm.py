@@ -30,9 +30,9 @@ HEADERS = {
 }
 
 # ==================================================
-# GITHUB PUSH FUNCTION
+# GITHUB PUSH
 # ==================================================
-def push_file_to_github(local_path, repo_path, commit_msg):
+def push_file_to_github(local_path, repo_path, msg):
     url = f"{GITHUB_API}/repos/{KITE_REPO}/contents/{repo_path}"
 
     with open(local_path, "rb") as f:
@@ -41,11 +41,7 @@ def push_file_to_github(local_path, repo_path, commit_msg):
     r = requests.get(url, headers=HEADERS)
     sha = r.json().get("sha") if r.status_code == 200 else None
 
-    payload = {
-        "message": commit_msg,
-        "content": content,
-        "branch": GITHUB_BRANCH
-    }
+    payload = {"message": msg, "content": content, "branch": GITHUB_BRANCH}
     if sha:
         payload["sha"] = sha
 
@@ -138,102 +134,77 @@ def compute_atm_per_stock(ts1, ts2, X):
     return df.groupby("Stock")["atm_diff"].first()
 
 # ==================================================
-# Σ ATM_DIFF (CURRENT)
-# ==================================================
-current_sigma = compute_atm_per_stock(t1, t2, X).sum() / 100
-st.markdown(f"### Σ ATM_DIFF : **{current_sigma:.2f}**")
-
-# ==================================================
-# CACHE FILE (DATE + TS2)
-# ==================================================
-date_str = datetime.now().strftime("%Y-%m-%d")
-ref_time = extract_time(t2).strftime("%H%M")
-cache_name = f"atm_{date_str}_ref_{ref_time}.csv"
-cache_path = os.path.join(CACHE_DIR, cache_name)
-repo_path = f"{CACHE_DIR}/{cache_name}"
-
-if os.path.exists(cache_path):
-    cache_df = pd.read_csv(cache_path)
-else:
-    cache_df = pd.DataFrame(columns=["timestamp1","time","sigma_atm_diff"])
-
-# ==================================================
-# Σ ATM_DIFF OVER TIME (CACHE + LIVE)
+# STOCK_REF CSV (SINGLE FILE PER TS2)
 # ==================================================
 st.markdown("---")
-st.subheader("🕒 Σ ATM_DIFF Over Time (Fixed Reference)")
+st.subheader("📈 Stock-wise ATM_DIFF Over Time (Cached)")
 
-progress = st.progress(0)
-status = st.empty()
+ref_time = extract_time(t2).strftime("%H%M")
+stock_csv = f"stock_ref_{ref_time}.csv"
+stock_path = os.path.join(CACHE_DIR, stock_csv)
+repo_stock_path = f"{CACHE_DIR}/{stock_csv}"
 
-rows = []
+if os.path.exists(stock_path):
+    stock_df = pd.read_csv(stock_path)
+else:
+    stock_df = pd.DataFrame(columns=["time", "stock", "atm_diff"])
+
 valid_ts = [
     ts for ts in filtered_ts
     if time(9,16) <= extract_time(ts) <= time(11,45)
     and ts > t2
 ]
 
+progress = st.progress(0)
+
 for i, ts in enumerate(valid_ts, start=1):
     progress.progress(i / len(valid_ts))
-    t = extract_time(ts)
+    t_str = extract_time(ts).strftime("%H:%M")
 
-    cached = cache_df[cache_df["timestamp1"] == ts]
-    if not cached.empty:
-        sigma_val = cached["sigma_atm_diff"].iloc[0]
-        status.write(f"⚡ Loaded {t.strftime('%H:%M')} from cache")
+    existing_times = stock_df[stock_df["time"] == t_str]["stock"].tolist()
+
+    atm_series = None
+    missing_stocks = []
+
+    # Determine which stocks need calculation
+    if not existing_times:
+        missing_stocks = None  # calculate all
     else:
-        status.write(f"⏳ Calculating {t.strftime('%H:%M')}")
-        sigma_val = compute_atm_per_stock(ts, t2, X).sum() / 100
+        all_stocks = compute_atm_per_stock(t1, t2, X).index.tolist()
+        missing_stocks = [s for s in all_stocks if s not in existing_times]
 
-        cache_df.loc[len(cache_df)] = [
-            ts, t.strftime("%H:%M"), round(sigma_val, 2)
-        ]
-        cache_df.to_csv(cache_path, index=False)
-
-        push_file_to_github(
-            cache_path,
-            repo_path,
-            f"Update ATM cache {date_str} ref {ref_time}"
-        )
-
-    rows.append({
-        "Time": t.strftime("%H:%M"),
-        "Σ ATM_DIFF": round(sigma_val, 2)
-    })
-
-status.write("✅ Completed")
-st.dataframe(pd.DataFrame(rows), use_container_width=True)
-
-# ==================================================
-# STOCK-WISE ATM_DIFF OVER TIME
-# ==================================================
-st.markdown("---")
-st.subheader("📈 Stock-wise ATM_DIFF Over Time")
-
-latest_stocks = sorted(
-    compute_atm_per_stock(t1, t2, X).index.tolist()
-)
-
-selected_stocks = st.multiselect(
-    "Select Stock(s)",
-    latest_stocks
-)
-
-if selected_stocks:
-    rows = []
-    progress2 = st.progress(0)
-
-    for i, ts in enumerate(valid_ts, start=1):
-        progress2.progress(i / len(valid_ts))
+    if missing_stocks is None or missing_stocks:
         atm_series = compute_atm_per_stock(ts, t2, X)
 
-        for stk in selected_stocks:
-            rows.append({
-                "Time": extract_time(ts).strftime("%H:%M"),
-                "Stock": stk,
-                "ATM_DIFF": round(atm_series.get(stk, 0), 2)
-            })
+        for stk, val in atm_series.items():
+            if missing_stocks is None or stk in missing_stocks:
+                stock_df.loc[len(stock_df)] = [
+                    t_str,
+                    stk,
+                    round(val, 2)
+                ]
 
-    st.dataframe(pd.DataFrame(rows), use_container_width=True)
+        stock_df.to_csv(stock_path, index=False)
 
-st.caption(f"Reference TS2: {t2} | Strike Window X: {X}")
+        push_file_to_github(
+            stock_path,
+            repo_stock_path,
+            f"Update stock_ref ATM cache ref {ref_time}"
+        )
+
+# ==================================================
+# DISPLAY (STOCK FILTER)
+# ==================================================
+available_stocks = sorted(stock_df["stock"].unique().tolist())
+selected_stock = st.selectbox("Select Stock", available_stocks)
+
+if selected_stock:
+    view_df = stock_df[stock_df["stock"] == selected_stock] \
+        .sort_values("time")
+
+    st.dataframe(
+        view_df[["time", "atm_diff"]],
+        use_container_width=True
+    )
+
+st.caption(f"Stock cache CSV: {stock_csv}")
