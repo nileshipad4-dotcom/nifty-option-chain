@@ -136,8 +136,7 @@ stock_df.to_csv(stock_path, index=False)
 # Σ ATM_DIFF TABLE
 # ==================================================
 sigma_df = (
-    stock_df
-    .groupby("time", as_index=False)["atm_diff"]
+    stock_df.groupby("time", as_index=False)["atm_diff"]
     .sum()
     .rename(columns={"atm_diff": "Σ_ATM"})
 )
@@ -180,17 +179,45 @@ def lds_length(arr):
     return lis_length([-x for x in arr])
 
 # ==================================================
-# HIGHLIGHT + COUNT
+# COMPUTE COUNTS (CORRECT PLACE)
 # ==================================================
 green_counts = {}
 red_counts = {}
 
+for stock in pivot_df_range.index:
+    values = pivot_df_range.loc[stock].values
+    gcols, rcols = set(), set()
+
+    for start in range(len(values) - Y + 1):
+        w = values[start:start+Y]
+        if np.isnan(w).any():
+            continue
+
+        target_cols = pivot_df_range.columns[start:start+Y]
+
+        if lis_length(w) >= K:
+            gcols.update(target_cols)
+        elif lds_length(w) >= K:
+            rcols.update(target_cols)
+
+    green_counts[stock] = len(gcols)
+    red_counts[stock] = len(rcols)
+
+counts_df = pd.DataFrame({
+    "G": pd.Series(green_counts),
+    "R": pd.Series(red_counts),
+})
+
+final_df = counts_df.join(pivot_df_range)
+
+# ==================================================
+# HIGHLIGHT FUNCTION (PURE STYLING)
+# ==================================================
 def highlight_segments(data):
     styles = pd.DataFrame("", index=data.index, columns=data.columns)
 
     for stock in data.index:
         values = data.loc[stock].values
-        gcols, rcols = set(), set()
 
         for start in range(len(values) - Y + 1):
             w = values[start:start+Y]
@@ -201,26 +228,14 @@ def highlight_segments(data):
 
             if lis_length(w) >= K:
                 styles.loc[stock, target_cols] = "background-color:#c6efce"
-                gcols.update(target_cols)
             elif lds_length(w) >= K:
                 styles.loc[stock, target_cols] = "background-color:#ffc7ce"
-                rcols.update(target_cols)
-
-        green_counts[stock] = len(gcols)
-        red_counts[stock] = len(rcols)
 
     return styles
 
 # ==================================================
-# FINAL TABLE WITH INLINE COUNTS
+# DISPLAY FINAL TABLE
 # ==================================================
-counts_df = pd.DataFrame({
-    "G": pd.Series(green_counts),
-    "R": pd.Series(red_counts),
-})
-
-final_df = counts_df.join(pivot_df_range)
-
 st.markdown("### 📊 ATM Diff Pattern Table (TS2 → TS1)")
 
 styled = (
@@ -232,10 +247,7 @@ styled = (
 
 st.dataframe(styled, use_container_width=True)
 
-# ==================================================
-# CAPTION
-# ==================================================
 st.caption(
     f"Window={Y}, Subsequence≥{K} | "
-    f"Green=Increasing, Red=Decreasing | Range: {t2} → {t1}"
+    f"G=Green count, R=Red count | Range: {t2} → {t1}"
 )
