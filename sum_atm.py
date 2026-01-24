@@ -136,7 +136,7 @@ for ts in valid_ts:
 
     series = compute_atm_per_stock(ts, t2, X)
     for stk, v in series.items():
-        stock_df.loc[len(stock_df)] = [t_str, stk, round(v, 0)]
+        stock_df.loc[len(stock_df)] = [t_str, stk, round(v, 2)]
 
 stock_df = stock_df.drop_duplicates(["time","stock"])
 stock_df.to_csv(stock_path, index=False)
@@ -149,7 +149,7 @@ pivot_df = (
     stock_df
     .pivot(index="stock", columns="time", values="atm_diff")
     .sort_index()
-    .round(2)
+    .round(0)
 )
 cols = list(pivot_df.columns)
 
