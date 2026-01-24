@@ -94,7 +94,7 @@ c1, c2, c3, c4 = st.columns(4)
 t1 = c1.selectbox("Timestamp 1 (Current)", filtered_ts, index=len(filtered_ts)-1)
 t2 = c2.selectbox("Timestamp 2 (Reference)", filtered_ts, index=filtered_ts.index(default_ts2))
 X  = c3.number_input("Strike Window X", 1, 10, 4)
-Y  = c4.number_input("Window Y", 4, 20, 6)
+Y  = c4.number_input("Window Y", 4, 20, 4)
 
 K = 4
 
