@@ -26,6 +26,10 @@ def load_csv_files():
     return sorted(files)
 
 csv_files = load_csv_files()
+if not csv_files:
+    st.error("No option_chain CSV files found")
+    st.stop()
+
 timestamps_all = [ts for ts, _ in csv_files]
 file_map = dict(csv_files)
 
@@ -60,7 +64,7 @@ Y = c4.number_input("Window Y", 4, 20, 6)
 K = 4
 
 # ==================================================
-# ATM CALCULATION (UNCHANGED)
+# ATM CALCULATION (UNCHANGED, WORKING)
 # ==================================================
 def compute_atm_per_stock(ts1, ts2, X):
     df1 = pd.read_csv(file_map[ts1])
@@ -101,14 +105,19 @@ def compute_atm_per_stock(ts1, ts2, X):
     return df.groupby("Stock")["atm_diff"].first()
 
 # ==================================================
-# BUILD STOCK_DF (TS2 → TS1 ONLY)
+# BUILD STOCK_DF (STRICT TS2 → TS1)
 # ==================================================
 stock_df = pd.DataFrame(columns=["time","stock","atm_diff"])
 
 valid_ts = [
     ts for ts in filtered_ts
-    if extract_time(t2) <= extract_time(ts) <= extract_time(t1)
+    if extract_time(ts) > extract_time(t2)
+    and extract_time(ts) <= extract_time(t1)
 ]
+
+if not valid_ts:
+    st.warning("No timestamps between TS2 and TS1")
+    st.stop()
 
 for ts in valid_ts:
     t_str = extract_time(ts).strftime("%H:%M")
@@ -130,7 +139,7 @@ st.subheader("Σ ATM_DIFF Over Time (TS2 → TS1)")
 st.dataframe(sigma_df, use_container_width=True)
 
 # ==================================================
-# PIVOT (TS2 → TS1)
+# PIVOT
 # ==================================================
 pivot_df = (
     stock_df
@@ -155,7 +164,7 @@ def lds_length(arr):
     return lis_length([-x for x in arr])
 
 # ==================================================
-# HIGHLIGHT + COUNTS (CONSISTENT)
+# HIGHLIGHT + COUNTS (ROBUST)
 # ==================================================
 green_counts, red_counts = {}, {}
 
@@ -206,6 +215,7 @@ styled = (
 st.dataframe(styled, use_container_width=True)
 
 st.caption(
-    f"TS2 → TS1 | Window={Y}, Subsequence≥{K} | "
+    f"Range: {t2} → {t1} | "
+    f"Window={Y}, Subsequence≥{K} | "
     f"G=Green count, R=Red count"
 )
