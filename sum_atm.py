@@ -136,11 +136,7 @@ for ts in valid_ts:
 
     series = compute_atm_per_stock(ts, t2, X)
     for stk, v in series.items():
-        stock_df.loc[len(stock_df)] = [
-            t_str,
-            stk,
-            int(f"{0 if pd.isna(v) else v:.0f}")
-        ]
+        stock_df.loc[len(stock_df)] = [t_str, stk, round(v, 2)]
 
 stock_df = stock_df.drop_duplicates(["time","stock"])
 stock_df.to_csv(stock_path, index=False)
@@ -166,49 +162,37 @@ def lds_length(arr):
     return lis_length([-x for x in arr])
 
 # ==================================================
-# HIGHLIGHT + COUNTS
+# HIGHLIGHT
 # ==================================================
-style_mask = pd.DataFrame("", index=pivot_df.index, columns=pivot_df.columns)
-green_count, red_count = {}, {}
+def highlight_segments(data):
+    styles = pd.DataFrame("", index=data.index, columns=data.columns)
 
-for stock in pivot_df.index:
-    values = pivot_df.loc[stock, cols].values
-    gcols, rcols = set(), set()
+    for stock in data.index:
+        values = data.loc[stock, cols].values
 
-    for start in range(len(values) - Y + 1):
-        w = values[start:start+Y]
-        if np.isnan(w).any():
-            continue
+        for start in range(len(values) - Y + 1):
+            w = values[start:start+Y]
+            if np.isnan(w).any():
+                continue
 
-        target_cols = cols[start:start+Y]
+            target_cols = cols[start:start+Y]
 
-        if lis_length(w) >= K:
-            style_mask.loc[stock, target_cols] = "background-color:#c6efce"
-            gcols.update(target_cols)
-        elif lds_length(w) >= K:
-            style_mask.loc[stock, target_cols] = "background-color:#ffc7ce"
-            rcols.update(target_cols)
+            if lis_length(w) >= K:
+                styles.loc[stock, target_cols] = "background-color:#c6efce"
+            elif lds_length(w) >= K:
+                styles.loc[stock, target_cols] = "background-color:#ffc7ce"
 
-    green_count[stock] = len(gcols)
-    red_count[stock] = len(rcols)
+    return styles
 
 # ==================================================
-# FINAL TABLE
+# DISPLAY
 # ==================================================
-meta = pd.DataFrame({
-    "Green_TS1_TS2": pd.Series(green_count),
-    "Red_TS1_TS2": pd.Series(red_count)
-})
-
-final = meta.join(pivot_df)
-
-styled = final.style.apply(
-    lambda _: style_mask.loc[_.index, _.columns.intersection(style_mask.columns)],
-    axis=None
-)
-
 st.markdown("### 📊 ATM Diff Pattern Table")
-st.dataframe(styled, use_container_width=True)
+
+st.dataframe(
+    pivot_df.style.apply(highlight_segments, axis=None),
+    use_container_width=True
+)
 
 st.caption(
     f"Window={Y}, Subsequence≥{K} | "
