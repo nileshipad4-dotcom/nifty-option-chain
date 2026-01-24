@@ -144,7 +144,13 @@ stock_df.to_csv(stock_path, index=False)
 # ==================================================
 # PIVOT
 # ==================================================
-pivot_df = stock_df.pivot(index="stock", columns="time", values="atm_diff").sort_index()
+
+pivot_df = (
+    stock_df
+    .pivot(index="stock", columns="time", values="atm_diff")
+    .sort_index()
+    .round(2)
+)
 cols = list(pivot_df.columns)
 
 # ==================================================
