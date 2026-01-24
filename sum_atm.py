@@ -64,7 +64,7 @@ Y = c4.number_input("Window Y", 4, 20, 6)
 K = 4
 
 # ==================================================
-# ATM CALCULATION
+# ATM CALCULATION (FIXED)
 # ==================================================
 def compute_atm_per_stock(ts1, ts2, X):
     df1 = pd.read_csv(file_map[ts1])
@@ -99,36 +99,45 @@ def compute_atm_per_stock(ts1, ts2, X):
 
         ltp = g["ltp0"].iloc[0]
         atm_i = (g["Strike"] - ltp).abs().idxmin()
-        df.loc[g.loc[atm_i,"index"], "atm_diff"] = (
-            g.loc[max(0,atm_i-2):atm_i+2,"diff"].mean()
-        )
+
+        atm_val = g.loc[max(0,atm_i-2):atm_i+2,"diff"].mean()
+
+        # ✅ FIX: assign ATM value to ALL rows of the stock
+        df.loc[g["index"], "atm_diff"] = atm_val
 
     return df.groupby("Stock")["atm_diff"].first()
 
 # ==================================================
-# BUILD STOCK_DF
+# BUILD / UPDATE STOCK_DF (CSV GUARANTEED)
 # ==================================================
 ref_time = extract_time(t2).strftime("%H%M")
 stock_path = os.path.join(CACHE_DIR, f"stock_ref_{ref_time}.csv")
 
-stock_df = pd.read_csv(stock_path) if os.path.exists(stock_path) \
-    else pd.DataFrame(columns=["time","stock","atm_diff"])
+if os.path.exists(stock_path):
+    stock_df = pd.read_csv(stock_path)
+else:
+    stock_df = pd.DataFrame(columns=["time","stock","atm_diff"])
 
 valid_ts = [
     ts for ts in filtered_ts
-    if extract_time(ts) > extract_time(t2)
+    if extract_time(ts) >= extract_time(t2)
     and extract_time(ts) <= extract_time(t1)
 ]
 
 for ts in valid_ts:
     t_str = extract_time(ts).strftime("%H:%M")
-    if not stock_df[stock_df["time"] == t_str].empty:
+
+    if not stock_df[
+        (stock_df["time"] == t_str)
+    ].empty:
         continue
 
     series = compute_atm_per_stock(ts, t2, X)
+
     for stk, v in series.items():
         stock_df.loc[len(stock_df)] = [t_str, stk, round(v, 0)]
 
+# Deduplicate + WRITE CSV
 stock_df = stock_df.drop_duplicates(["time","stock"])
 stock_df.to_csv(stock_path, index=False)
 
@@ -151,7 +160,6 @@ pivot_df = (
     stock_df
     .pivot(index="stock", columns="time", values="atm_diff")
     .sort_index()
-    .round(0)
 )
 
 ts1_time = extract_time(t1)
@@ -179,10 +187,9 @@ def lds_length(arr):
     return lis_length([-x for x in arr])
 
 # ==================================================
-# COMPUTE COUNTS (CORRECT PLACE)
+# COUNTS
 # ==================================================
-green_counts = {}
-red_counts = {}
+green_counts, red_counts = {}, {}
 
 for stock in pivot_df_range.index:
     values = pivot_df_range.loc[stock].values
@@ -193,12 +200,12 @@ for stock in pivot_df_range.index:
         if np.isnan(w).any():
             continue
 
-        target_cols = pivot_df_range.columns[start:start+Y]
+        cols = pivot_df_range.columns[start:start+Y]
 
         if lis_length(w) >= K:
-            gcols.update(target_cols)
+            gcols.update(cols)
         elif lds_length(w) >= K:
-            rcols.update(target_cols)
+            rcols.update(cols)
 
     green_counts[stock] = len(gcols)
     red_counts[stock] = len(rcols)
@@ -211,25 +218,25 @@ counts_df = pd.DataFrame({
 final_df = counts_df.join(pivot_df_range)
 
 # ==================================================
-# HIGHLIGHT FUNCTION (PURE STYLING)
+# HIGHLIGHT FUNCTION
 # ==================================================
 def highlight_segments(data):
     styles = pd.DataFrame("", index=data.index, columns=data.columns)
 
-    for stock in data.index:
-        values = data.loc[stock].values
+    for stock in pivot_df_range.index:
+        values = pivot_df_range.loc[stock].values
 
         for start in range(len(values) - Y + 1):
             w = values[start:start+Y]
             if np.isnan(w).any():
                 continue
 
-            target_cols = data.columns[start:start+Y]
+            cols = pivot_df_range.columns[start:start+Y]
 
             if lis_length(w) >= K:
-                styles.loc[stock, target_cols] = "background-color:#c6efce"
+                styles.loc[stock, cols] = "background-color:#c6efce"
             elif lds_length(w) >= K:
-                styles.loc[stock, target_cols] = "background-color:#ffc7ce"
+                styles.loc[stock, cols] = "background-color:#ffc7ce"
 
     return styles
 
@@ -241,7 +248,7 @@ st.markdown("### 📊 ATM Diff Pattern Table (TS2 → TS1)")
 styled = (
     final_df
     .style
-    .format("{:.2f}")
+    .format("{:.0f}")
     .apply(highlight_segments, axis=None, subset=pivot_df_range.columns)
 )
 
@@ -249,5 +256,6 @@ st.dataframe(styled, use_container_width=True)
 
 st.caption(
     f"Window={Y}, Subsequence≥{K} | "
-    f"G=Green count, R=Red count | Range: {t2} → {t1}"
+    f"G=Green count, R=Red count | "
+    f"Range: {t2} → {t1}"
 )
