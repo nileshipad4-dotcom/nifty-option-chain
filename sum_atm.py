@@ -30,23 +30,6 @@ HEADERS = {
 }
 
 # ==================================================
-# GITHUB PUSH
-# ==================================================
-def push_file_to_github(local_path, repo_path, msg):
-    url = f"{GITHUB_API}/repos/{KITE_REPO}/contents/{repo_path}"
-    with open(local_path, "rb") as f:
-        content = base64.b64encode(f.read()).decode("utf-8")
-
-    r = requests.get(url, headers=HEADERS)
-    sha = r.json().get("sha") if r.status_code == 200 else None
-
-    payload = {"message": msg, "content": content, "branch": GITHUB_BRANCH}
-    if sha:
-        payload["sha"] = sha
-
-    requests.put(url, headers=HEADERS, json=payload)
-
-# ==================================================
 # LOAD OPTION CHAIN FILES
 # ==================================================
 def load_csv_files():
@@ -90,10 +73,10 @@ t2 = c2.selectbox("Timestamp 2 (Reference)", filtered_ts, index=filtered_ts.inde
 X = c3.number_input("Strike Window X", 1, 10, 4)
 Y = c4.number_input("Window Y", 4, 20, 6)
 
-K = 4  # fixed by design
+K = 4
 
 # ==================================================
-# ATM CALC (PER STOCK)
+# ATM CALCULATION
 # ==================================================
 def compute_atm_per_stock(ts1, ts2, X):
     df1 = pd.read_csv(file_map[ts1])
@@ -120,17 +103,15 @@ def compute_atm_per_stock(ts1, ts2, X):
         g = g.sort_values("Strike").reset_index()
 
         for i in range(len(g)):
-            low = max(0, i - X)
-            high = min(len(g)-1, i + X)
+            lo, hi = max(0, i-X), min(len(g)-1, i+X)
             df.at[g.loc[i,"index"], "diff"] = (
-                g.loc[low:high,"pe_x"].sum()
-                - g.loc[low:high,"ce_x"].sum()
+                g.loc[lo:hi,"pe_x"].sum()
+                - g.loc[lo:hi,"ce_x"].sum()
             )
 
-        g["diff"] = df.loc[g["index"], "diff"].values
         ltp = g["ltp_0"].iloc[0]
-        atm_idx = (g["Strike"] - ltp).abs().values.argmin()
-        atm_avg = g.loc[max(0,atm_idx-2):atm_idx+2, "diff"].mean()
+        atm_i = (g["Strike"] - ltp).abs().idxmin()
+        atm_avg = g.loc[max(0,atm_i-2):atm_i+2, "diff"].mean()
         df.loc[g["index"], "atm_diff"] = atm_avg
 
     return df.groupby("Stock")["atm_diff"].first()
@@ -139,13 +120,10 @@ def compute_atm_per_stock(ts1, ts2, X):
 # BUILD stock_ref CSV
 # ==================================================
 ref_time = extract_time(t2).strftime("%H%M")
-stock_csv = f"stock_ref_{ref_time}.csv"
-stock_path = os.path.join(CACHE_DIR, stock_csv)
+stock_path = os.path.join(CACHE_DIR, f"stock_ref_{ref_time}.csv")
 
-if os.path.exists(stock_path):
-    stock_df = pd.read_csv(stock_path)
-else:
-    stock_df = pd.DataFrame(columns=["time","stock","atm_diff"])
+stock_df = pd.read_csv(stock_path) if os.path.exists(stock_path) \
+    else pd.DataFrame(columns=["time","stock","atm_diff"])
 
 valid_ts = [
     ts for ts in filtered_ts
@@ -158,11 +136,24 @@ for ts in valid_ts:
     if not stock_df[stock_df["time"] == t_str].empty:
         continue
 
-    atm_series = compute_atm_per_stock(ts, t2, X)
-    for stk, val in atm_series.items():
-        stock_df.loc[len(stock_df)] = [t_str, stk, round(val, 2)]
+    series = compute_atm_per_stock(ts, t2, X)
+    for stk, v in series.items():
+        stock_df.loc[len(stock_df)] = [t_str, stk, round(v, 0)]
 
 stock_df.to_csv(stock_path, index=False)
+
+# ==================================================
+# Σ ATM_DIFF TABLE
+# ==================================================
+sigma_df = (
+    stock_df
+    .groupby("time", as_index=False)["atm_diff"]
+    .sum()
+    .rename(columns={"atm_diff": "Σ_ATM"})
+)
+
+st.subheader("Σ ATM_DIFF Over Time")
+st.dataframe(sigma_df, use_container_width=True)
 
 # ==================================================
 # PIVOT
@@ -174,23 +165,23 @@ pivot_df = (
 )
 
 # ==================================================
-# LIS / LDS HELPERS
+# LIS / LDS
 # ==================================================
 def lis_length(arr):
-    dp = []
+    d = []
     for x in arr:
-        i = np.searchsorted(dp, x)
-        if i == len(dp):
-            dp.append(x)
+        i = np.searchsorted(d, x)
+        if i == len(d):
+            d.append(x)
         else:
-            dp[i] = x
-    return len(dp)
+            d[i] = x
+    return len(d)
 
 def lds_length(arr):
     return lis_length([-x for x in arr])
 
 # ==================================================
-# FINAL SEGMENT HIGHLIGHT (INCREASING + DECREASING)
+# HIGHLIGHT
 # ==================================================
 cols = list(pivot_df.columns)
 
@@ -200,21 +191,17 @@ def highlight_segments(data):
     for stock in data.index:
         values = data.loc[stock, cols].values
 
-        for start in range(0, len(values) - Y + 1):
-            window = values[start:start+Y]
-
-            if np.isnan(window).any():
+        for start in range(len(values) - Y + 1):
+            w = values[start:start+Y]
+            if np.isnan(w).any():
                 continue
 
-            inc = lis_length(window)
-            dec = lds_length(window)
+            tcols = cols[start:start+Y]
 
-            target_cols = cols[start:start+Y]
-
-            if inc >= K:
-                styles.loc[stock, target_cols] = "background-color:#c6efce"
-            elif dec >= K:
-                styles.loc[stock, target_cols] = "background-color:#ffc7ce"
+            if lis_length(w) >= K:
+                styles.loc[stock, tcols] = "background-color:#c6efce"
+            elif lds_length(w) >= K:
+                styles.loc[stock, tcols] = "background-color:#ffc7ce"
 
     return styles
 
@@ -223,12 +210,16 @@ def highlight_segments(data):
 # ==================================================
 st.markdown("### 📊 Stock-wise ATM_DIFF (Pattern-based Highlight)")
 
-st.dataframe(
-    pivot_df.style.apply(highlight_segments, axis=None),
-    use_container_width=True
+styled = (
+    pivot_df
+    .style
+    .format("{:.0f}")   # ✅ force 0 decimal display
+    .apply(highlight_segments, axis=None)
 )
 
+st.dataframe(styled, use_container_width=True)
+
 st.caption(
-    f"Rule: window={Y}, remove={Y-K}, subsequence≥{K} | "
+    f"Rule: window={Y}, subsequence≥{K} | "
     f"Green=Increasing, Red=Decreasing | Ref TS2={t2}"
 )
