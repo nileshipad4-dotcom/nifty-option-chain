@@ -136,8 +136,11 @@ for ts in valid_ts:
 
     series = compute_atm_per_stock(ts, t2, X)
     for stk, v in series.items():
-        # ✅ ONLY CHANGE: .0f rounding
-        stock_df.loc[len(stock_df)] = [t_str, stk, int(f"{v:.0f}")]
+        stock_df.loc[len(stock_df)] = [
+            t_str,
+            stk,
+            int(f"{0 if pd.isna(v) else v:.0f}")
+        ]
 
 stock_df = stock_df.drop_duplicates(["time","stock"])
 stock_df.to_csv(stock_path, index=False)
@@ -211,4 +214,3 @@ st.caption(
     f"Window={Y}, Subsequence≥{K} | "
     f"Green=Increasing, Red=Decreasing | Ref TS2={t2}"
 )
-
