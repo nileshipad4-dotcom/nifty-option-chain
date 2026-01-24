@@ -42,7 +42,7 @@ def extract_time(ts):
 
 filtered_ts = [
     ts for ts in timestamps_all
-    if time(8, 0) <= extract_time(ts) <= time(11, 0)
+    if time(8, 0) <= extract_time(ts) <= time(16, 0)
 ]
 
 def first_after_916(ts_list):
