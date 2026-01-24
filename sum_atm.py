@@ -259,7 +259,9 @@ final_extra=pct.merge(atm,on="Stock")[["Stock","totB","pct_TS","Δ_ATM"]]
 final_extra.columns=["Stock","Total_%_Change","%_Change_TS","Δ_ATM_DIFF"]
 
 st.dataframe(
-    final_extra.sort_values("Δ_ATM_DIFF",ascending=False)
+    final_extra
+    .sort_values("Δ_ATM_DIFF", ascending=False)
+    .reset_index(drop=True)   # 🔒 REQUIRED
     .style.format({
         "Total_%_Change":"{:.2f}",
         "%_Change_TS":"{:.2f}",
