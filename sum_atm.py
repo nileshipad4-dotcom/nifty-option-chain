@@ -261,13 +261,14 @@ atm = pd.DataFrame({
 final_extra = pct.merge(atm,on="Stock")[["Stock","totB","%_Change_TS","Δ_ATM_DIFF"]]
 final_extra.columns=["Stock","Total_%_Change","%_Change_TS","Δ_ATM_DIFF"]
 
-st.write(
+display_extra = (
     final_extra
     .sort_values("Δ_ATM_DIFF", ascending=False)
     .reset_index(drop=True)
-    .style.format({
-        "Total_%_Change":"{:.2f}",
-        "%_Change_TS":"{:.2f}",
-        "Δ_ATM_DIFF":"{:.0f}"
-    })
 )
+
+display_extra["Total_%_Change"] = display_extra["Total_%_Change"].round(2)
+display_extra["%_Change_TS"] = display_extra["%_Change_TS"].round(2)
+display_extra["Δ_ATM_DIFF"] = display_extra["Δ_ATM_DIFF"].round(0).astype(int)
+
+st.dataframe(display_extra, use_container_width=True)
