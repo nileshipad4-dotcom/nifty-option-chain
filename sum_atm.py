@@ -246,3 +246,89 @@ st.dataframe(
 )
 
 st.caption(f"Range {t2} → {t1} | G=Green, R=Red")
+
+# ==================================================
+# EXTRA TS RANGE ANALYSIS (09:00 → 15:30)
+# ==================================================
+st.markdown("### 📉 ATM & % Change Comparison (Custom Time Range)")
+
+# ---- Allowed TS range ----
+range_ts = [
+    ts for ts in filtered_ts
+    if time(9, 0) <= extract_time(ts) <= time(15, 30)
+]
+
+cA, cB = st.columns(2)
+new_ts1 = cA.selectbox("New Timestamp 1", range_ts, index=0)
+new_ts2 = cB.selectbox("New Timestamp 2", range_ts, index=len(range_ts)-1)
+
+tsA = extract_time(new_ts1)
+tsB = extract_time(new_ts2)
+if tsA > tsB:
+    new_ts1, new_ts2 = new_ts2, new_ts1
+
+# ==================================================
+# LOAD OPTION CHAIN FOR % CHANGE
+# ==================================================
+dfA = pd.read_csv(file_map[new_ts1])
+dfB = pd.read_csv(file_map[new_ts2])
+
+dfA = dfA[["Stock","Stock_LTP","Stock_%_Change"]].rename(
+    columns={"Stock_LTP":"ltp_A","Stock_%_Change":"tot_ch_A"}
+)
+dfB = dfB[["Stock","Stock_LTP","Stock_%_Change"]].rename(
+    columns={"Stock_LTP":"ltp_B","Stock_%_Change":"tot_ch_B"}
+)
+
+pct_df = dfA.merge(dfB, on="Stock")
+
+pct_df["pct_change_AB"] = (
+    (pct_df["ltp_B"] - pct_df["ltp_A"]) / pct_df["ltp_A"]
+) * 100
+
+# ==================================================
+# ATM_DIFF AT NEW TS
+# ==================================================
+atm_A = compute_atm_per_stock(new_ts1, new_ts1, X)
+atm_B = compute_atm_per_stock(new_ts2, new_ts2, X)
+
+atm_df = (
+    pd.DataFrame({
+        "atm_A": atm_A,
+        "atm_B": atm_B
+    })
+    .reset_index()
+    .rename(columns={"index":"Stock"})
+)
+
+atm_df["Δ_ATM"] = atm_df["atm_B"] - atm_df["atm_A"]
+
+# ==================================================
+# FINAL COMBINED TABLE
+# ==================================================
+final_extra = (
+    pct_df
+    .merge(atm_df, on="Stock", how="inner")
+    [["Stock","tot_ch_B","pct_change_AB","Δ_ATM"]]
+    .rename(columns={
+        "tot_ch_B":"Total_%_Change",
+        "pct_change_AB":"%_Change_TS",
+        "Δ_ATM":"Δ_ATM_DIFF"
+    })
+)
+
+st.dataframe(
+    final_extra
+    .sort_values("Δ_ATM_DIFF", ascending=False)
+    .style.format({
+        "Total_%_Change":"{:.2f}",
+        "%_Change_TS":"{:.2f}",
+        "Δ_ATM_DIFF":"{:.0f}"
+    }),
+    use_container_width=True
+)
+
+st.caption(
+    f"Comparison Range: {new_ts1} → {new_ts2} | "
+    f"Δ_ATM_DIFF = ATM({new_ts2}) − ATM({new_ts1})"
+)
