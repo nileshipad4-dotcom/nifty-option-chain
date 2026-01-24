@@ -184,7 +184,7 @@ def highlight_segments(data):
             if np.isnan(w).any():
                 continue
 
-            target_cols = cols[start:start+Y]
+            target_cols = count_cols[start:start+Y]
 
             if lis_length(w) >= K:
                 styles.loc[stock, target_cols] = "background-color:#c6efce"
@@ -207,6 +207,18 @@ styled = (
 
 st.dataframe(styled, use_container_width=True)
 
+
+# ==================================================
+# LIMIT COUNT RANGE TO TS2 → TS1
+# ==================================================
+ts2_time = extract_time(t2)
+ts1_time = extract_time(t1)
+
+count_cols = [
+    c for c in cols
+    if ts2_time <= time.fromisoformat(c) <= ts1_time
+]
+
 # ==================================================
 # GREEN / RED COUNT TABLE (NEW)
 # ==================================================
@@ -214,7 +226,7 @@ green_counts = {}
 red_counts = {}
 
 for stock in pivot_df.index:
-    values = pivot_df.loc[stock, cols].values
+    values = pivot_df.loc[stock, count_cols].values
     gcols, rcols = set(), set()
 
     for start in range(len(values) - Y + 1):
@@ -222,7 +234,7 @@ for stock in pivot_df.index:
         if np.isnan(w).any():
             continue
 
-        target_cols = cols[start:start+Y]
+        target_cols = count_cols[start:start+Y]
 
         if lis_length(w) >= K:
             gcols.update(target_cols)
