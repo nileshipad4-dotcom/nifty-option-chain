@@ -195,10 +195,15 @@ def highlight_segments(data):
 # ==================================================
 st.markdown("### 📊 ATM Diff Pattern Table")
 
-st.dataframe(
-    pivot_df.style.apply(highlight_segments, axis=None),
-    use_container_width=True
+styled = (
+    pivot_df
+    .style
+    .format("{:.2f}")        # ✅ forces 2 decimal display
+    .apply(highlight_segments, axis=None)
 )
+
+st.dataframe(styled, use_container_width=True)
+
 
 st.caption(
     f"Window={Y}, Subsequence≥{K} | "
