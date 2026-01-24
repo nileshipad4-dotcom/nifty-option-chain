@@ -184,7 +184,7 @@ def highlight_segments(data):
             if np.isnan(w).any():
                 continue
 
-            target_cols = count_cols[start:start+Y]
+            target_cols = cols[start:start+Y]
 
             if lis_length(w) >= K:
                 styles.loc[stock, target_cols] = "background-color:#c6efce"
@@ -206,9 +206,6 @@ styled = (
 )
 
 st.dataframe(styled, use_container_width=True)
-
-
-
 
 # ==================================================
 # GREEN / RED COUNT TABLE (NEW)
