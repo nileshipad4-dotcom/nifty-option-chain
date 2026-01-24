@@ -142,9 +142,21 @@ stock_df = stock_df.drop_duplicates(["time","stock"])
 stock_df.to_csv(stock_path, index=False)
 
 # ==================================================
+# Σ ATM_DIFF TABLE
+# ==================================================
+sigma_df = (
+    stock_df
+    .groupby("time", as_index=False)["atm_diff"]
+    .sum()
+    .rename(columns={"atm_diff": "Σ_ATM"})
+)
+
+st.subheader("Σ ATM_DIFF Over Time")
+st.dataframe(sigma_df, use_container_width=True)
+
+# ==================================================
 # PIVOT
 # ==================================================
-
 pivot_df = (
     stock_df
     .pivot(index="stock", columns="time", values="atm_diff")
@@ -198,12 +210,11 @@ st.markdown("### 📊 ATM Diff Pattern Table")
 styled = (
     pivot_df
     .style
-    .format("{:.2f}")        # ✅ forces 2 decimal display
+    .format("{:.2f}")
     .apply(highlight_segments, axis=None)
 )
 
 st.dataframe(styled, use_container_width=True)
-
 
 st.caption(
     f"Window={Y}, Subsequence≥{K} | "
