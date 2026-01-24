@@ -2,7 +2,9 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import os
-from datetime import time
+import base64
+import requests
+from datetime import time, datetime
 
 # ==================================================
 # CONFIG
@@ -15,7 +17,37 @@ CACHE_DIR = "data_atm"
 os.makedirs(CACHE_DIR, exist_ok=True)
 
 # ==================================================
-# LOAD CSV FILES
+# GITHUB CONFIG (FROM SECRETS)
+# ==================================================
+GITHUB_TOKEN = st.secrets["GITHUB_TOKEN"]
+KITE_REPO = st.secrets["KITE_REPO"]
+GITHUB_BRANCH = st.secrets.get("GITHUB_BRANCH", "main")
+
+GITHUB_API = "https://api.github.com"
+HEADERS = {
+    "Authorization": f"token {GITHUB_TOKEN}",
+    "Accept": "application/vnd.github.v3+json"
+}
+
+# ==================================================
+# GITHUB PUSH
+# ==================================================
+def push_file_to_github(local_path, repo_path, msg):
+    url = f"{GITHUB_API}/repos/{KITE_REPO}/contents/{repo_path}"
+    with open(local_path, "rb") as f:
+        content = base64.b64encode(f.read()).decode("utf-8")
+
+    r = requests.get(url, headers=HEADERS)
+    sha = r.json().get("sha") if r.status_code == 200 else None
+
+    payload = {"message": msg, "content": content, "branch": GITHUB_BRANCH}
+    if sha:
+        payload["sha"] = sha
+
+    requests.put(url, headers=HEADERS, json=payload)
+
+# ==================================================
+# LOAD OPTION CHAIN FILES
 # ==================================================
 def load_csv_files():
     files = []
@@ -26,10 +58,6 @@ def load_csv_files():
     return sorted(files)
 
 csv_files = load_csv_files()
-if not csv_files:
-    st.error("No option_chain CSV files found")
-    st.stop()
-
 timestamps_all = [ts for ts, _ in csv_files]
 file_map = dict(csv_files)
 
@@ -61,10 +89,11 @@ t1 = c1.selectbox("Timestamp 1 (Current)", filtered_ts, index=len(filtered_ts)-1
 t2 = c2.selectbox("Timestamp 2 (Reference)", filtered_ts, index=filtered_ts.index(default_ts2))
 X = c3.number_input("Strike Window X", 1, 10, 4)
 Y = c4.number_input("Window Y", 4, 20, 6)
-K = 4
+
+K = 4  # fixed by design
 
 # ==================================================
-# ATM CALCULATION (UNCHANGED LOGIC)
+# ATM CALC (PER STOCK)
 # ==================================================
 def compute_atm_per_stock(ts1, ts2, X):
     df1 = pd.read_csv(file_map[ts1])
@@ -73,8 +102,8 @@ def compute_atm_per_stock(ts1, ts2, X):
     df1 = df1[["Stock","Strike","Stock_LTP","CE_OI","PE_OI"]]
     df2 = df2[["Stock","Strike","Stock_LTP","CE_OI","PE_OI"]]
 
-    df1.columns = ["Stock","Strike","ltp0","ce0","pe0"]
-    df2.columns = ["Stock","Strike","ltp1","ce1","pe1"]
+    df1.columns = ["Stock","Strike","ltp_0","ce_0","pe_0"]
+    df2.columns = ["Stock","Strike","ltp_1","ce_1","pe_1"]
 
     df = df1.merge(df2, on=["Stock","Strike"])
 
@@ -82,8 +111,8 @@ def compute_atm_per_stock(ts1, ts2, X):
         if c != "Stock":
             df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
 
-    df["ce_x"] = (df["ce0"] - df["ce1"]) * df["Strike"] / 10000
-    df["pe_x"] = (df["pe0"] - df["pe1"]) * df["Strike"] / 10000
+    df["ce_x"] = (df["ce_0"] - df["ce_1"]) * df["Strike"] / 10000
+    df["pe_x"] = (df["pe_0"] - df["pe_1"]) * df["Strike"] / 10000
     df["diff"] = np.nan
     df["atm_diff"] = np.nan
 
@@ -91,33 +120,37 @@ def compute_atm_per_stock(ts1, ts2, X):
         g = g.sort_values("Strike").reset_index()
 
         for i in range(len(g)):
-            lo, hi = max(0, i-X), min(len(g)-1, i+X)
+            low = max(0, i - X)
+            high = min(len(g)-1, i + X)
             df.at[g.loc[i,"index"], "diff"] = (
-                g.loc[lo:hi,"pe_x"].sum()
-                - g.loc[lo:hi,"ce_x"].sum()
+                g.loc[low:high,"pe_x"].sum()
+                - g.loc[low:high,"ce_x"].sum()
             )
 
-        ltp = g["ltp0"].iloc[0]
-        atm_i = (g["Strike"] - ltp).abs().idxmin()
-        atm_val = g.loc[max(0,atm_i-2):atm_i+2,"diff"].mean()
-
-        df.loc[g["index"], "atm_diff"] = atm_val
+        g["diff"] = df.loc[g["index"], "diff"].values
+        ltp = g["ltp_0"].iloc[0]
+        atm_idx = (g["Strike"] - ltp).abs().values.argmin()
+        atm_avg = g.loc[max(0,atm_idx-2):atm_idx+2, "diff"].mean()
+        df.loc[g["index"], "atm_diff"] = atm_avg
 
     return df.groupby("Stock")["atm_diff"].first()
 
 # ==================================================
-# BUILD STOCK_DF (MATCHES WORKING VERSION)
+# BUILD stock_ref CSV
 # ==================================================
 ref_time = extract_time(t2).strftime("%H%M")
-stock_path = os.path.join(CACHE_DIR, f"stock_ref_{ref_time}.csv")
+stock_csv = f"stock_ref_{ref_time}.csv"
+stock_path = os.path.join(CACHE_DIR, stock_csv)
 
-stock_df = pd.read_csv(stock_path) if os.path.exists(stock_path) \
-    else pd.DataFrame(columns=["time","stock","atm_diff"])
+if os.path.exists(stock_path):
+    stock_df = pd.read_csv(stock_path)
+else:
+    stock_df = pd.DataFrame(columns=["time","stock","atm_diff"])
 
 valid_ts = [
     ts for ts in filtered_ts
-    if extract_time(ts) > extract_time(t2)
-    and extract_time(ts) <= extract_time(t1)
+    if time(9,16) <= extract_time(ts) <= time(15,45)
+    and ts > t2
 ]
 
 for ts in valid_ts:
@@ -125,27 +158,14 @@ for ts in valid_ts:
     if not stock_df[stock_df["time"] == t_str].empty:
         continue
 
-    series = compute_atm_per_stock(ts, t2, X)
-    for stk, v in series.items():
-        stock_df.loc[len(stock_df)] = [t_str, stk, round(v, 0)]
+    atm_series = compute_atm_per_stock(ts, t2, X)
+    for stk, val in atm_series.items():
+        stock_df.loc[len(stock_df)] = [t_str, stk, round(val, 2)]
 
-stock_df = stock_df.drop_duplicates(["time","stock"])
 stock_df.to_csv(stock_path, index=False)
 
 # ==================================================
-# Σ ATM_DIFF TABLE
-# ==================================================
-sigma_df = (
-    stock_df.groupby("time", as_index=False)["atm_diff"]
-    .sum()
-    .rename(columns={"atm_diff": "Σ_ATM"})
-)
-
-st.subheader("Σ ATM_DIFF Over Time")
-st.dataframe(sigma_df, use_container_width=True)
-
-# ==================================================
-# PIVOT (TS2 → TS1)
+# PIVOT
 # ==================================================
 pivot_df = (
     stock_df
@@ -153,92 +173,62 @@ pivot_df = (
     .sort_index()
 )
 
-cols = list(pivot_df.columns)
-
 # ==================================================
-# LIS / LDS
+# LIS / LDS HELPERS
 # ==================================================
 def lis_length(arr):
-    d = []
+    dp = []
     for x in arr:
-        i = np.searchsorted(d, x)
-        if i == len(d):
-            d.append(x)
+        i = np.searchsorted(dp, x)
+        if i == len(dp):
+            dp.append(x)
         else:
-            d[i] = x
-    return len(d)
+            dp[i] = x
+    return len(dp)
 
 def lds_length(arr):
     return lis_length([-x for x in arr])
 
 # ==================================================
-# COUNTS (FIXED WINDOW LOGIC)
+# FINAL SEGMENT HIGHLIGHT (INCREASING + DECREASING)
 # ==================================================
-green_counts, red_counts = {}, {}
+cols = list(pivot_df.columns)
 
-for stock in pivot_df.index:
-    values = pivot_df.loc[stock].values
-    win = min(Y, len(values))
-    gcols, rcols = set(), set()
-
-    for start in range(len(values) - win + 1):
-        w = values[start:start+win]
-        if np.isnan(w).any():
-            continue
-
-        tcols = cols[start:start+win]
-
-        if lis_length(w) >= K:
-            gcols.update(tcols)
-        elif lds_length(w) >= K:
-            rcols.update(tcols)
-
-    green_counts[stock] = len(gcols)
-    red_counts[stock] = len(rcols)
-
-counts_df = pd.DataFrame({"G": green_counts, "R": red_counts})
-
-final_df = counts_df.join(pivot_df)
-
-# ==================================================
-# HIGHLIGHT (MATCHES COUNTS)
-# ==================================================
 def highlight_segments(data):
     styles = pd.DataFrame("", index=data.index, columns=data.columns)
 
     for stock in data.index:
         values = data.loc[stock, cols].values
-        win = min(Y, len(values))
 
-        for start in range(len(values) - win + 1):
-            w = values[start:start+win]
-            if np.isnan(w).any():
+        for start in range(0, len(values) - Y + 1):
+            window = values[start:start+Y]
+
+            if np.isnan(window).any():
                 continue
 
-            tcols = cols[start:start+win]
+            inc = lis_length(window)
+            dec = lds_length(window)
 
-            if lis_length(w) >= K:
-                styles.loc[stock, tcols] = "background-color:#c6efce"
-            elif lds_length(w) >= K:
-                styles.loc[stock, tcols] = "background-color:#ffc7ce"
+            target_cols = cols[start:start+Y]
+
+            if inc >= K:
+                styles.loc[stock, target_cols] = "background-color:#c6efce"
+            elif dec >= K:
+                styles.loc[stock, target_cols] = "background-color:#ffc7ce"
 
     return styles
 
 # ==================================================
-# DISPLAY FINAL TABLE
+# DISPLAY
 # ==================================================
-st.markdown("### 📊 ATM Diff Pattern Table (TS2 → TS1)")
+st.markdown("### 📊 Stock-wise ATM_DIFF (Pattern-based Highlight)")
 
-styled = (
-    final_df
-    .style
-    .format("{:.0f}")
-    .apply(highlight_segments, axis=None, subset=cols)
+st.dataframe(
+    pivot_df.style.apply(highlight_segments, axis=None),
+    use_container_width=True
 )
 
-st.dataframe(styled, use_container_width=True)
-
 st.caption(
-    f"Window={Y}, Subsequence≥{K} | "
-    f"G=Green count, R=Red count | Range: {t2} → {t1}"
+    f"Rule: window={Y}, remove={Y-K}, subsequence≥{K} | "
+    f"Green=Increasing, Red=Decreasing | Ref TS2={t2}"
 )
