@@ -2,8 +2,6 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import os
-import base64
-import requests
 from datetime import time
 
 # ==================================================
@@ -15,13 +13,6 @@ st.title("📊 ATM Diff Dashboard")
 DATA_DIR = "data"
 CACHE_DIR = "data_atm"
 os.makedirs(CACHE_DIR, exist_ok=True)
-
-# ==================================================
-# GITHUB CONFIG
-# ==================================================
-GITHUB_TOKEN = st.secrets["GITHUB_TOKEN"]
-KITE_REPO = st.secrets["KITE_REPO"]
-GITHUB_BRANCH = st.secrets.get("GITHUB_BRANCH", "main")
 
 # ==================================================
 # LOAD CSV FILES
@@ -203,7 +194,7 @@ def highlight_segments(data):
     return styles
 
 # ==================================================
-# DISPLAY
+# DISPLAY ATM DIFF PATTERN TABLE
 # ==================================================
 st.markdown("### 📊 ATM Diff Pattern Table")
 
@@ -216,6 +207,46 @@ styled = (
 
 st.dataframe(styled, use_container_width=True)
 
+# ==================================================
+# GREEN / RED COUNT TABLE (NEW)
+# ==================================================
+green_counts = {}
+red_counts = {}
+
+for stock in pivot_df.index:
+    values = pivot_df.loc[stock, cols].values
+    gcols, rcols = set(), set()
+
+    for start in range(len(values) - Y + 1):
+        w = values[start:start+Y]
+        if np.isnan(w).any():
+            continue
+
+        target_cols = cols[start:start+Y]
+
+        if lis_length(w) >= K:
+            gcols.update(target_cols)
+        elif lds_length(w) >= K:
+            rcols.update(target_cols)
+
+    green_counts[stock] = len(gcols)
+    red_counts[stock] = len(rcols)
+
+count_df = (
+    pd.DataFrame({
+        "Green_Count": pd.Series(green_counts),
+        "Red_Count": pd.Series(red_counts),
+    })
+    .fillna(0)
+    .astype(int)
+)
+
+st.markdown("### 🟢🔴 Highlight Count Summary")
+st.dataframe(count_df, use_container_width=True)
+
+# ==================================================
+# CAPTION
+# ==================================================
 st.caption(
     f"Window={Y}, Subsequence≥{K} | "
     f"Green=Increasing, Red=Decreasing | Ref TS2={t2}"
