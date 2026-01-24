@@ -31,18 +31,13 @@ HEADERS = {
 
 def push_file_to_github(local_path, repo_path, msg):
     url = f"{GITHUB_API}/repos/{KITE_REPO}/contents/{repo_path}"
-
     with open(local_path, "rb") as f:
         content = base64.b64encode(f.read()).decode()
 
     r = requests.get(url, headers=HEADERS)
     sha = r.json().get("sha") if r.status_code == 200 else None
 
-    payload = {
-        "message": msg,
-        "content": content,
-        "branch": GITHUB_BRANCH
-    }
+    payload = {"message": msg, "content": content, "branch": GITHUB_BRANCH}
     if sha:
         payload["sha"] = sha
 
@@ -104,7 +99,7 @@ if ts1_time < ts2_time:
     ts1_time, ts2_time = ts2_time, ts1_time
 
 # ==================================================
-# ATM CALCULATION (UNCHANGED)
+# ATM CALCULATION (UNCHANGED, CORRECT)
 # ==================================================
 def compute_atm_per_stock(ts1, ts2, X):
     df1 = pd.read_csv(file_map[ts1])
@@ -121,10 +116,8 @@ def compute_atm_per_stock(ts1, ts2, X):
     for c in ["Strike","ltp0","ce0","pe0","ce1","pe1"]:
         df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
 
-    df["d_ce"] = df["ce0"] - df["ce1"]
-    df["d_pe"] = df["pe0"] - df["pe1"]
-    df["ce_x"] = (df["d_ce"] * df["Strike"]) / 10000
-    df["pe_x"] = (df["d_pe"] * df["Strike"]) / 10000
+    df["ce_x"] = (df["ce0"] - df["ce1"]) * df["Strike"] / 10000
+    df["pe_x"] = (df["pe0"] - df["pe1"]) * df["Strike"] / 10000
 
     df["diff"] = np.nan
     df["atm_diff"] = np.nan
@@ -133,7 +126,7 @@ def compute_atm_per_stock(ts1, ts2, X):
         g = g.sort_values("Strike").reset_index()
 
         for i in range(len(g)):
-            lo, hi = max(0, i-X), min(len(g)-1, i+X)
+            lo, hi = max(0,i-X), min(len(g)-1,i+X)
             df.at[g.loc[i,"index"],"diff"] = (
                 g.loc[lo:hi,"pe_x"].sum()
                 - g.loc[lo:hi,"ce_x"].sum()
@@ -149,7 +142,7 @@ def compute_atm_per_stock(ts1, ts2, X):
     return df.groupby("Stock")["atm_diff"].first()
 
 # ==================================================
-# BUILD STOCK_DF (TS2 → TS1 ONLY)
+# BUILD STOCK_DF (TS2 → TS1)
 # ==================================================
 valid_ts = [
     ts for ts in filtered_ts
@@ -170,58 +163,43 @@ stock_csv = f"stock_ref_{ref_tag}.csv"
 stock_path = os.path.join(CACHE_DIR, stock_csv)
 stock_df.to_csv(stock_path, index=False)
 
-# 👉 PUSH STOCK CSV
-push_file_to_github(
-    stock_path,
-    f"{CACHE_DIR}/{stock_csv}",
-    f"Update ATM stock data {t2} → {t1}"
-)
+push_file_to_github(stock_path, f"{CACHE_DIR}/{stock_csv}", "Update ATM stock table")
 
 # ==================================================
 # Σ ATM TABLE
 # ==================================================
-sigma_df = (
-    stock_df.groupby("time", as_index=False)["atm_diff"]
-    .sum()
-    .rename(columns={"atm_diff":"Σ_ATM"})
-)
-
+sigma_df = stock_df.groupby("time", as_index=False)["atm_diff"].sum()
 sigma_csv = f"sigma_atm_{ref_tag}.csv"
 sigma_path = os.path.join(CACHE_DIR, sigma_csv)
 sigma_df.to_csv(sigma_path, index=False)
 
-# 👉 PUSH SIGMA CSV
-push_file_to_github(
-    sigma_path,
-    f"{CACHE_DIR}/{sigma_csv}",
-    f"Update Σ ATM {t2} → {t1}"
-)
+push_file_to_github(sigma_path, f"{CACHE_DIR}/{sigma_csv}", "Update Σ ATM table")
 
 st.subheader("Σ ATM_DIFF (TS2 → TS1)")
 st.dataframe(sigma_df, use_container_width=True)
 
 # ==================================================
-# PIVOT + DISPLAY (UNCHANGED)
+# ATM DIFF PATTERN TABLE
 # ==================================================
 pivot_df = stock_df.pivot(index="stock", columns="time", values="atm_diff").sort_index()
 cols = list(pivot_df.columns)
 
-def lis_length(arr):
+def lis_length(a):
     d=[]
-    for x in arr:
+    for x in a:
         i=np.searchsorted(d,x)
         if i==len(d): d.append(x)
         else: d[i]=x
     return len(d)
 
-def lds_length(arr):
-    return lis_length([-x for x in arr])
+def lds_length(a):
+    return lis_length([-x for x in a])
 
 styles = pd.DataFrame("", index=pivot_df.index, columns=pivot_df.columns)
 G,R={},{}
 
 for stk in pivot_df.index:
-    v = pivot_df.loc[stk].values
+    v=pivot_df.loc[stk].values
     gs,rs=set(),set()
     for i in range(len(v)-Y+1):
         w=v[i:i+Y]
@@ -239,96 +217,53 @@ final_df = pd.DataFrame({"G":G,"R":R}).join(pivot_df).fillna(0)
 
 st.markdown("### 📊 ATM Diff Pattern Table (TS2 → TS1)")
 st.dataframe(
-    final_df.style
-    .format("{:.0f}")
+    final_df.style.format("{:.0f}")
     .apply(lambda _: styles, axis=None, subset=pivot_df.columns),
     use_container_width=True
 )
 
-st.caption(f"Range {t2} → {t1} | G=Green, R=Red")
-
 # ==================================================
-# EXTRA TS RANGE ANALYSIS (09:00 → 15:30)
+# EXTRA RANGE ANALYSIS (FIXED)
 # ==================================================
-st.markdown("### 📉 ATM & % Change Comparison (Custom Time Range)")
+st.markdown("### 📉 ATM & % Change Comparison (09:00 → 15:30)")
 
-# ---- Allowed TS range ----
 range_ts = [
     ts for ts in filtered_ts
-    if time(9, 0) <= extract_time(ts) <= time(15, 30)
+    if time(9,0) <= extract_time(ts) <= time(15,30)
 ]
 
-cA, cB = st.columns(2)
-new_ts1 = cA.selectbox("New Timestamp 1", range_ts, index=0)
-new_ts2 = cB.selectbox("New Timestamp 2", range_ts, index=len(range_ts)-1)
+cA,cB=st.columns(2)
+new_ts1=cA.selectbox("New TS1",range_ts,0)
+new_ts2=cB.selectbox("New TS2",range_ts,len(range_ts)-1)
 
-tsA = extract_time(new_ts1)
-tsB = extract_time(new_ts2)
-if tsA > tsB:
-    new_ts1, new_ts2 = new_ts2, new_ts1
+if extract_time(new_ts1)>extract_time(new_ts2):
+    new_ts1,new_ts2=new_ts2,new_ts1
 
-# ==================================================
-# LOAD OPTION CHAIN FOR % CHANGE
-# ==================================================
-dfA = pd.read_csv(file_map[new_ts1])
-dfB = pd.read_csv(file_map[new_ts2])
+# % CHANGE
+dfA=pd.read_csv(file_map[new_ts1])[["Stock","Stock_LTP","Stock_%_Change"]]
+dfB=pd.read_csv(file_map[new_ts2])[["Stock","Stock_LTP","Stock_%_Change"]]
 
-dfA = dfA[["Stock","Stock_LTP","Stock_%_Change"]].rename(
-    columns={"Stock_LTP":"ltp_A","Stock_%_Change":"tot_ch_A"}
-)
-dfB = dfB[["Stock","Stock_LTP","Stock_%_Change"]].rename(
-    columns={"Stock_LTP":"ltp_B","Stock_%_Change":"tot_ch_B"}
-)
+dfA.columns=["Stock","ltpA","totA"]
+dfB.columns=["Stock","ltpB","totB"]
 
-pct_df = dfA.merge(dfB, on="Stock")
+pct=dfA.merge(dfB,on="Stock")
+pct["pct_TS"]=(pct["ltpB"]-pct["ltpA"])/pct["ltpA"]*100
 
-pct_df["pct_change_AB"] = (
-    (pct_df["ltp_B"] - pct_df["ltp_A"]) / pct_df["ltp_A"]
-) * 100
+# ATM DELTA (FIXED REFERENCE = t2)
+atmA=compute_atm_per_stock(new_ts1,t2,X)
+atmB=compute_atm_per_stock(new_ts2,t2,X)
 
-# ==================================================
-# ATM_DIFF AT NEW TS
-# ==================================================
-atm_A = compute_atm_per_stock(new_ts1, new_ts1, X)
-atm_B = compute_atm_per_stock(new_ts2, new_ts2, X)
+atm=pd.DataFrame({"Stock":atmA.index,"Δ_ATM":atmB.values-atmA.values})
 
-atm_df = (
-    pd.DataFrame({
-        "atm_A": atm_A,
-        "atm_B": atm_B
-    })
-    .reset_index()
-    .rename(columns={"index":"Stock"})
-)
-
-atm_df["Δ_ATM"] = atm_df["atm_B"] - atm_df["atm_A"]
-
-# ==================================================
-# FINAL COMBINED TABLE
-# ==================================================
-final_extra = (
-    pct_df
-    .merge(atm_df, on="Stock", how="inner")
-    [["Stock","tot_ch_B","pct_change_AB","Δ_ATM"]]
-    .rename(columns={
-        "tot_ch_B":"Total_%_Change",
-        "pct_change_AB":"%_Change_TS",
-        "Δ_ATM":"Δ_ATM_DIFF"
-    })
-)
+final_extra=pct.merge(atm,on="Stock")[["Stock","totB","pct_TS","Δ_ATM"]]
+final_extra.columns=["Stock","Total_%_Change","%_Change_TS","Δ_ATM_DIFF"]
 
 st.dataframe(
-    final_extra
-    .sort_values("Δ_ATM_DIFF", ascending=False)
+    final_extra.sort_values("Δ_ATM_DIFF",ascending=False)
     .style.format({
         "Total_%_Change":"{:.2f}",
         "%_Change_TS":"{:.2f}",
         "Δ_ATM_DIFF":"{:.0f}"
     }),
     use_container_width=True
-)
-
-st.caption(
-    f"Comparison Range: {new_ts1} → {new_ts2} | "
-    f"Δ_ATM_DIFF = ATM({new_ts2}) − ATM({new_ts1})"
 )
