@@ -2,9 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import os
-import base64
-import requests
-from datetime import time, datetime
+from datetime import time
 
 # ==================================================
 # CONFIG
@@ -17,20 +15,7 @@ CACHE_DIR = "data_atm"
 os.makedirs(CACHE_DIR, exist_ok=True)
 
 # ==================================================
-# GITHUB CONFIG (FROM SECRETS)
-# ==================================================
-GITHUB_TOKEN = st.secrets["GITHUB_TOKEN"]
-KITE_REPO = st.secrets["KITE_REPO"]
-GITHUB_BRANCH = st.secrets.get("GITHUB_BRANCH", "main")
-
-GITHUB_API = "https://api.github.com"
-HEADERS = {
-    "Authorization": f"token {GITHUB_TOKEN}",
-    "Accept": "application/vnd.github.v3+json"
-}
-
-# ==================================================
-# LOAD OPTION CHAIN FILES
+# LOAD CSV FILES
 # ==================================================
 def load_csv_files():
     files = []
@@ -72,11 +57,10 @@ t1 = c1.selectbox("Timestamp 1 (Current)", filtered_ts, index=len(filtered_ts)-1
 t2 = c2.selectbox("Timestamp 2 (Reference)", filtered_ts, index=filtered_ts.index(default_ts2))
 X = c3.number_input("Strike Window X", 1, 10, 4)
 Y = c4.number_input("Window Y", 4, 20, 6)
-
 K = 4
 
 # ==================================================
-# ATM CALCULATION
+# ATM CALCULATION (UNCHANGED)
 # ==================================================
 def compute_atm_per_stock(ts1, ts2, X):
     df1 = pd.read_csv(file_map[ts1])
@@ -85,8 +69,8 @@ def compute_atm_per_stock(ts1, ts2, X):
     df1 = df1[["Stock","Strike","Stock_LTP","CE_OI","PE_OI"]]
     df2 = df2[["Stock","Strike","Stock_LTP","CE_OI","PE_OI"]]
 
-    df1.columns = ["Stock","Strike","ltp_0","ce_0","pe_0"]
-    df2.columns = ["Stock","Strike","ltp_1","ce_1","pe_1"]
+    df1.columns = ["Stock","Strike","ltp0","ce0","pe0"]
+    df2.columns = ["Stock","Strike","ltp1","ce1","pe1"]
 
     df = df1.merge(df2, on=["Stock","Strike"])
 
@@ -94,8 +78,8 @@ def compute_atm_per_stock(ts1, ts2, X):
         if c != "Stock":
             df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
 
-    df["ce_x"] = (df["ce_0"] - df["ce_1"]) * df["Strike"] / 10000
-    df["pe_x"] = (df["pe_0"] - df["pe_1"]) * df["Strike"] / 10000
+    df["ce_x"] = (df["ce0"] - df["ce1"]) * df["Strike"] / 10000
+    df["pe_x"] = (df["pe0"] - df["pe1"]) * df["Strike"] / 10000
     df["diff"] = np.nan
     df["atm_diff"] = np.nan
 
@@ -109,60 +93,52 @@ def compute_atm_per_stock(ts1, ts2, X):
                 - g.loc[lo:hi,"ce_x"].sum()
             )
 
-        ltp = g["ltp_0"].iloc[0]
+        ltp = g["ltp0"].iloc[0]
         atm_i = (g["Strike"] - ltp).abs().idxmin()
-        atm_avg = g.loc[max(0,atm_i-2):atm_i+2, "diff"].mean()
-        df.loc[g["index"], "atm_diff"] = atm_avg
+        atm_val = g.loc[max(0,atm_i-2):atm_i+2,"diff"].mean()
+        df.loc[g["index"], "atm_diff"] = atm_val
 
     return df.groupby("Stock")["atm_diff"].first()
 
 # ==================================================
-# BUILD stock_ref CSV
+# BUILD STOCK_DF (TS2 → TS1 ONLY)
 # ==================================================
-ref_time = extract_time(t2).strftime("%H%M")
-stock_path = os.path.join(CACHE_DIR, f"stock_ref_{ref_time}.csv")
-
-stock_df = pd.read_csv(stock_path) if os.path.exists(stock_path) \
-    else pd.DataFrame(columns=["time","stock","atm_diff"])
+stock_df = pd.DataFrame(columns=["time","stock","atm_diff"])
 
 valid_ts = [
     ts for ts in filtered_ts
-    if time(9,16) <= extract_time(ts) <= time(15,45)
-    and ts > t2
+    if extract_time(t2) <= extract_time(ts) <= extract_time(t1)
 ]
 
 for ts in valid_ts:
     t_str = extract_time(ts).strftime("%H:%M")
-    if not stock_df[stock_df["time"] == t_str].empty:
-        continue
-
     series = compute_atm_per_stock(ts, t2, X)
+
     for stk, v in series.items():
         stock_df.loc[len(stock_df)] = [t_str, stk, round(v, 0)]
-
-stock_df.to_csv(stock_path, index=False)
 
 # ==================================================
 # Σ ATM_DIFF TABLE
 # ==================================================
 sigma_df = (
-    stock_df
-    .groupby("time", as_index=False)["atm_diff"]
+    stock_df.groupby("time", as_index=False)["atm_diff"]
     .sum()
     .rename(columns={"atm_diff": "Σ_ATM"})
 )
 
-st.subheader("Σ ATM_DIFF Over Time")
+st.subheader("Σ ATM_DIFF Over Time (TS2 → TS1)")
 st.dataframe(sigma_df, use_container_width=True)
 
 # ==================================================
-# PIVOT
+# PIVOT (TS2 → TS1)
 # ==================================================
 pivot_df = (
     stock_df
     .pivot(index="stock", columns="time", values="atm_diff")
     .sort_index()
 )
+
+cols = list(pivot_df.columns)
 
 # ==================================================
 # LIS / LDS
@@ -171,55 +147,65 @@ def lis_length(arr):
     d = []
     for x in arr:
         i = np.searchsorted(d, x)
-        if i == len(d):
-            d.append(x)
-        else:
-            d[i] = x
+        if i == len(d): d.append(x)
+        else: d[i] = x
     return len(d)
 
 def lds_length(arr):
     return lis_length([-x for x in arr])
 
 # ==================================================
-# HIGHLIGHT
+# HIGHLIGHT + COUNTS (CONSISTENT)
 # ==================================================
-cols = list(pivot_df.columns)
+green_counts, red_counts = {}, {}
 
 def highlight_segments(data):
     styles = pd.DataFrame("", index=data.index, columns=data.columns)
 
     for stock in data.index:
         values = data.loc[stock, cols].values
+        win = min(Y, len(values))
+        eff_K = min(K, win)
 
-        for start in range(len(values) - Y + 1):
-            w = values[start:start+Y]
+        gcols, rcols = set(), set()
+
+        for start in range(len(values) - win + 1):
+            w = values[start:start+win]
             if np.isnan(w).any():
                 continue
 
-            tcols = cols[start:start+Y]
+            tcols = cols[start:start+win]
 
-            if lis_length(w) >= K:
+            if lis_length(w) >= eff_K:
                 styles.loc[stock, tcols] = "background-color:#c6efce"
-            elif lds_length(w) >= K:
+                gcols.update(tcols)
+            elif lds_length(w) >= eff_K:
                 styles.loc[stock, tcols] = "background-color:#ffc7ce"
+                rcols.update(tcols)
+
+        green_counts[stock] = len(gcols)
+        red_counts[stock] = len(rcols)
 
     return styles
 
+counts_df = pd.DataFrame({"G": green_counts, "R": red_counts})
+final_df = counts_df.join(pivot_df)
+
 # ==================================================
-# DISPLAY
+# DISPLAY FINAL TABLE
 # ==================================================
-st.markdown("### 📊 Stock-wise ATM_DIFF (Pattern-based Highlight)")
+st.markdown("### 📊 ATM Diff Pattern Table (TS2 → TS1)")
 
 styled = (
-    pivot_df
+    final_df
     .style
-    .format("{:.0f}")   # ✅ force 0 decimal display
-    .apply(highlight_segments, axis=None)
+    .format("{:.0f}")
+    .apply(highlight_segments, axis=None, subset=cols)
 )
 
 st.dataframe(styled, use_container_width=True)
 
 st.caption(
-    f"Rule: window={Y}, subsequence≥{K} | "
-    f"Green=Increasing, Red=Decreasing | Ref TS2={t2}"
+    f"TS2 → TS1 | Window={Y}, Subsequence≥{K} | "
+    f"G=Green count, R=Red count"
 )
