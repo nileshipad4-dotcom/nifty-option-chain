@@ -17,7 +17,7 @@ CACHE_DIR = "data_atm"
 os.makedirs(CACHE_DIR, exist_ok=True)
 
 # ==================================================
-# GITHUB CONFIG (FROM SECRETS)
+# GITHUB CONFIG (SECRETS)
 # ==================================================
 GITHUB_TOKEN = st.secrets["GITHUB_TOKEN"]
 KITE_REPO = st.secrets["KITE_REPO"]
@@ -94,61 +94,69 @@ Y = c4.number_input("Window Y", 4, 20, 6)
 K = 4
 
 # ==================================================
-# ATM CALCULATION (UNCHANGED – WORKING)
+# ATM CALC — MATCHES YOUR OI-WEIGHTED CODE
 # ==================================================
 def compute_atm_per_stock(ts1, ts2, X):
     df1 = pd.read_csv(file_map[ts1])
     df2 = pd.read_csv(file_map[ts2])
 
-    df1 = df1[["Stock", "Strike", "Stock_LTP", "CE_OI", "PE_OI"]]
-    df2 = df2[["Stock", "Strike", "Stock_LTP", "CE_OI", "PE_OI"]]
+    df1 = df1[["Stock","Strike","Stock_LTP","CE_OI","PE_OI"]]
+    df2 = df2[["Stock","Strike","Stock_LTP","CE_OI","PE_OI"]]
 
-    df1.columns = ["Stock", "Strike", "ltp0", "ce0", "pe0"]
-    df2.columns = ["Stock", "Strike", "ltp1", "ce1", "pe1"]
+    df1.columns = ["Stock","Strike","ltp0","ce0","pe0"]
+    df2.columns = ["Stock","Strike","ltp1","ce1","pe1"]
 
-    df = df1.merge(df2, on=["Stock", "Strike"])
+    df = df1.merge(df2, on=["Stock","Strike"])
 
-    for c in df.columns:
-        if c != "Stock":
-            df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
+    for c in ["Strike","ltp0","ce0","pe0","ce1","pe1"]:
+        df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
 
-    df["ce_x"] = (df["ce0"] - df["ce1"]) * df["Strike"] / 10000
-    df["pe_x"] = (df["pe0"] - df["pe1"]) * df["Strike"] / 10000
+    df["d_ce"] = df["ce0"] - df["ce1"]
+    df["d_pe"] = df["pe0"] - df["pe1"]
+
+    df["ce_x"] = (df["d_ce"] * df["Strike"]) / 10000
+    df["pe_x"] = (df["d_pe"] * df["Strike"]) / 10000
+
     df["diff"] = np.nan
     df["atm_diff"] = np.nan
 
     for stk, g in df.groupby("Stock"):
         g = g.sort_values("Strike").reset_index()
 
+        # sliding window diff
         for i in range(len(g)):
             lo, hi = max(0, i - X), min(len(g) - 1, i + X)
-            df.at[g.loc[i, "index"], "diff"] = (
+            diff_val = (
                 g.loc[lo:hi, "pe_x"].sum()
                 - g.loc[lo:hi, "ce_x"].sum()
             )
+            df.at[g.loc[i,"index"], "diff"] = diff_val
 
+        # ATM diff (±2 strikes)
         ltp = g["ltp0"].iloc[0]
-        atm_i = (g["Strike"] - ltp).abs().values.argmin()
-        atm_avg = g.loc[max(0, atm_i - 2):atm_i + 2, "diff"].mean()
+        atm_idx = (g["Strike"] - ltp).abs().values.argmin()
+        lo, hi = max(0, atm_idx - 2), min(len(g) - 1, atm_idx + 2)
 
+        atm_avg = df.loc[g.loc[lo:hi,"index"], "diff"].mean()
         df.loc[g["index"], "atm_diff"] = atm_avg
 
     return df.groupby("Stock")["atm_diff"].first()
 
 # ==================================================
-# BUILD / UPDATE stock_ref CSV (FIXED BUG)
+# BUILD stock_ref CSV (FIXED TIME COMPARISON)
 # ==================================================
 ref_tag = extract_time(t2).strftime("%H%M")
 stock_csv = f"stock_ref_{ref_tag}.csv"
 stock_path = os.path.join(CACHE_DIR, stock_csv)
 
 stock_df = pd.read_csv(stock_path) if os.path.exists(stock_path) \
-    else pd.DataFrame(columns=["time", "stock", "atm_diff"])
+    else pd.DataFrame(columns=["time","stock","atm_diff"])
 
 valid_ts = [
     ts for ts in filtered_ts
-    if time(9, 16) <= extract_time(ts) <= time(15, 45)
-    and extract_time(ts) > extract_time(t2)   # ✅ FIX
+    if time(9,16) <= extract_time(ts) <= time(15,45)
+    and extract_time(ts) > extract_time(t2)
+    and extract_time(ts) <= extract_time(t1)
 ]
 
 for ts in valid_ts:
@@ -160,7 +168,7 @@ for ts in valid_ts:
     for stk, v in series.items():
         stock_df.loc[len(stock_df)] = [t_str, stk, round(v, 0)]
 
-stock_df = stock_df.drop_duplicates(["time", "stock"])
+stock_df = stock_df.drop_duplicates(["time","stock"])
 stock_df.to_csv(stock_path, index=False)
 
 push_file_to_github(
@@ -182,10 +190,10 @@ st.subheader("Σ ATM_DIFF (TS2 → TS1)")
 st.dataframe(sigma_df, use_container_width=True)
 
 # ==================================================
-# PIVOT (TS2 → TS1)
+# PIVOT
 # ==================================================
 pivot_df = stock_df.pivot(index="stock", columns="time", values="atm_diff").sort_index()
-pivot_df = pivot_df.loc[:, sorted(pivot_df.columns)]
+cols = list(pivot_df.columns)
 
 # ==================================================
 # LIS / LDS
@@ -194,10 +202,8 @@ def lis_length(arr):
     d = []
     for x in arr:
         i = np.searchsorted(d, x)
-        if i == len(d):
-            d.append(x)
-        else:
-            d[i] = x
+        if i == len(d): d.append(x)
+        else: d[i] = x
     return len(d)
 
 def lds_length(arr):
@@ -206,35 +212,35 @@ def lds_length(arr):
 # ==================================================
 # HIGHLIGHT + COUNTS
 # ==================================================
-cols = list(pivot_df.columns)
 styles = pd.DataFrame("", index=pivot_df.index, columns=pivot_df.columns)
 green_cnt, red_cnt = {}, {}
 
-for stock in pivot_df.index:
-    vals = pivot_df.loc[stock].values
+for stk in pivot_df.index:
+    vals = pivot_df.loc[stk].values
     gset, rset = set(), set()
 
     for i in range(len(vals) - Y + 1):
-        w = vals[i:i + Y]
+        w = vals[i:i+Y]
         if np.isnan(w).any():
             continue
 
-        c = cols[i:i + Y]
+        c = cols[i:i+Y]
 
         if lis_length(w) >= K:
-            styles.loc[stock, c] = "background-color:#c6efce"
+            styles.loc[stk, c] = "background-color:#c6efce"
             gset.update(c)
         elif lds_length(w) >= K:
-            styles.loc[stock, c] = "background-color:#ffc7ce"
+            styles.loc[stk, c] = "background-color:#ffc7ce"
             rset.update(c)
 
-    green_cnt[stock] = len(gset)
-    red_cnt[stock] = len(rset)
+    green_cnt[stk] = len(gset)
+    red_cnt[stk] = len(rset)
 
-final_df = pd.DataFrame({
-    "G": pd.Series(green_cnt),
-    "R": pd.Series(red_cnt)
-}).join(pivot_df).fillna(0)
+final_df = (
+    pd.DataFrame({"G": green_cnt, "R": red_cnt})
+    .join(pivot_df)
+    .fillna(0)
+)
 
 # ==================================================
 # DISPLAY FINAL TABLE
