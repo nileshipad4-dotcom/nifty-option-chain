@@ -136,8 +136,8 @@ for ts in valid_ts:
 
     series = compute_atm_per_stock(ts, t2, X)
     for stk, v in series.items():
-        # ✅ ONLY CHANGE: round to nearest integer
-        stock_df.loc[len(stock_df)] = [t_str, stk, int(round(v))]
+        # ✅ ONLY CHANGE: .0f rounding
+        stock_df.loc[len(stock_df)] = [t_str, stk, int(f"{v:.0f}")]
 
 stock_df = stock_df.drop_duplicates(["time","stock"])
 stock_df.to_csv(stock_path, index=False)
@@ -155,21 +155,18 @@ def lis_length(arr):
     d = []
     for x in arr:
         i = np.searchsorted(d, x)
-        if i == len(d):
-            d.append(x)
-        else:
-            d[i] = x
+        if i == len(d): d.append(x)
+        else: d[i] = x
     return len(d)
 
 def lds_length(arr):
     return lis_length([-x for x in arr])
 
 # ==================================================
-# HIGHLIGHT + COUNTS (PURE)
+# HIGHLIGHT + COUNTS
 # ==================================================
 style_mask = pd.DataFrame("", index=pivot_df.index, columns=pivot_df.columns)
-green_count = {}
-red_count = {}
+green_count, red_count = {}, {}
 
 for stock in pivot_df.index:
     values = pivot_df.loc[stock, cols].values
@@ -214,3 +211,4 @@ st.caption(
     f"Window={Y}, Subsequence≥{K} | "
     f"Green=Increasing, Red=Decreasing | Ref TS2={t2}"
 )
+
