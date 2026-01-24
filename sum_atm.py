@@ -226,7 +226,7 @@ green_counts = {}
 red_counts = {}
 
 for stock in pivot_df.index:
-    values = pivot_df.loc[stock, count_cols].values
+    values = pivot_df.loc[stock, cols].values
     gcols, rcols = set(), set()
 
     for start in range(len(values) - Y + 1):
@@ -234,7 +234,7 @@ for stock in pivot_df.index:
         if np.isnan(w).any():
             continue
 
-        target_cols = count_cols[start:start+Y]
+        target_cols = cols[start:start+Y]
 
         if lis_length(w) >= K:
             gcols.update(target_cols)
