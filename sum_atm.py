@@ -2,8 +2,6 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import os
-import base64
-import requests
 from datetime import time
 
 # ==================================================
@@ -15,13 +13,6 @@ st.title("📊 ATM Diff Dashboard")
 DATA_DIR = "data"
 CACHE_DIR = "data_atm"
 os.makedirs(CACHE_DIR, exist_ok=True)
-
-# ==================================================
-# GITHUB CONFIG
-# ==================================================
-GITHUB_TOKEN = st.secrets["GITHUB_TOKEN"]
-KITE_REPO = st.secrets["KITE_REPO"]
-GITHUB_BRANCH = st.secrets.get("GITHUB_BRANCH", "main")
 
 # ==================================================
 # LOAD CSV FILES
@@ -71,6 +62,28 @@ t2 = c2.selectbox("Timestamp 2 (Reference)", filtered_ts, index=filtered_ts.inde
 X = c3.number_input("Strike Window X", 1, 10, 4)
 Y = c4.number_input("Window Y", 4, 20, 6)
 K = 4
+
+# ==================================================
+# PRICE CONTEXT (% CHANGE)
+# ==================================================
+df_price_1 = pd.read_csv(file_map[t1])[["Stock", "Stock_%_Change", "Stock_LTP"]]
+df_price_2 = pd.read_csv(file_map[t2])[["Stock", "Stock_LTP"]]
+
+df_price_1.columns = ["stock", "Total_%", "ltp1"]
+df_price_2.columns = ["stock", "ltp2"]
+
+price_df = df_price_1.merge(df_price_2, on="stock", how="left")
+
+price_df["Δ%"] = np.where(
+    price_df["ltp2"] != 0,
+    ((price_df["ltp1"] - price_df["ltp2"]) / price_df["ltp2"]) * 100,
+    0
+)
+
+price_df["Total_%"] = price_df["Total_%"].round(2)
+price_df["Δ%"] = price_df["Δ%"].round(2)
+
+price_df = price_df.set_index("stock")[["Total_%", "Δ%"]]
 
 # ==================================================
 # ATM CALCULATION
@@ -203,12 +216,14 @@ def highlight_segments(data):
     return styles
 
 # ==================================================
-# DISPLAY
+# FINAL TABLE (WITH % CHANGE)
 # ==================================================
+final_df = price_df.join(pivot_df, how="left")
+
 st.markdown("### 📊 ATM Diff Pattern Table")
 
 styled = (
-    pivot_df
+    final_df
     .style
     .format("{:.2f}")
     .apply(highlight_segments, axis=None)
@@ -220,3 +235,4 @@ st.caption(
     f"Window={Y}, Subsequence≥{K} | "
     f"Green=Increasing, Red=Decreasing | Ref TS2={t2}"
 )
+
