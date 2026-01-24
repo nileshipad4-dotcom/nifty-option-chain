@@ -208,16 +208,7 @@ styled = (
 st.dataframe(styled, use_container_width=True)
 
 
-# ==================================================
-# LIMIT COUNT RANGE TO TS2 → TS1
-# ==================================================
-ts2_time = extract_time(t2)
-ts1_time = extract_time(t1)
 
-count_cols = [
-    c for c in cols
-    if ts2_time <= time.fromisoformat(c) <= ts1_time
-]
 
 # ==================================================
 # GREEN / RED COUNT TABLE (NEW)
