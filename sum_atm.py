@@ -146,7 +146,7 @@ st.subheader("Σ ATM_DIFF Over Time")
 st.dataframe(sigma_df, use_container_width=True)
 
 # ==================================================
-# PIVOT
+# PIVOT + RANGE FILTER
 # ==================================================
 pivot_df = (
     stock_df
@@ -155,16 +155,11 @@ pivot_df = (
     .round(0)
 )
 
-cols = list(pivot_df.columns)
-
-# ==================================================
-# LIMIT RANGE TO TS2 → TS1
-# ==================================================
 ts1_time = extract_time(t1)
 ts2_time = extract_time(t2)
 
 range_cols = [
-    c for c in cols
+    c for c in pivot_df.columns
     if ts2_time <= time.fromisoformat(c) <= ts1_time
 ]
 
@@ -177,23 +172,25 @@ def lis_length(arr):
     d = []
     for x in arr:
         i = np.searchsorted(d, x)
-        if i == len(d):
-            d.append(x)
-        else:
-            d[i] = x
+        if i == len(d): d.append(x)
+        else: d[i] = x
     return len(d)
 
 def lds_length(arr):
     return lis_length([-x for x in arr])
 
 # ==================================================
-# HIGHLIGHT
+# HIGHLIGHT + COUNT
 # ==================================================
+green_counts = {}
+red_counts = {}
+
 def highlight_segments(data):
     styles = pd.DataFrame("", index=data.index, columns=data.columns)
 
     for stock in data.index:
         values = data.loc[stock].values
+        gcols, rcols = set(), set()
 
         for start in range(len(values) - Y + 1):
             w = values[start:start+Y]
@@ -204,61 +201,36 @@ def highlight_segments(data):
 
             if lis_length(w) >= K:
                 styles.loc[stock, target_cols] = "background-color:#c6efce"
+                gcols.update(target_cols)
             elif lds_length(w) >= K:
                 styles.loc[stock, target_cols] = "background-color:#ffc7ce"
+                rcols.update(target_cols)
+
+        green_counts[stock] = len(gcols)
+        red_counts[stock] = len(rcols)
 
     return styles
 
 # ==================================================
-# DISPLAY ATM DIFF PATTERN TABLE
+# FINAL TABLE WITH INLINE COUNTS
 # ==================================================
+counts_df = pd.DataFrame({
+    "G": pd.Series(green_counts),
+    "R": pd.Series(red_counts),
+})
+
+final_df = counts_df.join(pivot_df_range)
+
 st.markdown("### 📊 ATM Diff Pattern Table (TS2 → TS1)")
 
 styled = (
-    pivot_df_range
+    final_df
     .style
     .format("{:.2f}")
-    .apply(highlight_segments, axis=None)
+    .apply(highlight_segments, axis=None, subset=pivot_df_range.columns)
 )
 
 st.dataframe(styled, use_container_width=True)
-
-# ==================================================
-# GREEN / RED COUNT TABLE (TS2 → TS1)
-# ==================================================
-green_counts = {}
-red_counts = {}
-
-for stock in pivot_df_range.index:
-    values = pivot_df_range.loc[stock].values
-    gcols, rcols = set(), set()
-
-    for start in range(len(values) - Y + 1):
-        w = values[start:start+Y]
-        if np.isnan(w).any():
-            continue
-
-        target_cols = range_cols[start:start+Y]
-
-        if lis_length(w) >= K:
-            gcols.update(target_cols)
-        elif lds_length(w) >= K:
-            rcols.update(target_cols)
-
-    green_counts[stock] = len(gcols)
-    red_counts[stock] = len(rcols)
-
-count_df = (
-    pd.DataFrame({
-        "Green_Count": pd.Series(green_counts),
-        "Red_Count": pd.Series(red_counts),
-    })
-    .fillna(0)
-    .astype(int)
-)
-
-st.markdown("### 🟢🔴 Highlight Count Summary (TS2 → TS1)")
-st.dataframe(count_df, use_container_width=True)
 
 # ==================================================
 # CAPTION
