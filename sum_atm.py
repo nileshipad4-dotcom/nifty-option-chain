@@ -241,13 +241,25 @@ new_ts2 = cB.selectbox("New TS2", range_ts, len(range_ts)-1)
 if extract_time(new_ts1) > extract_time(new_ts2):
     new_ts1, new_ts2 = new_ts2, new_ts1
 
-dfA = pd.read_csv(file_map[new_ts1])[["Stock","Stock_LTP","Stock_%_Change"]]
-dfB = pd.read_csv(file_map[new_ts2])[["Stock","Stock_LTP","Stock_%_Change"]]
+dfA = (
+    pd.read_csv(file_map[new_ts1])
+    [["Stock","Stock_LTP","Stock_%_Change"]]
+    .groupby("Stock", as_index=False)
+    .first()
+)
 
-dfA.columns=["Stock","ltpA","totA"]
-dfB.columns=["Stock","ltpB","totB"]
+dfB = (
+    pd.read_csv(file_map[new_ts2])
+    [["Stock","Stock_LTP","Stock_%_Change"]]
+    .groupby("Stock", as_index=False)
+    .first()
+)
 
-pct = dfA.merge(dfB,on="Stock")
+dfA.columns = ["Stock","ltpA","totA"]
+dfB.columns = ["Stock","ltpB","totB"]
+
+pct = dfA.merge(dfB, on="Stock", how="inner")
+
 pct["%_Change_TS"] = (pct["ltpB"]-pct["ltpA"]) / pct["ltpA"] * 100
 
 atmA = compute_atm_per_stock(new_ts1, t2, X)
