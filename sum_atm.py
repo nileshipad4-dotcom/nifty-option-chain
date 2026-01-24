@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import os
+import base64
+import requests
 from datetime import time
 
 # ==================================================
@@ -15,7 +17,44 @@ CACHE_DIR = "data_atm"
 os.makedirs(CACHE_DIR, exist_ok=True)
 
 # ==================================================
-# LOAD CSV FILES
+# GITHUB CONFIG (SECRETS)
+# ==================================================
+GITHUB_TOKEN = st.secrets["GITHUB_TOKEN"]
+KITE_REPO = st.secrets["KITE_REPO"]        # username/repo
+GITHUB_BRANCH = st.secrets.get("GITHUB_BRANCH", "main")
+
+GITHUB_API = "https://api.github.com"
+HEADERS = {
+    "Authorization": f"token {GITHUB_TOKEN}",
+    "Accept": "application/vnd.github.v3+json"
+}
+
+# ==================================================
+# GITHUB PUSH FUNCTION
+# ==================================================
+def push_file_to_github(local_path, repo_path, msg):
+    url = f"{GITHUB_API}/repos/{KITE_REPO}/contents/{repo_path}"
+
+    with open(local_path, "rb") as f:
+        content = base64.b64encode(f.read()).decode()
+
+    r = requests.get(url, headers=HEADERS)
+    sha = r.json().get("sha") if r.status_code == 200 else None
+
+    payload = {
+        "message": msg,
+        "content": content,
+        "branch": GITHUB_BRANCH
+    }
+    if sha:
+        payload["sha"] = sha
+
+    res = requests.put(url, headers=HEADERS, json=payload)
+    if res.status_code not in (200, 201):
+        st.error(f"GitHub push failed: {res.text}")
+
+# ==================================================
+# LOAD OPTION CHAIN FILES
 # ==================================================
 def load_csv_files():
     files = []
@@ -64,7 +103,7 @@ Y = c4.number_input("Window Y", 4, 20, 6)
 K = 4
 
 # ==================================================
-# ATM CALCULATION (UNCHANGED, WORKING)
+# ATM CALCULATION (PROVEN WORKING)
 # ==================================================
 def compute_atm_per_stock(ts1, ts2, X):
     df1 = pd.read_csv(file_map[ts1])
@@ -105,7 +144,7 @@ def compute_atm_per_stock(ts1, ts2, X):
     return df.groupby("Stock")["atm_diff"].first()
 
 # ==================================================
-# BUILD STOCK_DF (STRICT TS2 → TS1)
+# BUILD RAW STOCK_DF (TS2 → TS1)
 # ==================================================
 stock_df = pd.DataFrame(columns=["time","stock","atm_diff"])
 
@@ -116,18 +155,32 @@ valid_ts = [
 ]
 
 if not valid_ts:
-    st.warning("No timestamps between TS2 and TS1")
+    st.warning("No data between TS2 and TS1")
     st.stop()
 
 for ts in valid_ts:
     t_str = extract_time(ts).strftime("%H:%M")
     series = compute_atm_per_stock(ts, t2, X)
-
     for stk, v in series.items():
         stock_df.loc[len(stock_df)] = [t_str, stk, round(v, 0)]
 
 # ==================================================
-# Σ ATM_DIFF TABLE
+# WRITE + PUSH RAW ATM CSV
+# ==================================================
+ref_tag = extract_time(t2).strftime("%H%M")
+raw_csv = f"stock_ref_{ref_tag}.csv"
+raw_path = os.path.join(CACHE_DIR, raw_csv)
+
+stock_df.to_csv(raw_path, index=False)
+
+push_file_to_github(
+    raw_path,
+    f"{CACHE_DIR}/{raw_csv}",
+    f"update {raw_csv}"
+)
+
+# ==================================================
+# Σ ATM_DIFF TABLE (AND PUSH)
 # ==================================================
 sigma_df = (
     stock_df.groupby("time", as_index=False)["atm_diff"]
@@ -138,15 +191,21 @@ sigma_df = (
 st.subheader("Σ ATM_DIFF Over Time (TS2 → TS1)")
 st.dataframe(sigma_df, use_container_width=True)
 
+sigma_csv = f"sigma_atm_{ref_tag}.csv"
+sigma_path = os.path.join(CACHE_DIR, sigma_csv)
+
+sigma_df.to_csv(sigma_path, index=False)
+
+push_file_to_github(
+    sigma_path,
+    f"{CACHE_DIR}/{sigma_csv}",
+    f"update {sigma_csv}"
+)
+
 # ==================================================
 # PIVOT
 # ==================================================
-pivot_df = (
-    stock_df
-    .pivot(index="stock", columns="time", values="atm_diff")
-    .sort_index()
-)
-
+pivot_df = stock_df.pivot(index="stock", columns="time", values="atm_diff").sort_index()
 cols = list(pivot_df.columns)
 
 # ==================================================
@@ -164,7 +223,7 @@ def lds_length(arr):
     return lis_length([-x for x in arr])
 
 # ==================================================
-# HIGHLIGHT + COUNTS (ROBUST)
+# HIGHLIGHT + COUNTS
 # ==================================================
 green_counts, red_counts = {}, {}
 
@@ -173,22 +232,19 @@ def highlight_segments(data):
 
     for stock in data.index:
         values = data.loc[stock, cols].values
-        win = min(Y, len(values))
-        eff_K = min(K, win)
-
         gcols, rcols = set(), set()
 
-        for start in range(len(values) - win + 1):
-            w = values[start:start+win]
+        for start in range(len(values) - Y + 1):
+            w = values[start:start+Y]
             if np.isnan(w).any():
                 continue
 
-            tcols = cols[start:start+win]
+            tcols = cols[start:start+Y]
 
-            if lis_length(w) >= eff_K:
+            if lis_length(w) >= K:
                 styles.loc[stock, tcols] = "background-color:#c6efce"
                 gcols.update(tcols)
-            elif lds_length(w) >= eff_K:
+            elif lds_length(w) >= K:
                 styles.loc[stock, tcols] = "background-color:#ffc7ce"
                 rcols.update(tcols)
 
