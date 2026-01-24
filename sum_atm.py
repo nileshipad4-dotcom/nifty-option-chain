@@ -64,7 +64,7 @@ Y = c4.number_input("Window Y", 4, 20, 6)
 K = 4
 
 # ==================================================
-# ATM CALCULATION (FIXED)
+# ATM CALCULATION (UNCHANGED LOGIC)
 # ==================================================
 def compute_atm_per_stock(ts1, ts2, X):
     df1 = pd.read_csv(file_map[ts1])
@@ -99,45 +99,36 @@ def compute_atm_per_stock(ts1, ts2, X):
 
         ltp = g["ltp0"].iloc[0]
         atm_i = (g["Strike"] - ltp).abs().idxmin()
-
         atm_val = g.loc[max(0,atm_i-2):atm_i+2,"diff"].mean()
 
-        # ✅ FIX: assign ATM value to ALL rows of the stock
         df.loc[g["index"], "atm_diff"] = atm_val
 
     return df.groupby("Stock")["atm_diff"].first()
 
 # ==================================================
-# BUILD / UPDATE STOCK_DF (CSV GUARANTEED)
+# BUILD STOCK_DF (MATCHES WORKING VERSION)
 # ==================================================
 ref_time = extract_time(t2).strftime("%H%M")
 stock_path = os.path.join(CACHE_DIR, f"stock_ref_{ref_time}.csv")
 
-if os.path.exists(stock_path):
-    stock_df = pd.read_csv(stock_path)
-else:
-    stock_df = pd.DataFrame(columns=["time","stock","atm_diff"])
+stock_df = pd.read_csv(stock_path) if os.path.exists(stock_path) \
+    else pd.DataFrame(columns=["time","stock","atm_diff"])
 
 valid_ts = [
     ts for ts in filtered_ts
-    if extract_time(ts) >= extract_time(t2)
+    if extract_time(ts) > extract_time(t2)
     and extract_time(ts) <= extract_time(t1)
 ]
 
 for ts in valid_ts:
     t_str = extract_time(ts).strftime("%H:%M")
-
-    if not stock_df[
-        (stock_df["time"] == t_str)
-    ].empty:
+    if not stock_df[stock_df["time"] == t_str].empty:
         continue
 
     series = compute_atm_per_stock(ts, t2, X)
-
     for stk, v in series.items():
         stock_df.loc[len(stock_df)] = [t_str, stk, round(v, 0)]
 
-# Deduplicate + WRITE CSV
 stock_df = stock_df.drop_duplicates(["time","stock"])
 stock_df.to_csv(stock_path, index=False)
 
@@ -154,7 +145,7 @@ st.subheader("Σ ATM_DIFF Over Time")
 st.dataframe(sigma_df, use_container_width=True)
 
 # ==================================================
-# PIVOT + RANGE FILTER
+# PIVOT (TS2 → TS1)
 # ==================================================
 pivot_df = (
     stock_df
@@ -162,15 +153,7 @@ pivot_df = (
     .sort_index()
 )
 
-ts1_time = extract_time(t1)
-ts2_time = extract_time(t2)
-
-range_cols = [
-    c for c in pivot_df.columns
-    if ts2_time <= time.fromisoformat(c) <= ts1_time
-]
-
-pivot_df_range = pivot_df[range_cols]
+cols = list(pivot_df.columns)
 
 # ==================================================
 # LIS / LDS
@@ -179,64 +162,65 @@ def lis_length(arr):
     d = []
     for x in arr:
         i = np.searchsorted(d, x)
-        if i == len(d): d.append(x)
-        else: d[i] = x
+        if i == len(d):
+            d.append(x)
+        else:
+            d[i] = x
     return len(d)
 
 def lds_length(arr):
     return lis_length([-x for x in arr])
 
 # ==================================================
-# COUNTS
+# COUNTS (FIXED WINDOW LOGIC)
 # ==================================================
 green_counts, red_counts = {}, {}
 
-for stock in pivot_df_range.index:
-    values = pivot_df_range.loc[stock].values
+for stock in pivot_df.index:
+    values = pivot_df.loc[stock].values
+    win = min(Y, len(values))
     gcols, rcols = set(), set()
 
-    for start in range(len(values) - Y + 1):
-        w = values[start:start+Y]
+    for start in range(len(values) - win + 1):
+        w = values[start:start+win]
         if np.isnan(w).any():
             continue
 
-        cols = pivot_df_range.columns[start:start+Y]
+        tcols = cols[start:start+win]
 
         if lis_length(w) >= K:
-            gcols.update(cols)
+            gcols.update(tcols)
         elif lds_length(w) >= K:
-            rcols.update(cols)
+            rcols.update(tcols)
 
     green_counts[stock] = len(gcols)
     red_counts[stock] = len(rcols)
 
-counts_df = pd.DataFrame({
-    "G": pd.Series(green_counts),
-    "R": pd.Series(red_counts),
-})
+counts_df = pd.DataFrame({"G": green_counts, "R": red_counts})
 
-final_df = counts_df.join(pivot_df_range)
+final_df = counts_df.join(pivot_df)
 
 # ==================================================
-# HIGHLIGHT FUNCTION
+# HIGHLIGHT (MATCHES COUNTS)
 # ==================================================
 def highlight_segments(data):
     styles = pd.DataFrame("", index=data.index, columns=data.columns)
 
-    for stock in pivot_df_range.index:
-        values = pivot_df_range.loc[stock].values
+    for stock in data.index:
+        values = data.loc[stock, cols].values
+        win = min(Y, len(values))
 
-        for start in range(len(values) - Y + 1):
-            w = values[start:start+Y]
+        for start in range(len(values) - win + 1):
+            w = values[start:start+win]
             if np.isnan(w).any():
                 continue
 
-            cols = pivot_df_range.columns[start:start+Y]
+            tcols = cols[start:start+win]
 
             if lis_length(w) >= K:
-                styles.loc[stock, cols] = "background-color:#c6efce"
+                styles.loc[stock, tcols] = "background-color:#c6efce"
             elif lds_length(w) >= K:
-                styles.loc[stock, cols] = "background-color:#ffc7ce"
+                styles.loc[stock, tcols] = "background-color:#ffc7ce"
 
     return styles
 
@@ -249,13 +233,12 @@ styled = (
     final_df
     .style
     .format("{:.0f}")
-    .apply(highlight_segments, axis=None, subset=pivot_df_range.columns)
+    .apply(highlight_segments, axis=None, subset=cols)
 )
 
 st.dataframe(styled, use_container_width=True)
 
 st.caption(
     f"Window={Y}, Subsequence≥{K} | "
-    f"G=Green count, R=Red count | "
-    f"Range: {t2} → {t1}"
+    f"G=Green count, R=Red count | Range: {t2} → {t1}"
 )
