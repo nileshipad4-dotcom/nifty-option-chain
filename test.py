@@ -482,7 +482,7 @@ for stk, g in display_df.groupby("stk"):
     pe_pos_window = g.loc[pe_pos_idxs]
 
     # ---------------- CONDITIONS ----------------
-    cond_pe_big = (pe_window["pe_x"] > 9000).any()
+    cond_pe_big = (pe_window["pe_x"] > 900).any()
     cond_ce_small = not (ce_window["ce_x"] > 4000).any()
     cond_pe_positive = (pe_pos_window["pe_x"] > 0).all()
 
@@ -548,7 +548,7 @@ for stk, g in display_df.groupby("stk"):
     ce_pos    = g.loc[ce_pos_idxs]
 
     # ---------------- CONDITIONS ----------------
-    cond_ce_big = (ce_strong["ce_x"] > 9000).any()
+    cond_ce_big = (ce_strong["ce_x"] > 900).any()
     cond_pe_small = not (pe_weak["pe_x"] > 4000).any()
     cond_ce_positive = (ce_pos["ce_x"] > 0).all()
 
