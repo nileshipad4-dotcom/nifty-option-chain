@@ -522,4 +522,70 @@ else:
         use_container_width=True
     )
 
+# ==================================================
+# 🔻 DOWN TREND TABLE
+# ==================================================
+st.markdown("---")
+st.subheader("🔻 DOWN TREND")
 
+downtrend_blocks = []
+ranking = []
+
+for stk, g in display_df.groupby("stk"):
+    g = g.sort_values("str").reset_index(drop=True)
+    ltp = g["ltp"].iloc[0]
+
+    # --- ATM index ---
+    atm_idx = (g["str"] - ltp).abs().idxmin()
+
+    # ----- STRIKE WINDOWS (INDEX SAFE) -----
+    ce_strong_idxs = [i for i in range(atm_idx - 2, atm_idx + 2) if 0 <= i < len(g)]
+    pe_weak_idxs   = [i for i in range(atm_idx - 3, atm_idx + 4) if 0 <= i < len(g)]
+    ce_pos_idxs    = [i for i in range(atm_idx, atm_idx + 2) if i < len(g)]
+
+    ce_strong = g.loc[ce_strong_idxs]
+    pe_weak   = g.loc[pe_weak_idxs]
+    ce_pos    = g.loc[ce_pos_idxs]
+
+    # ---------------- CONDITIONS ----------------
+    cond_ce_big = (ce_strong["ce_x"] > 9000).any()
+    cond_pe_small = not (pe_weak["pe_x"] > 4000).any()
+    cond_ce_positive = (ce_pos["ce_x"] > 0).all()
+
+    if not (cond_ce_big and cond_pe_small and cond_ce_positive):
+        continue
+
+    # ---------------- SCORING ----------------
+    ce_max = ce_strong["ce_x"].max()
+    pe_max = pe_weak["pe_x"].max()
+    score = ce_max - pe_max
+
+    ranking.append((stk, score))
+    downtrend_blocks.append(g)
+
+# ---- EXIT IF EMPTY ----
+if not downtrend_blocks:
+    st.info("No DOWN TREND stocks found.")
+else:
+    # ---- SORT BY SCORE ----
+    rank_df = (
+        pd.DataFrame(ranking, columns=["stk", "score"])
+        .sort_values("score", ascending=False)
+    )
+
+    final_blocks = []
+    for stk in rank_df["stk"]:
+        final_blocks.append(
+            pd.concat(downtrend_blocks)
+            .query("stk == @stk")
+        )
+
+    downtrend_df = pd.concat(final_blocks, ignore_index=True)
+
+    st.dataframe(
+        downtrend_df
+        .style
+        .apply(atm_blue, axis=None)
+        .format(fmt, na_rep=""),
+        use_container_width=True
+    )
