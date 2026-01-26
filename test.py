@@ -454,3 +454,72 @@ if stock_a or stock_b:
         show_stock_table(stock_b)
 
 
+
+# NEW CHANGE
+# ==================================================
+# 📈 UP TREND TABLE
+# ==================================================
+st.markdown("---")
+st.subheader("📈 UP TREND")
+
+uptrend_blocks = []
+ranking = []
+
+for stk, g in display_df.groupby("stk"):
+    g = g.sort_values("str").reset_index(drop=True)
+    ltp = g["ltp"].iloc[0]
+
+    # --- ATM index ---
+    atm_idx = (g["str"] - ltp).abs().idxmin()
+
+    # Strike windows (index-safe)
+    pe_idxs = [i for i in range(atm_idx, atm_idx + 4) if i < len(g)]
+    ce_idxs = [i for i in range(atm_idx - 4, atm_idx + 3) if 0 <= i < len(g)]
+    pe_pos_idxs = [i for i in range(atm_idx, atm_idx + 2) if i < len(g)]
+
+    pe_window = g.loc[pe_idxs]
+    ce_window = g.loc[ce_idxs]
+    pe_pos_window = g.loc[pe_pos_idxs]
+
+    # ---------------- CONDITIONS ----------------
+    cond_pe_big = (pe_window["pe_x"] > 9000).any()
+    cond_ce_small = not (ce_window["ce_x"] > 4000).any()
+    cond_pe_positive = (pe_pos_window["pe_x"] > 0).all()
+
+    if not (cond_pe_big and cond_ce_small and cond_pe_positive):
+        continue
+
+    # ---------------- SCORING ----------------
+    pe_max = pe_window["pe_x"].max()
+    ce_max = ce_window["ce_x"].max()
+    score = pe_max - ce_max
+
+    ranking.append((stk, score))
+    uptrend_blocks.append(g)
+
+# ---- EXIT IF EMPTY ----
+if not uptrend_blocks:
+    st.info("No UP TREND stocks found.")
+else:
+    # ---- SORT STOCKS BY SCORE ----
+    rank_df = pd.DataFrame(ranking, columns=["stk", "score"]) \
+                .sort_values("score", ascending=False)
+
+    final_blocks = []
+    for stk in rank_df["stk"]:
+        final_blocks.append(
+            pd.concat(uptrend_blocks)
+            .query("stk == @stk")
+        )
+
+    uptrend_df = pd.concat(final_blocks, ignore_index=True)
+
+    st.dataframe(
+        uptrend_df
+        .style
+        .apply(atm_blue, axis=None)
+        .format(fmt, na_rep=""),
+        use_container_width=True
+    )
+
+
