@@ -160,10 +160,35 @@ rows = []
 for ts in valid_ts:
     t_str = extract_time(ts).strftime("%H:%M")
     s = compute_atm_per_stock(ts, t2, X)
-    for stk, v in s.items():
-        rows.append([t_str, stk, round(v, 0)])
+        # ---- LTP % CHANGE (ts vs ts2) ----
+    df_ts  = pd.read_csv(file_map[ts])
+    df_ref = pd.read_csv(file_map[t2])
 
-stock_df = pd.DataFrame(rows, columns=["time","stock","atm_diff"]).drop_duplicates()
+
+    ltp_df = (
+        df_ts[["Stock","Stock_LTP"]]
+        .rename(columns={"Stock_LTP":"ltp_ts"})
+        .merge(
+            df_ref[["Stock","Stock_LTP"]].rename(columns={"Stock_LTP":"ltp_ref"}),
+            on="Stock",
+            how="inner"
+        )
+    )
+
+
+    ltp_df["pct_ch"] = (
+        (ltp_df["ltp_ts"] - ltp_df["ltp_ref"]) / ltp_df["ltp_ref"]
+    ) * 100
+
+
+    avg_ltp_pct_x1000 = round(ltp_df["pct_ch"].mean() * 1000, 2)
+    for stk, v in s.items():
+        rows.append([t_str, stk, round(v, 0), avg_ltp_pct_x1000])
+
+stock_df = pd.DataFrame(
+    rows,
+    columns=["time","stock","atm_diff","avg_ltp_pct_x1000"]
+).drop_duplicates()
 
 ref_tag = ts2_time.strftime("%H%M")
 stock_csv = f"stock_ref_{ref_tag}.csv"
@@ -181,9 +206,16 @@ push_file_to_github(
 # Σ ATM TABLE
 # ==================================================
 sigma_df = (
-    stock_df.groupby("time", as_index=False)["atm_diff"]
-    .sum()
-    .rename(columns={"atm_diff":"Σ_ATM"})
+    stock_df
+    .groupby("time", as_index=False)
+    .agg({
+        "atm_diff":"sum",
+        "avg_ltp_pct_x1000":"mean"
+    })
+    .rename(columns={
+        "atm_diff":"Σ_ATM",
+        "avg_ltp_pct_x1000":"AVG_LTP_%_x1000"
+    })
 )
 
 sigma_csv = f"sigma_atm_{ref_tag}.csv"
