@@ -242,6 +242,22 @@ def atm_blue(data):
     return styles
 
 # ==================================================
+# STOCK NAME ONLY HIGHLIGHT (BOTTOM N PE / CE)
+# ==================================================
+def highlight_stk_only(data):
+    styles = pd.DataFrame("", index=data.index, columns=data.columns)
+
+    if "stk" not in data.columns:
+        return styles
+
+    for i, stk in data["stk"].items():
+        if stk in bottom_pe_stocks:
+            styles.at[i, "stk"] = "background-color:#1b5e20;color:white"  # GREEN
+        elif stk in bottom_ce_stocks:
+            styles.at[i, "stk"] = "background-color:#8b0000;color:white"  # RED
+
+    return styles
+# ==================================================
 # FORMAT
 # ==================================================
 fmt = {
@@ -276,7 +292,7 @@ if "pe_min" not in st.session_state:
 if "ce_min" not in st.session_state:
     st.session_state.ce_min = False
 
-c_pe, c_ce = st.columns(2)
+c_pe, c_ce, c_n = st.columns([1, 1, 1])
 
 def pe_callback():
     if st.session_state.pe_min:
@@ -300,7 +316,14 @@ c_ce.toggle(
 
 PE_MIN = st.session_state.pe_min
 CE_MIN = st.session_state.ce_min
-    
+
+BOTTOM_N = c_n.number_input(
+    "Bottom N",
+    min_value=5,
+    max_value=100,
+    value=20,
+    step=5
+)
 # ==================================================
 # DISPLAY
 # ==================================================
@@ -341,6 +364,29 @@ if PE_MIN or CE_MIN:
 
     display_df = pd.concat(sorted_blocks, ignore_index=True)
 
+# ==================================================
+# 📌 BOTTOM N STOCKS FOR HIGHLIGHTING
+# ==================================================
+stock_sums = (
+    display_df
+    .groupby("stk")
+    .agg(
+        pe_sum=("pe_x", "sum"),
+        ce_sum=("ce_x", "sum")
+    )
+    .reset_index()
+)
+
+bottom_pe_stocks = set(
+    stock_sums.sort_values("pe_sum", ascending=True)
+    .head(BOTTOM_N)["stk"]
+)
+
+bottom_ce_stocks = set(
+    stock_sums.sort_values("ce_sum", ascending=True)
+    .head(BOTTOM_N)["stk"]
+)
+
 st.markdown(f"### 🟢 UP : {up_atm} &nbsp;&nbsp; | &nbsp;&nbsp; Σ ATM : {sum_atm:.0f}")
 
 
@@ -349,6 +395,7 @@ st.dataframe(
     display_df
     .style
     .apply(atm_blue, axis=None)
+    .apply(highlight_stk_only, axis=None)
     .format(fmt, na_rep=""),
     use_container_width=True
 )
