@@ -268,16 +268,38 @@ fmt = {
 # 🔃 MAIN TABLE SORT TOGGLES
 # ==================================================
 st.markdown("### 🔃 Sorting Options (Main Table)")
+# ==================================================
+
+
+if "pe_min" not in st.session_state:
+    st.session_state.pe_min = False
+if "ce_min" not in st.session_state:
+    st.session_state.ce_min = False
 
 c_pe, c_ce = st.columns(2)
 
-PE_MIN = c_pe.toggle("PE Min", value=False)
-CE_MIN = c_ce.toggle("CE Min", value=False)
+def pe_callback():
+    if st.session_state.pe_min:
+        st.session_state.ce_min = False
 
-# Safety: only one toggle active
-if PE_MIN and CE_MIN:
-    st.warning("Select only one sorting option (PE Min or CE Min).")
-    PE_MIN = CE_MIN = False
+def ce_callback():
+    if st.session_state.ce_min:
+        st.session_state.pe_min = False
+
+c_pe.toggle(
+    "PE Min",
+    key="pe_min",
+    on_change=pe_callback
+)
+
+c_ce.toggle(
+    "CE Min",
+    key="ce_min",
+    on_change=ce_callback
+)
+
+PE_MIN = st.session_state.pe_min
+CE_MIN = st.session_state.ce_min
     
 # ==================================================
 # DISPLAY
