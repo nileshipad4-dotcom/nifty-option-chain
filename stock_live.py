@@ -21,7 +21,7 @@ ACCESS_TOKEN = KITE_ACCESS_TOKEN
 st.set_page_config(page_title="LIVE Option Chain – Kite", layout="wide")
 st.title("📊 LIVE Option Chain – Kite Only")
 
-st_autorefresh(interval=200_000, key="live_refresh")
+st_autorefresh(interval=300_000, key="live_refresh")
 
 IST = pytz.timezone("Asia/Kolkata")
 
