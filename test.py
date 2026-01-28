@@ -262,6 +262,23 @@ fmt = {
 
 }
 
+
+
+# ==================================================
+# 🔃 MAIN TABLE SORT TOGGLES
+# ==================================================
+st.markdown("### 🔃 Sorting Options (Main Table)")
+
+c_pe, c_ce = st.columns(2)
+
+PE_MIN = c_pe.toggle("PE Min", value=False)
+CE_MIN = c_ce.toggle("CE Min", value=False)
+
+# Safety: only one toggle active
+if PE_MIN and CE_MIN:
+    st.warning("Select only one sorting option (PE Min or CE Min).")
+    PE_MIN = CE_MIN = False
+    
 # ==================================================
 # DISPLAY
 # ==================================================
@@ -269,6 +286,38 @@ fmt = {
 
 up_atm = display_df[display_df["atm_diff"] > 0]["stk"].nunique()
 sum_atm = display_df["atm_diff"].sum() / 1000
+
+# ==================================================
+# OPTIONAL STOCK-WISE SORTING (PE MIN / CE MIN)
+# ==================================================
+if PE_MIN or CE_MIN:
+
+    stock_sort = (
+        display_df
+        .groupby("stk")
+        .agg(
+            pe_sum=("pe_x", "sum"),
+            ce_sum=("ce_x", "sum")
+        )
+        .reset_index()
+    )
+
+    if PE_MIN:
+        stock_sort = stock_sort.sort_values("pe_sum", ascending=True)
+    elif CE_MIN:
+        stock_sort = stock_sort.sort_values("ce_sum", ascending=True)
+
+    ordered_stocks = stock_sort["stk"].tolist()
+
+    sorted_blocks = []
+    for stk in ordered_stocks:
+        block = (
+            display_df[display_df["stk"] == stk]
+            .sort_values("str")
+        )
+        sorted_blocks.append(block)
+
+    display_df = pd.concat(sorted_blocks, ignore_index=True)
 
 st.markdown(f"### 🟢 UP : {up_atm} &nbsp;&nbsp; | &nbsp;&nbsp; Σ ATM : {sum_atm:.0f}")
 
