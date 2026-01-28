@@ -251,10 +251,18 @@ def highlight_stk_only(data):
         return styles
 
     for i, stk in data["stk"].items():
-        if stk in bottom_pe_stocks:
-            styles.at[i, "stk"] = "background-color:#1b5e20;color:white"  # GREEN
+
+        # 🟠 Bottom N in BOTH PE & CE
+        if stk in bottom_pe_stocks and stk in bottom_ce_stocks:
+            styles.at[i, "stk"] = "background-color:#ff8c00;color:black"
+
+        # 🟢 Bottom N in PE only
+        elif stk in bottom_pe_stocks:
+            styles.at[i, "stk"] = "background-color:#1b5e20;color:white"
+
+        # 🔴 Bottom N in CE only
         elif stk in bottom_ce_stocks:
-            styles.at[i, "stk"] = "background-color:#8b0000;color:white"  # RED
+            styles.at[i, "stk"] = "background-color:#8b0000;color:white"
 
     return styles
 # ==================================================
