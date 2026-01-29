@@ -94,7 +94,7 @@ expiry = c2.selectbox(
 idx_df = idx_df[idx_df["expiry"] == expiry]
 
 # ==================================================
-# PREPARE SYMBOLS
+# FETCH QUOTES
 # ==================================================
 symbols = ["NFO:" + ts for ts in idx_df["tradingsymbol"]]
 
@@ -128,8 +128,13 @@ for strike in sorted(idx_df["strike"].unique()):
         "PE_OI": pe_q.get("oi", 0),
     })
 
-df = pd.DataFrame(rows).sort_values("Strike")
+df = pd.DataFrame(rows).sort_values("Strike").reset_index(drop=True)
 df = compute_max_pain(df)
+
+# ==================================================
+# Δ MAX PAIN (CURRENT - NEXT STRIKE)
+# ==================================================
+df["Δ Max_Pain"] = df["Max_Pain"] - df["Max_Pain"].shift(-1)
 
 mp_row = df.loc[df["Max_Pain"].idxmin()]
 
@@ -146,7 +151,13 @@ c2.metric("Max Pain Strike", int(mp_row["Strike"]))
 c3.metric("Max Pain Value", int(mp_row["Max_Pain"]))
 
 st.dataframe(
-    df[["Strike", "CE_OI", "PE_OI", "CE_LTP", "PE_LTP", "Max_Pain"]],
+    df[[
+        "Strike",
+        "CE_OI", "PE_OI",
+        "CE_LTP", "PE_LTP",
+        "Max_Pain",
+        "Δ Max_Pain"
+    ]],
     use_container_width=True
 )
 
