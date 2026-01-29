@@ -51,6 +51,25 @@ filtered_ts = [
 ]
 
 # ==================================================
+# EARLY WINDOW (FIRST TWO AFTER 09:10)
+# ==================================================
+early_ts = [
+    ts for ts in filtered_ts
+    if extract_time(ts) and extract_time(ts) >= time(9, 10)
+]
+
+if len(early_ts) < 2:
+    st.error("Need at least 2 CSV files after 09:10")
+    st.stop()
+
+t0a, t0b = early_ts[0], early_ts[1]
+
+st.markdown(
+    f"### 🕘 Early Window: "
+    f"**{extract_time(t0a).strftime('%H:%M')}** vs "
+    f"**{extract_time(t0b).strftime('%H:%M')}**"
+)
+# ==================================================
 # USER CONTROLS
 # ==================================================
 st.subheader("🕒 Timestamp & Window Settings")
@@ -75,7 +94,8 @@ X = c4.number_input(
 df1 = pd.read_csv(file_map[t1])
 df2 = pd.read_csv(file_map[t2])
 df3 = pd.read_csv(file_map[t3])
-
+df0a = pd.read_csv(file_map[t0a])
+df0b = pd.read_csv(file_map[t0b])
 # ==================================================
 # BUILD BASE TABLE
 # ==================================================
@@ -95,6 +115,14 @@ for i, d in enumerate([df1, df2, df3]):
 df = dfs[0].merge(dfs[1], on=["Stock", "Strike"]) \
             .merge(dfs[2], on=["Stock", "Strike"])
 
+df = df.merge(
+    early_df[["Stock", "Strike", "ce_x_0", "pe_x_0"]],
+    on=["Stock", "Strike"],
+    how="left"
+)
+
+df["ce_x_0"] = pd.to_numeric(df["ce_x_0"], errors="coerce").fillna(0)
+df["pe_x_0"] = pd.to_numeric(df["pe_x_0"], errors="coerce").fillna(0)
 # ==================================================
 # NUMERIC SAFETY
 # ==================================================
@@ -102,6 +130,26 @@ for c in df.columns:
     if any(x in c for x in ["ltp", "ce", "pe", "Strike", "tot_ch", "total_ch"]):
         df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
 
+# ==================================================
+# EARLY OI DELTA (09:10+ WINDOW)
+# ==================================================
+early_df = (
+    df0a[["Stock", "Strike", "CE_OI", "PE_OI"]]
+    .merge(
+        df0b[["Stock", "Strike", "CE_OI", "PE_OI"]],
+        on=["Stock", "Strike"],
+        suffixes=("_a", "_b")
+    )
+)
+
+for c in ["CE_OI_a", "CE_OI_b", "PE_OI_a", "PE_OI_b", "Strike"]:
+    early_df[c] = pd.to_numeric(early_df[c], errors="coerce").fillna(0)
+
+early_df["d_ce_0"] = early_df["CE_OI_a"] - early_df["CE_OI_b"]
+early_df["d_pe_0"] = early_df["PE_OI_a"] - early_df["PE_OI_b"]
+
+early_df["ce_x_0"] = (early_df["d_ce_0"] * early_df["Strike"]) / 10000
+early_df["pe_x_0"] = (early_df["d_pe_0"] * early_df["Strike"]) / 10000
 
 # ==================================================
 # CORE CALCULATIONS
@@ -190,6 +238,8 @@ table = df[[
     "d_pe",
     "ce_x",
     "pe_x",
+    "ce_x_0",   # 🔴 NEW
+    "pe_x_0",   #
     "diff",
     "diff_23",
     "atm_diff"
