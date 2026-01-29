@@ -58,19 +58,6 @@ early_ts = sorted(
     key=lambda x: extract_time(x)
 )
 
-# ==================================================
-# CSV JUST BEFORE 09:15 (FOR D-1 % ch)
-# ==================================================
-pre_915_ts = [
-    ts for ts in filtered_ts
-    if extract_time(ts) < time(9, 15)
-]
-
-if not pre_915_ts:
-    st.error("No CSV found before 09:15 for D-1 % ch")
-    st.stop()
-
-t_pre_915 = max(pre_915_ts, key=lambda x: extract_time(x))
 if len(early_ts) < 2:
     st.error("Need at least 2 CSV files after 09:10 for early OI window")
     st.stop()
@@ -103,7 +90,19 @@ df2 = pd.read_csv(file_map[t2])
 df3 = pd.read_csv(file_map[t3])
 df0a = pd.read_csv(file_map[t0a])
 df0b = pd.read_csv(file_map[t0b])
-df_pre_915 = pd.read_csv(file_map[t_pre_915])
+
+# ==================================================
+# EARLY TOTAL % CHANGE (FROM df0b)
+# ==================================================
+early_ch_df = (
+    df0b[["Stock", "Stock_%_Change"]]
+    .rename(columns={"Stock_%_Change": "early_total_ch"})
+)
+
+early_ch_df["early_total_ch"] = pd.to_numeric(
+    early_ch_df["early_total_ch"], errors="coerce"
+).fillna(0)
+
 
 # ==================================================
 # BUILD BASE TABLE
@@ -132,25 +131,16 @@ for c in df.columns:
         df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
 
 # ==================================================
-# EARLY TOTAL % CHANGE (D-1 % ch)
+# MERGE EARLY TOTAL % CHANGE INTO MAIN DF
 # ==================================================
-early_ch_df = (
-    df_pre_915[["Stock", "Stock_%_Change"]]
-    .rename(columns={"Stock_%_Change": "D-1 % ch"})
-)
-
-early_ch_df["D-1 % ch"] = pd.to_numeric(
-    early_ch_df["D-1 % ch"], errors="coerce"
-).fillna(0)
-
 df = df.merge(
     early_ch_df,
     on="Stock",
     how="left"
 )
 
-df["D-1 % ch"] = pd.to_numeric(
-    df["D-1 % ch"], errors="coerce"
+df["early_total_ch"] = pd.to_numeric(
+    df["early_total_ch"], errors="coerce"
 ).fillna(0)
 
 # ==================================================
@@ -272,7 +262,7 @@ table = df[[
     "pe_x",
     "ce_x_0",
     "pe_x_0",
-    "D-1 % ch",
+    "early_total_ch",
     "diff",
     "diff_23",
     "atm_diff"
@@ -370,7 +360,6 @@ fmt = {
     "ce_x_0": "{:.0f}",
     "pe_x_0": "{:.0f}",
     "diff": "{:.0f}",
-    "D-1 % ch": "{:.2f}",
     "atm_diff": "{:.0f}",
     "total_ch": "{:.2f}",
     "diff_23": "{:.0f}"
@@ -544,7 +533,6 @@ stock_summary = (
     .agg(
         count=("diff", "size"),
         total_ch=("total_ch", "first"),
-        early_ch=("D-1 % ch", "first"),
         ch=("ch", "first")
     )
     .reset_index()
