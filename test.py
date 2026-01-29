@@ -7,6 +7,7 @@ from streamlit_autorefresh import st_autorefresh
 
 # st_autorefresh(interval=3600_000, key="auto_refresh")
 
+st.write("✅ App reached render phase")
 # ==================================================
 # CONFIG
 # ==================================================
