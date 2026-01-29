@@ -92,33 +92,6 @@ df0a = pd.read_csv(file_map[t0a])
 df0b = pd.read_csv(file_map[t0b])
 
 # ==================================================
-# EARLY LTP % CHANGE (df0b vs df0a)
-# ==================================================
-early_ltp_df = (
-    df0a[["Stock", "Stock_LTP"]]
-    .rename(columns={"Stock_LTP": "ltp_a"})
-    .merge(
-        df0b[["Stock", "Stock_LTP"]]
-        .rename(columns={"Stock_LTP": "ltp_b"}),
-        on="Stock",
-        how="inner"
-    )
-)
-
-early_ltp_df["ltp_a"] = pd.to_numeric(early_ltp_df["ltp_a"], errors="coerce")
-early_ltp_df["ltp_b"] = pd.to_numeric(early_ltp_df["ltp_b"], errors="coerce")
-
-early_ltp_df["early_ltp_ch"] = (
-    (early_ltp_df["ltp_b"] - early_ltp_df["ltp_a"]) /
-    early_ltp_df["ltp_a"]
-) * 100
-
-early_ltp_df["early_ltp_ch"] = early_ltp_df["early_ltp_ch"].replace(
-    [np.inf, -np.inf], 0
-).fillna(0)
-
-
-# ==================================================
 # BUILD BASE TABLE
 # ==================================================
 dfs = []
@@ -173,19 +146,6 @@ df = df.merge(
 
 df["ce_x_0"] = pd.to_numeric(df["ce_x_0"], errors="coerce").fillna(0)
 df["pe_x_0"] = pd.to_numeric(df["pe_x_0"], errors="coerce").fillna(0)
-
-# ==================================================
-# MERGE EARLY LTP % CHANGE
-# ==================================================
-df = df.merge(
-    early_ltp_df[["Stock", "early_ltp_ch"]],
-    on="Stock",
-    how="left"
-)
-
-df["early_ltp_ch"] = pd.to_numeric(
-    df["early_ltp_ch"], errors="coerce"
-).fillna(0)
 
 # ==================================================
 # CORE CALCULATIONS
@@ -276,7 +236,6 @@ table = df[[
     "pe_x",
     "ce_x_0",
     "pe_x_0",
-    "early_ltp_ch",
     "diff",
     "diff_23",
     "atm_diff"
@@ -373,7 +332,6 @@ fmt = {
     "sum_pe": "{:.0f}",
     "ce_x_0": "{:.0f}",
     "pe_x_0": "{:.0f}",
-    "early_ltp_ch": "{:.2f}",
     "diff": "{:.0f}",
     "atm_diff": "{:.0f}",
     "total_ch": "{:.2f}",
