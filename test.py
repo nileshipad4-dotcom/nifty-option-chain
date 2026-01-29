@@ -60,6 +60,24 @@ filtered_ts = [
 ]
 
 # ==================================================
+# 🕘 EARLY % SNAPSHOT (LAST CSV BEFORE 09:15)
+# ==================================================
+early_pct_ts = [
+    ts for ts in filtered_ts
+    if extract_time(ts) and extract_time(ts) < time(9, 15)
+]
+
+if not early_pct_ts:
+    st.error("No CSV found before 09:15 for early % change")
+    st.stop()
+
+early_pct_ts = sorted(early_pct_ts, key=lambda x: extract_time(x))
+t_early_pct = early_pct_ts[-1]
+
+st.markdown(
+    f"### 🌅 Early % Snapshot: **{extract_time(t_early_pct).strftime('%H:%M')}**"
+)
+# ==================================================
 # 🕘 EARLY WINDOW (FIRST TWO AFTER 09:10)
 # ==================================================
 # ==================================================
@@ -109,9 +127,19 @@ try:
     df3 = pd.read_csv(file_map[t3])
     df0a = pd.read_csv(file_map[t0a])
     df0b = pd.read_csv(file_map[t0b])
+    df_early_pct = pd.read_csv(file_map[t_early_pct])
 except Exception as e:
     st.error(f"Error reading CSV files: {e}")
     st.stop()
+# ==================================================
+# 🌅 EARLY TOTAL % CHANGE (DIRECT FROM CSV)
+# ==================================================
+early_ch_df = df_early_pct[["Stock", "Stock_%_Change"]] \
+    .rename(columns={"Stock_%_Change": "early_total_ch"})
+
+early_ch_df["early_total_ch"] = pd.to_numeric(
+    early_ch_df["early_total_ch"], errors="coerce"
+).fillna(0)
 
 # ==================================================
 # 🌅 EARLY TOTAL % CHANGE (FROM 2nd CSV AFTER 09:10)
@@ -189,6 +217,8 @@ df = df.merge(
     on="Stock",
     how="left"
 )
+
+df["early_total_ch"] = df["early_total_ch"].fillna(0)
 
 df["early_total_ch"] = pd.to_numeric(
     df["early_total_ch"], errors="coerce"
