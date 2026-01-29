@@ -7,11 +7,12 @@ from streamlit_autorefresh import st_autorefresh
 
 # st_autorefresh(interval=3600_000, key="auto_refresh")
 
-st.write("✅ App reached render phase")
+
 # ==================================================
 # CONFIG
 # ==================================================
 st.set_page_config(page_title="OI Weighted Table", layout="wide")
+st.write("✅ App reached render phase")
 st.title("📊 OI Weighted Strike Table")
 
 DATA_DIR = "data"
