@@ -51,6 +51,19 @@ filtered_ts = [
 ]
 
 # ==================================================
+# EARLY WINDOW (FIRST TWO CSVs AFTER 09:10)
+# ==================================================
+early_ts = sorted(
+    [ts for ts in filtered_ts if extract_time(ts) >= time(9, 10)],
+    key=lambda x: extract_time(x)
+)
+
+if len(early_ts) < 2:
+    st.error("Need at least 2 CSV files after 09:10 for early OI window")
+    st.stop()
+
+t0a, t0b = early_ts[0], early_ts[1]
+# ==================================================
 # USER CONTROLS
 # ==================================================
 st.subheader("🕒 Timestamp & Window Settings")
@@ -75,6 +88,8 @@ X = c4.number_input(
 df1 = pd.read_csv(file_map[t1])
 df2 = pd.read_csv(file_map[t2])
 df3 = pd.read_csv(file_map[t3])
+df0a = pd.read_csv(file_map[t0a])
+df0b = pd.read_csv(file_map[t0b])
 
 # ==================================================
 # BUILD BASE TABLE
@@ -102,6 +117,35 @@ for c in df.columns:
     if any(x in c for x in ["ltp", "ce", "pe", "Strike", "tot_ch", "total_ch"]):
         df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
 
+# ==================================================
+# EARLY OI DELTA (09:10 WINDOW)
+# ==================================================
+early_df = (
+    df0a[["Stock", "Strike", "CE_OI", "PE_OI"]]
+    .merge(
+        df0b[["Stock", "Strike", "CE_OI", "PE_OI"]],
+        on=["Stock", "Strike"],
+        suffixes=("_a", "_b")
+    )
+)
+
+for c in ["CE_OI_a", "CE_OI_b", "PE_OI_a", "PE_OI_b", "Strike"]:
+    early_df[c] = pd.to_numeric(early_df[c], errors="coerce").fillna(0)
+
+early_df["d_ce_0"] = early_df["CE_OI_b"] - early_df["CE_OI_a"]
+early_df["d_pe_0"] = early_df["PE_OI_b"] - early_df["PE_OI_a"]
+
+early_df["ce_x_0"] = (early_df["d_ce_0"] * early_df["Strike"]) / 10000
+early_df["pe_x_0"] = (early_df["d_pe_0"] * early_df["Strike"]) / 10000
+
+df = df.merge(
+    early_df[["Stock", "Strike", "ce_x_0", "pe_x_0"]],
+    on=["Stock", "Strike"],
+    how="left"
+)
+
+df["ce_x_0"] = pd.to_numeric(df["ce_x_0"], errors="coerce").fillna(0)
+df["pe_x_0"] = pd.to_numeric(df["pe_x_0"], errors="coerce").fillna(0)
 
 # ==================================================
 # CORE CALCULATIONS
@@ -190,6 +234,8 @@ table = df[[
     "d_pe",
     "ce_x",
     "pe_x",
+    "ce_x_0",
+    "pe_x_0",
     "diff",
     "diff_23",
     "atm_diff"
@@ -241,6 +287,12 @@ def atm_blue(data):
 
     return styles
 
+def red_early_columns(data):
+    styles = pd.DataFrame("", index=data.index, columns=data.columns)
+    for col in ["ce_x_0", "pe_x_0"]:
+        if col in styles.columns:
+            styles[col] = "color:red;font-weight:bold"
+    return styles
 # ==================================================
 # STOCK NAME ONLY HIGHLIGHT (BOTTOM N PE / CE)
 # ==================================================
@@ -278,6 +330,8 @@ fmt = {
     "pe_x": "{:.0f}",
     "sum_ce": "{:.0f}",
     "sum_pe": "{:.0f}",
+    "ce_x_0": "{:.0f}",
+    "pe_x_0": "{:.0f}",
     "diff": "{:.0f}",
     "atm_diff": "{:.0f}",
     "total_ch": "{:.2f}",
@@ -404,6 +458,7 @@ st.dataframe(
     .style
     .apply(atm_blue, axis=None)
     .apply(highlight_stk_only, axis=None)
+    .apply(red_early_columns, axis=None)
     .format(fmt, na_rep=""),
     use_container_width=True
 )
