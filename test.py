@@ -494,7 +494,7 @@ st.dataframe(
     .style
     .apply(atm_blue, axis=None)
     .apply(highlight_stk_only, axis=None)
-    .apply(red_early_columns, axis=None) 
+    #apply(red_early_columns, axis=None) 
     .format(fmt, na_rep=""),
     use_container_width=True
 )
