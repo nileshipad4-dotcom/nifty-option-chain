@@ -53,10 +53,16 @@ filtered_ts = [
 # ==================================================
 # EARLY WINDOW (FIRST TWO AFTER 09:10)
 # ==================================================
-early_ts = [
-    ts for ts in filtered_ts
-    if extract_time(ts) and extract_time(ts) >= time(9, 10)
-]
+# ==================================================
+# EARLY WINDOW (EARLIEST TWO JUST AFTER 09:10)
+# ==================================================
+early_ts = sorted(
+    [
+        ts for ts in filtered_ts
+        if extract_time(ts) and extract_time(ts) >= time(9, 10)
+    ],
+    key=lambda x: extract_time(x)
+)
 
 if len(early_ts) < 2:
     st.error("Need at least 2 CSV files after 09:10")
