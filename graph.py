@@ -69,88 +69,85 @@ def compute_max_pain(df):
     return df
 
 # ==================================================
-# PREPARE OPTION SYMBOLS
+# UI CONTROLS
 # ==================================================
-option_map = {}
-all_symbols = []
-
-for idx in INDEXES:
-    df = instruments[
-        (instruments["name"] == idx) &
-        (instruments["segment"] == "NFO-OPT")
-    ].copy()
-
-    if df.empty:
-        continue
-
-    df["expiry"] = pd.to_datetime(df["expiry"])
-    expiry = df["expiry"].min()
-    df = df[df["expiry"] == expiry]
-
-    option_map[idx] = df
-    all_symbols.extend(["NFO:" + ts for ts in df["tradingsymbol"]])
+c1, c2 = st.columns(2)
+index = c1.selectbox("Index", INDEXES)
 
 # ==================================================
-# FETCH QUOTES
+# FILTER INSTRUMENTS
 # ==================================================
+idx_df = instruments[
+    (instruments["name"] == index) &
+    (instruments["segment"] == "NFO-OPT")
+].copy()
+
+idx_df["expiry"] = pd.to_datetime(idx_df["expiry"])
+expiries = sorted(idx_df["expiry"].unique())
+
+expiry = c2.selectbox(
+    "Expiry",
+    expiries,
+    format_func=lambda x: x.strftime("%d-%b-%Y")
+)
+
+idx_df = idx_df[idx_df["expiry"] == expiry]
+
+# ==================================================
+# PREPARE SYMBOLS
+# ==================================================
+symbols = ["NFO:" + ts for ts in idx_df["tradingsymbol"]]
+
 option_quotes = {}
-for batch in chunk(all_symbols):
+for batch in chunk(symbols):
     option_quotes.update(kite.quote(batch))
 
-spot_quotes = kite.quote([INDEX_SPOT_MAP[i] for i in option_map])
+spot_quote = kite.quote([INDEX_SPOT_MAP[index]])
+spot = spot_quote.get(INDEX_SPOT_MAP[index], {}).get("last_price")
 
 # ==================================================
-# PROCESS & DISPLAY
+# BUILD STRIKE TABLE
 # ==================================================
-now_ts = datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S")
+rows = []
 
-for idx, df in option_map.items():
-    rows = []
+for strike in sorted(idx_df["strike"].unique()):
+    ce = idx_df[(idx_df["strike"] == strike) & (idx_df["instrument_type"] == "CE")]
+    pe = idx_df[(idx_df["strike"] == strike) & (idx_df["instrument_type"] == "PE")]
 
-    spot = spot_quotes.get(INDEX_SPOT_MAP[idx], {})
-    spot_ltp = spot.get("last_price")
-
-    for strike in sorted(df["strike"].unique()):
-        ce = df[(df["strike"] == strike) & (df["instrument_type"] == "CE")]
-        pe = df[(df["strike"] == strike) & (df["instrument_type"] == "PE")]
-
-        if ce.empty or pe.empty:
-            continue
-
-        ce_q = option_quotes.get("NFO:" + ce.iloc[0]["tradingsymbol"], {})
-        pe_q = option_quotes.get("NFO:" + pe.iloc[0]["tradingsymbol"], {})
-
-        rows.append({
-            "Strike": strike,
-            "CE_LTP": ce_q.get("last_price", 0),
-            "CE_OI": ce_q.get("oi", 0),
-            "PE_LTP": pe_q.get("last_price", 0),
-            "PE_OI": pe_q.get("oi", 0),
-        })
-
-    if not rows:
-        st.warning(f"No data for {idx}")
+    if ce.empty or pe.empty:
         continue
 
-    idx_df = pd.DataFrame(rows).sort_values("Strike")
-    idx_df = compute_max_pain(idx_df)
+    ce_q = option_quotes.get("NFO:" + ce.iloc[0]["tradingsymbol"], {})
+    pe_q = option_quotes.get("NFO:" + pe.iloc[0]["tradingsymbol"], {})
 
-    mp_row = idx_df.loc[idx_df["Max_Pain"].idxmin()]
+    rows.append({
+        "Strike": strike,
+        "CE_LTP": ce_q.get("last_price", 0),
+        "CE_OI": ce_q.get("oi", 0),
+        "PE_LTP": pe_q.get("last_price", 0),
+        "PE_OI": pe_q.get("oi", 0),
+    })
 
-    # ==================================================
-    # UI
-    # ==================================================
-    st.markdown(f"## 📌 {idx}")
-    c1, c2, c3 = st.columns(3)
+df = pd.DataFrame(rows).sort_values("Strike")
+df = compute_max_pain(df)
 
-    c1.metric("Spot", int(spot_ltp) if spot_ltp else "NA")
-    c2.metric("Max Pain Strike", int(mp_row["Strike"]))
-    c3.metric("Max Pain Value", int(mp_row["Max_Pain"]))
+mp_row = df.loc[df["Max_Pain"].idxmin()]
 
-    with st.expander("Show Strike-wise Max Pain Table"):
-        st.dataframe(
-            idx_df[["Strike", "CE_OI", "PE_OI", "CE_LTP", "PE_LTP", "Max_Pain"]],
-            use_container_width=True
-        )
+# ==================================================
+# DISPLAY
+# ==================================================
+st.markdown(
+    f"### 📌 {index} | Expiry: {expiry.strftime('%d-%b-%Y')}"
+)
 
-st.caption(f"Last updated: {now_ts}")
+c1, c2, c3 = st.columns(3)
+c1.metric("Spot", int(spot) if spot else "NA")
+c2.metric("Max Pain Strike", int(mp_row["Strike"]))
+c3.metric("Max Pain Value", int(mp_row["Max_Pain"]))
+
+st.dataframe(
+    df[["Strike", "CE_OI", "PE_OI", "CE_LTP", "PE_LTP", "Max_Pain"]],
+    use_container_width=True
+)
+
+st.caption(f"Last updated: {datetime.now(IST).strftime('%Y-%m-%d %H:%M:%S')}")
