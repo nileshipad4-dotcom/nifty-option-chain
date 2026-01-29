@@ -102,6 +102,18 @@ df2 = pd.read_csv(file_map[t2])
 df3 = pd.read_csv(file_map[t3])
 df0a = pd.read_csv(file_map[t0a])
 df0b = pd.read_csv(file_map[t0b])
+
+# ==================================================
+# EARLY % CHANGE (FROM 09:14 SNAPSHOT)
+# ==================================================
+early_ch_df = (
+    df0b[["Stock", "Stock_%_Change"]]
+    .rename(columns={"Stock_%_Change": "early_total_ch"})
+)
+
+early_ch_df["early_total_ch"] = pd.to_numeric(
+    early_ch_df["early_total_ch"], errors="coerce"
+).fillna(0)
 # ==================================================
 # BUILD BASE TABLE
 # ==================================================
@@ -144,8 +156,9 @@ early_df = (
 for c in ["CE_OI_a", "CE_OI_b", "PE_OI_a", "PE_OI_b", "Strike"]:
     early_df[c] = pd.to_numeric(early_df[c], errors="coerce").fillna(0)
 
-early_df["d_ce_0"] = early_df["CE_OI_a"] - early_df["CE_OI_b"]
-early_df["d_pe_0"] = early_df["PE_OI_a"] - early_df["PE_OI_b"]
+# 09:14 - 09:13  (LATER - EARLIER)
+early_df["d_ce_0"] = early_df["CE_OI_b"] - early_df["CE_OI_a"]
+early_df["d_pe_0"] = early_df["PE_OI_b"] - early_df["PE_OI_a"]
 
 early_df["ce_x_0"] = (early_df["d_ce_0"] * early_df["Strike"]) / 10000
 early_df["pe_x_0"] = (early_df["d_pe_0"] * early_df["Strike"]) / 10000
@@ -156,6 +169,15 @@ df = df.merge(
     how="left"
 )
 
+df = df.merge(
+    early_ch_df,
+    on="Stock",
+    how="left"
+)
+
+df["early_total_ch"] = pd.to_numeric(
+    df["early_total_ch"], errors="coerce"
+).fillna(0)
 df["ce_x_0"] = pd.to_numeric(df["ce_x_0"], errors="coerce").fillna(0)
 df["pe_x_0"] = pd.to_numeric(df["pe_x_0"], errors="coerce").fillna(0)
 # ==================================================
@@ -247,6 +269,7 @@ table = df[[
     "pe_x",
     "ce_x_0",   # 🔴 NEW
     "pe_x_0",   #
+    "early_total_ch"
     "diff",
     "diff_23",
     "atm_diff"
@@ -300,7 +323,7 @@ def atm_blue(data):
 
 def red_early_columns(data):
     styles = pd.DataFrame("", index=data.index, columns=data.columns)
-    for col in ["ce_x_0", "pe_x_0"]:
+    for col in ["ce_x_0", "pe_x_0", "early__total_ch"]:
         if col in styles.columns:
             styles[col] = "color:red;font-weight:bold"
     return styles
@@ -345,7 +368,9 @@ fmt = {
     "sum_pe": "{:.0f}",
     "diff": "{:.0f}",
     "atm_diff": "{:.0f}",
+    "early_total_ch": "{:.2f}",
     "total_ch": "{:.2f}",
+
     "diff_23": "{:.0f}"
 
 
