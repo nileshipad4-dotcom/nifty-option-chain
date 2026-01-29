@@ -1,186 +1,159 @@
-import streamlit as st
+from kiteconnect import KiteConnect
 import pandas as pd
-import numpy as np
+from datetime import datetime
+import pytz
 import os
-from datetime import datetime, time, timedelta
-import traceback
 
 # ==================================================
-# APP START
+# CONFIG
 # ==================================================
-st.set_page_config(page_title="ATM Diff Trend", layout="wide")
-st.title("📈 ATM Diff Strength – 15 Min Interval (09:15 to 15:30)")
-st.write("🚀 Graph app started")
+from kite_config import KITE_API_KEY, KITE_ACCESS_TOKEN
 
-DATA_DIR = "data"
+API_KEY = KITE_API_KEY
+ACCESS_TOKEN = KITE_ACCESS_TOKEN
 
-STRIKE_WINDOW = 3
-ATM_WINDOW = 2
+IST = pytz.timezone("Asia/Kolkata")
 
-MARKET_START = time(9, 0)
-MARKET_END   = time(15, 45)
+INDICES = {
+    "NIFTY": "NIFTY",
+    "BANKNIFTY": "BANKNIFTY",
+    "MIDCPNIFTY": "MIDCPNIFTY"
+}
 
-# ==================================================
-# LOAD FILES
-# ==================================================
-def load_csv_files():
-    files = []
-    if not os.path.exists(DATA_DIR):
-        return files
-
-    for f in os.listdir(DATA_DIR):
-        if f.startswith("option_chain_") and f.endswith(".csv"):
-            ts = f.replace("option_chain_", "").replace(".csv", "")
-            files.append((ts, os.path.join(DATA_DIR, f)))
-    return sorted(files)
-
-csv_files = load_csv_files()
-
-if len(csv_files) < 2:
-    st.error("Not enough CSV files in /data")
-    st.stop()
+DATA_DIR = "data_index"
+os.makedirs(DATA_DIR, exist_ok=True)
 
 # ==================================================
-# PARSE TIMESTAMPS
+# INIT KITE
 # ==================================================
-file_times = []
+kite = KiteConnect(api_key=API_KEY)
+kite.set_access_token(ACCESS_TOKEN)
 
-for ts, path in csv_files:
-    try:
-        dt = datetime.strptime(ts, "%Y-%m-%d_%H-%M")
-        file_times.append((dt, path))
-    except:
-        continue
-
-file_times.sort()
+print("[INFO] Loading NFO instruments")
+instruments = pd.DataFrame(kite.instruments("NFO"))
 
 # ==================================================
-# PICK 15-MIN INTERVAL FILES
+# HELPERS
 # ==================================================
-selected = []
+def chunk(lst, size=200):
+    for i in range(0, len(lst), size):
+        yield lst[i:i + size]
 
-start_file = next(
-    (x for x in file_times if x[0].time() >= MARKET_START),
-    None
-)
+# ==================================================
+# MAX PAIN FORMULA (UNCHANGED)
+# ==================================================
+def compute_max_pain(df):
+    df = df.fillna(0)
 
-if not start_file:
-    st.error("No files after 09:15")
-    st.stop()
+    A = df["CE_LTP"]
+    B = df["CE_OI"]
+    G = df["Strike"]
+    M = df["PE_LTP"]
+    L = df["PE_OI"]
 
-current_time = start_file[0]
-selected.append(start_file)
+    mp = []
+    for i in range(len(df)):
+        val = (
+            -sum(A[i:] * B[i:])
+            + G.iloc[i] * sum(B[:i]) - sum(G[:i] * B[:i])
+            - sum(M[:i] * L[:i])
+            + sum(G[i:] * L[i:]) - G.iloc[i] * sum(L[i:])
+        )
+        mp.append(int(val / 10000))
 
-while current_time.time() < MARKET_END:
-    target = current_time + timedelta(minutes=3)
+    df["Max_Pain"] = mp
+    return df
 
-    next_file = next(
-        (x for x in file_times if x[0] >= target),
-        None
+# ==================================================
+# PREPARE OPTION SYMBOLS
+# ==================================================
+print("[INFO] Preparing index option symbols")
+
+option_map = {}
+all_symbols = []
+
+for idx in INDICES:
+    df = instruments[
+        (instruments["name"] == idx) &
+        (instruments["segment"] == "NFO-OPT")
+    ].copy()
+
+    df["expiry"] = pd.to_datetime(df["expiry"])
+    expiry = df["expiry"].min()
+    df = df[df["expiry"] == expiry]
+
+    option_map[idx] = df
+
+    all_symbols.extend(
+        ["NFO:" + ts for ts in df["tradingsymbol"].tolist()]
     )
 
-    if not next_file:
-        break
+# ==================================================
+# FETCH QUOTES
+# ==================================================
+print("[INFO] Fetching option quotes")
+option_quotes = {}
+for batch in chunk(all_symbols):
+    option_quotes.update(kite.quote(batch))
 
-    selected.append(next_file)
-    current_time = next_file[0]
-
-st.write(f"📂 Selected {len(selected)} files for analysis")
+print("[INFO] Fetching index spot prices")
+spot_quotes = kite.quote([f"NSE:{i}" for i in INDICES])
 
 # ==================================================
-# ATM DIFF CALCULATION (BULLETPROOF)
+# PROCESS
 # ==================================================
-def compute_atm_sum(file_path):
-    df = pd.read_csv(file_path)
+print("[INFO] Calculating Max Pain")
 
-    st.write(f"Processing: {file_path}")
-    st.write("Columns:", df.columns.tolist())
+all_data = []
+now_ts = datetime.now(IST).strftime("%Y-%m-%d %H:%M")
 
-    # -------------------------------
-    # COLUMN NORMALIZATION
-    # -------------------------------
-    if "Stock" not in df.columns and "Symbol" in df.columns:
-        df["Stock"] = df["Symbol"]
+for idx, df in option_map.items():
+    rows = []
 
-    if "Stock_LTP" not in df.columns:
-        df["Stock_LTP"] = df.get("Spot", 0)
+    spot = spot_quotes.get(f"NSE:{idx}", {})
+    idx_ltp = spot.get("last_price")
 
-    for col in ["Strike", "CE_OI", "PE_OI"]:
-        if col not in df.columns:
-            df[col] = 0
+    for strike in sorted(df["strike"].unique()):
+        ce = df[(df["strike"] == strike) & (df["instrument_type"] == "CE")]
+        pe = df[(df["strike"] == strike) & (df["instrument_type"] == "PE")]
 
-    # Convert to numeric safely
-    for c in ["Strike", "Stock_LTP", "CE_OI", "PE_OI"]:
-        df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
+        ce_q = option_quotes.get(
+            "NFO:" + ce.iloc[0]["tradingsymbol"], {}
+        ) if not ce.empty else {}
 
-    # -------------------------------
-    # WEIGHTED OI
-    # -------------------------------
-    df["ce_x"] = (df["CE_OI"] * df["Strike"]) / 10000
-    df["pe_x"] = (df["PE_OI"] * df["Strike"]) / 10000
+        pe_q = option_quotes.get(
+            "NFO:" + pe.iloc[0]["tradingsymbol"], {}
+        ) if not pe.empty else {}
 
-    df["diff"] = np.nan
-    df["atm_diff"] = np.nan
+        rows.append({
+            "Index": idx,
+            "Expiry": df["expiry"].iloc[0].date(),
+            "Strike": strike,
 
-    # -------------------------------
-    # ATM DIFF LOGIC
-    # -------------------------------
-    for stk, g in df.groupby("Stock"):
-        g = g.sort_values("Strike").reset_index()
+            "CE_LTP": ce_q.get("last_price"),
+            "CE_OI": ce_q.get("oi"),
 
-        for i in range(len(g)):
-            low = max(0, i - STRIKE_WINDOW)
-            high = min(len(g) - 1, i + STRIKE_WINDOW)
+            "PE_LTP": pe_q.get("last_price"),
+            "PE_OI": pe_q.get("oi"),
 
-            diff_val = g.loc[low:high, "pe_x"].sum() - g.loc[low:high, "ce_x"].sum()
-            df.at[g.loc[i, "index"], "diff"] = diff_val
+            "Spot": idx_ltp,
+            "timestamp": now_ts
+        })
 
-        ltp = g["Stock_LTP"].iloc[0]
-        atm_idx = (g["Strike"] - ltp).abs().values.argmin()
+    idx_df = pd.DataFrame(rows).sort_values("Strike")
+    idx_df = compute_max_pain(idx_df)
 
-        low = max(0, atm_idx - ATM_WINDOW)
-        high = min(len(g) - 1, atm_idx + ATM_WINDOW)
+    # Extract live Max Pain strike
+    mp_row = idx_df.loc[idx_df["Max_Pain"].idxmin()]
+    print(f"[MP] {idx} | Strike: {int(mp_row['Strike'])} | Value: {int(mp_row['Max_Pain'])}")
 
-        atm_avg = df.loc[g.loc[low:high, "index"], "diff"].mean()
-        df.loc[g["index"], "atm_diff"] = atm_avg
-
-    return df["atm_diff"].sum() / 1000
+    all_data.append(idx_df)
 
 # ==================================================
-# BUILD SERIES
+# SAVE
 # ==================================================
-times = []
-values = []
+final_df = pd.concat(all_data, ignore_index=True)
+filename = f"{DATA_DIR}/index_max_pain_{datetime.now(IST).strftime('%Y-%m-%d_%H-%M')}.csv"
+final_df.to_csv(filename, index=False)
 
-with st.spinner("Calculating ATM Diff Trend..."):
-    for dt, path in selected:
-        try:
-            atm_sum = compute_atm_sum(path)
-            times.append(dt)
-            values.append(atm_sum)
-        except Exception:
-            st.error("❌ Error while processing file")
-            st.text(traceback.format_exc())
-            st.stop()
-
-trend_df = pd.DataFrame({"Time": times, "ATM_Sum": values}).set_index("Time")
-
-# ==================================================
-# INVERT FOR DIRECTION
-# ==================================================
-trend_df["ATM_Sum"] = -trend_df["ATM_Sum"]
-
-# ==================================================
-# DISPLAY
-# ==================================================
-st.subheader("Σ ATM Diff (×1000) – Intraday Strength")
-
-st.line_chart(trend_df["ATM_Sum"])
-
-st.markdown(
-    f"""
-**High:** {trend_df["ATM_Sum"].max():.1f}  
-**Low:** {trend_df["ATM_Sum"].min():.1f}  
-**Close:** {trend_df["ATM_Sum"].iloc[-1]:.1f}
-"""
-)
+print(f"[OK] Saved {filename}")
