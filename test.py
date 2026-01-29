@@ -5,7 +5,7 @@ import os
 from datetime import time
 from streamlit_autorefresh import st_autorefresh
 
-st_autorefresh(interval=3600_000, key="auto_refresh")
+# st_autorefresh(interval=3600_000, key="auto_refresh")
 
 # ==================================================
 # CONFIG
