@@ -92,19 +92,6 @@ df0a = pd.read_csv(file_map[t0a])
 df0b = pd.read_csv(file_map[t0b])
 
 # ==================================================
-# EARLY TOTAL % CHANGE (FROM df0b)
-# ==================================================
-early_ch_df = (
-    df0b[["Stock", "Stock_%_Change"]]
-    .rename(columns={"Stock_%_Change": "early_total_ch"})
-)
-
-early_ch_df["early_total_ch"] = pd.to_numeric(
-    early_ch_df["early_total_ch"], errors="coerce"
-).fillna(0)
-
-
-# ==================================================
 # BUILD BASE TABLE
 # ==================================================
 dfs = []
@@ -129,19 +116,6 @@ df = dfs[0].merge(dfs[1], on=["Stock", "Strike"]) \
 for c in df.columns:
     if any(x in c for x in ["ltp", "ce", "pe", "Strike", "tot_ch", "total_ch"]):
         df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
-
-# ==================================================
-# MERGE EARLY TOTAL % CHANGE INTO MAIN DF
-# ==================================================
-df = df.merge(
-    early_ch_df,
-    on="Stock",
-    how="left"
-)
-
-df["early_total_ch"] = pd.to_numeric(
-    df["early_total_ch"], errors="coerce"
-).fillna(0)
 
 # ==================================================
 # EARLY OI DELTA (09:10 WINDOW)
@@ -262,7 +236,6 @@ table = df[[
     "pe_x",
     "ce_x_0",
     "pe_x_0",
-    "early_total_ch",
     "diff",
     "diff_23",
     "atm_diff"
