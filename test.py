@@ -114,6 +114,18 @@ except Exception as e:
     st.stop()
 
 # ==================================================
+# 🌅 EARLY TOTAL % CHANGE (FROM 2nd CSV AFTER 09:10)
+# ==================================================
+early_ch_df = (
+    df0b[["Stock", "Stock_%_Change"]]
+    .rename(columns={"Stock_%_Change": "early_total_ch"})
+)
+
+early_ch_df["early_total_ch"] = pd.to_numeric(
+    early_ch_df["early_total_ch"], errors="coerce"
+).fillna(0)
+
+# ==================================================
 # 🏗️ BUILD BASE TABLE
 # ==================================================
 dfs = []
@@ -171,6 +183,16 @@ df = df.merge(
     on=["Stock", "Strike"], 
     how="left"
 )
+
+df = df.merge(
+    early_ch_df,
+    on="Stock",
+    how="left"
+)
+
+df["early_total_ch"] = pd.to_numeric(
+    df["early_total_ch"], errors="coerce"
+).fillna(0)
 
 df["ce_x_0"] = pd.to_numeric(df["ce_x_0"], errors="coerce").fillna(0)
 df["pe_x_0"] = pd.to_numeric(df["pe_x_0"], errors="coerce").fillna(0)
@@ -249,7 +271,7 @@ df["oi_window_diff"] = pd.to_numeric(df["oi_window_diff"], errors="coerce").fill
 # ==================================================
 table = df[[
     "Stock", "Strike", "ltp_0", "ch", "total_ch", 
-    "d_ce", "d_pe", "ce_x", "pe_x", 
+    "d_ce", "d_pe", "ce_x", "pe_x",  "early_total_ch",
     "ce_x_0", "pe_x_0", 
     "diff", "diff_23", "atm_diff"
 ]].rename(columns={
@@ -343,7 +365,7 @@ def atm_blue(data):
 
 def red_early_columns(data):
     styles = pd.DataFrame("", index=data.index, columns=data.columns)
-    for col in ["ce_x_0", "pe_x_0"]:
+    for col in ["ce_x_0", "pe_x_0", "early_total_ch"]:
         if col in styles.columns:
             styles[col] = "color:red;font-weight:bold"
     return styles
@@ -368,7 +390,7 @@ fmt = {
     "ce_x": "{:.0f}", "pe_x": "{:.0f}",
     "sum_ce": "{:.0f}", "sum_pe": "{:.0f}",
     "diff": "{:.0f}", "atm_diff": "{:.0f}",
-    "total_ch": "{:.2f}", "diff_23": "{:.0f}",
+    "total_ch": "{:.2f}", "diff_23": "{:.0f}", "early_total_ch": "{:.2f}",
     "ce_x_0": "{:.0f}", "pe_x_0": "{:.0f}"
 }
 
