@@ -115,14 +115,7 @@ for i, d in enumerate([df1, df2, df3]):
 df = dfs[0].merge(dfs[1], on=["Stock", "Strike"]) \
             .merge(dfs[2], on=["Stock", "Strike"])
 
-df = df.merge(
-    early_df[["Stock", "Strike", "ce_x_0", "pe_x_0"]],
-    on=["Stock", "Strike"],
-    how="left"
-)
 
-df["ce_x_0"] = pd.to_numeric(df["ce_x_0"], errors="coerce").fillna(0)
-df["pe_x_0"] = pd.to_numeric(df["pe_x_0"], errors="coerce").fillna(0)
 # ==================================================
 # NUMERIC SAFETY
 # ==================================================
@@ -151,6 +144,14 @@ early_df["d_pe_0"] = early_df["PE_OI_a"] - early_df["PE_OI_b"]
 early_df["ce_x_0"] = (early_df["d_ce_0"] * early_df["Strike"]) / 10000
 early_df["pe_x_0"] = (early_df["d_pe_0"] * early_df["Strike"]) / 10000
 
+df = df.merge(
+    early_df[["Stock", "Strike", "ce_x_0", "pe_x_0"]],
+    on=["Stock", "Strike"],
+    how="left"
+)
+
+df["ce_x_0"] = pd.to_numeric(df["ce_x_0"], errors="coerce").fillna(0)
+df["pe_x_0"] = pd.to_numeric(df["pe_x_0"], errors="coerce").fillna(0)
 # ==================================================
 # CORE CALCULATIONS
 # ==================================================
