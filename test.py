@@ -291,6 +291,12 @@ def atm_blue(data):
 
     return styles
 
+def red_early_columns(data):
+    styles = pd.DataFrame("", index=data.index, columns=data.columns)
+    for col in ["ce_x_0", "pe_x_0"]:
+        if col in styles.columns:
+            styles[col] = "color:red;font-weight:bold"
+    return styles
 # ==================================================
 # STOCK NAME ONLY HIGHLIGHT (BOTTOM N PE / CE)
 # ==================================================
@@ -454,6 +460,7 @@ st.dataframe(
     .style
     .apply(atm_blue, axis=None)
     .apply(highlight_stk_only, axis=None)
+    .apply(red_early_columns, axis=None) 
     .format(fmt, na_rep=""),
     use_container_width=True
 )
