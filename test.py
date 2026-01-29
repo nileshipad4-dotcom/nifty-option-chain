@@ -62,13 +62,19 @@ filtered_ts = [
 # ==================================================
 # 🕘 EARLY WINDOW (FIRST TWO AFTER 09:10)
 # ==================================================
-early_ts = [
-    ts for ts in filtered_ts 
-    if extract_time(ts) and extract_time(ts) >= time(9, 10)
-]
+# ==================================================
+# EARLY WINDOW (EARLIEST TWO JUST AFTER 09:10)
+# ==================================================
+early_ts = sorted(
+    [
+        ts for ts in filtered_ts
+        if extract_time(ts) and extract_time(ts) >= time(9, 10)
+    ],
+    key=lambda x: extract_time(x)
+)
 
 if len(early_ts) < 2:
-    st.error("Need at least 2 CSV files after 09:10 for Early Window calculation.")
+    st.error("Need at least 2 CSV files after 09:10")
     st.stop()
 
 t0a, t0b = early_ts[0], early_ts[1]
@@ -154,8 +160,9 @@ early_df = (
 for c in ["CE_OI_a", "CE_OI_b", "PE_OI_a", "PE_OI_b", "Strike"]:
     early_df[c] = pd.to_numeric(early_df[c], errors="coerce").fillna(0)
 
-early_df["d_ce_0"] = early_df["CE_OI_a"] - early_df["CE_OI_b"]
-early_df["d_pe_0"] = early_df["PE_OI_a"] - early_df["PE_OI_b"]
+# 09:14 - 09:13  (LATER - EARLIER)
+early_df["d_ce_0"] = early_df["CE_OI_b"] - early_df["CE_OI_a"]
+early_df["d_pe_0"] = early_df["PE_OI_b"] - early_df["PE_OI_a"]
 early_df["ce_x_0"] = (early_df["d_ce_0"] * early_df["Strike"]) / 10000
 early_df["pe_x_0"] = (early_df["d_pe_0"] * early_df["Strike"]) / 10000
 
