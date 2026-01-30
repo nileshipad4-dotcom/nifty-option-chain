@@ -55,9 +55,26 @@ if len(csv_files) < 3:
     st.error("Need at least 3 index CSV files")
     st.stop()
 
-timestamps_all = [ts for ts, _ in csv_files]
+from datetime import time
+
+def is_market_time(ts):
+    try:
+        # assuming timestamp format like: 2025-01-22_13-45
+        t = pd.to_datetime(ts, errors="coerce").time()
+        return time(9, 0) <= t <= time(16, 0)
+    except:
+        return False
+
+timestamps_all = [
+    ts for ts, _ in csv_files
+    if is_market_time(ts)
+]
+
 file_map = dict(csv_files)
+
+# keep latest 30 valid market timestamps
 filtered_ts = timestamps_all[:30]
+
 
 # ==================================================
 # USER CONTROLS
