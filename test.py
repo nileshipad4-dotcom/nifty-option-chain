@@ -770,3 +770,49 @@ else:
         .format(fmt, na_rep=""),
         use_container_width=True
     )
+
+
+
+# ==================================================
+# 📊 CE / PE SUMMARY TABLE (MAIN TABLE BASED)
+# ==================================================
+st.markdown("---")
+st.subheader("📊 CE–PE Summary (Main Table)")
+
+summary_df = (
+    table
+    .groupby("stk")
+    .agg(
+        ce_x_sum=("ce_x", "sum"),
+        pe_x_sum=("pe_x", "sum"),
+        ch=("ch", "first")
+    )
+    .reset_index()
+)
+
+# ---- SAFE RATIO ----
+summary_df["pe_ce_ratio"] = np.where(
+    summary_df["ce_x_sum"] != 0,
+    summary_df["pe_x_sum"] / summary_df["ce_x_sum"],
+    np.nan
+)
+
+summary_df["pe_ce_ratio"] = summary_df["pe_ce_ratio"].round(2)
+
+# ---- OPTIONAL SORT (STRONG PE BIAS FIRST) ----
+summary_df = summary_df.sort_values("pe_ce_ratio", ascending=False)
+
+fmt_summary = {
+    "ce_x_sum": "{:.0f}",
+    "pe_x_sum": "{:.0f}",
+    "pe_ce_ratio": "{:.2f}",
+    "ch": "{:.2f}"
+}
+
+st.dataframe(
+    summary_df
+    .style
+    .format(fmt_summary, na_rep=""),
+    use_container_width=True
+)
+
