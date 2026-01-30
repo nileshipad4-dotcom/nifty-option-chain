@@ -73,7 +73,8 @@ if len(csv_files) < 3:
 
 timestamps_all = [ts for ts, _ in csv_files]
 file_map = dict(csv_files)
-filtered_ts = timestamps_all[:30]
+filtered_ts = timestamps_all
+
 
 
 # ==================================================
