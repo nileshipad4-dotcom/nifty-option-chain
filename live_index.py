@@ -58,11 +58,8 @@ if len(csv_files_all) < 3:
 from datetime import time
 
 def is_market_time(ts):
-    try:
-        t = pd.to_datetime(ts, errors="coerce").time()
-        return time(9, 0) <= t <= time(16, 0)
-    except:
-        return False
+    dt = pd.to_datetime(ts, format="%Y-%m-%d_%H-%M")
+    return time(9, 0) <= dt.time() <= time(16, 0)
 
 # ✅ FILTER FILES FIRST
 csv_files = [
@@ -74,11 +71,8 @@ if len(csv_files) < 3:
     st.error("Not enough market-hour CSV files (09:00–16:00)")
     st.stop()
 
-# ✅ NOW SAFE
 timestamps_all = [ts for ts, _ in csv_files]
 file_map = dict(csv_files)
-
-# latest 30 market timestamps
 filtered_ts = timestamps_all[:30]
 
 
