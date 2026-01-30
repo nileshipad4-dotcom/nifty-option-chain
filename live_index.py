@@ -49,9 +49,9 @@ def load_csv_files():
             files.append((ts, os.path.join(DATA_DIR, f)))
     return sorted(files, reverse=True)
 
-csv_files = load_csv_files()
+csv_files_all = load_csv_files()
 
-if len(csv_files) < 3:
+if len(csv_files_all) < 3:
     st.error("Need at least 3 index CSV files")
     st.stop()
 
@@ -59,20 +59,26 @@ from datetime import time
 
 def is_market_time(ts):
     try:
-        # assuming timestamp format like: 2025-01-22_13-45
         t = pd.to_datetime(ts, errors="coerce").time()
         return time(9, 0) <= t <= time(16, 0)
     except:
         return False
 
-timestamps_all = [
-    ts for ts, _ in csv_files
+# ✅ FILTER FILES FIRST
+csv_files = [
+    (ts, path) for ts, path in csv_files_all
     if is_market_time(ts)
 ]
 
+if len(csv_files) < 3:
+    st.error("Not enough market-hour CSV files (09:00–16:00)")
+    st.stop()
+
+# ✅ NOW SAFE
+timestamps_all = [ts for ts, _ in csv_files]
 file_map = dict(csv_files)
 
-# keep latest 30 valid market timestamps
+# latest 30 market timestamps
 filtered_ts = timestamps_all[:30]
 
 
