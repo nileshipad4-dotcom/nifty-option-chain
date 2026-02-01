@@ -18,7 +18,7 @@ MARKET_START = time(9, 0)
 MARKET_END   = time(16, 0)
 
 # ==================================================
-# HELPERS – LOAD MULTI SNAPSHOTS
+# LOAD MULTI SNAPSHOT CSVs
 # ==================================================
 
 def list_snapshot_files():
@@ -44,7 +44,6 @@ def load_all_snapshots(symbol):
             ts = f.replace("index_OC_", "").replace(".csv", "")
             ts = datetime.strptime(ts, "%Y-%m-%d_%H-%M")
 
-        # ⏱ MARKET HOURS FILTER
         if not (MARKET_START <= ts.time() <= MARKET_END):
             continue
 
@@ -60,7 +59,7 @@ def load_all_snapshots(symbol):
     return df_all
 
 # ==================================================
-# WINDOW LOGIC (UNCHANGED CORE)
+# WINDOW LOGIC
 # ==================================================
 
 def build_all_windows(df, min_gap):
@@ -96,8 +95,9 @@ def build_row(df, t1, t2, is_live=False):
         return None
     m = m[m["Strike"].isin(strikes[2:-2])]
 
-    m["CE"] = m["CE_OI_2"] - m["CE_OI_1"]
-    m["PE"] = m["PE_OI_2"] - m["PE_OI_1"]
+    # 🔢 OI DELTA (DIVIDE BY 100)
+    m["CE"] = (m["CE_OI_2"] - m["CE_OI_1"]) // 100
+    m["PE"] = (m["PE_OI_2"] - m["PE_OI_1"]) // 100
 
     ce = m.sort_values("CE", ascending=False)
     pe = m.sort_values("PE", ascending=False)
@@ -105,8 +105,8 @@ def build_row(df, t1, t2, is_live=False):
     if len(ce) < 2 or len(pe) < 2:
         return None
 
-    sum_ce = int(m["CE"].sum() / 100)
-    sum_pe = int(m["PE"].sum() / 100)
+    sum_ce = int(m["CE"].sum())
+    sum_pe = int(m["PE"].sum())
     diff = sum_pe - sum_ce
 
     label = f"{t1:%H:%M} - {t2:%H:%M}"
@@ -115,18 +115,21 @@ def build_row(df, t1, t2, is_live=False):
 
     return {
         "TIME": label,
+
         "MAX CE 1": f"{int(ce.iloc[0].Strike)}:- {int(ce.iloc[0].CE)}",
         "MAX CE 2": f"{int(ce.iloc[1].Strike)}:- {int(ce.iloc[1].CE)}",
         "Σ ΔCE OI": sum_ce,
+
         "MAX PE 1": f"{int(pe.iloc[0].Strike)}:- {int(pe.iloc[0].PE)}",
         "MAX PE 2": f"{int(pe.iloc[1].Strike)}:- {int(pe.iloc[1].PE)}",
         "Σ ΔPE OI": sum_pe,
+
         "Δ (PE − CE)": diff,
+
         "_ce1": ce.iloc[0].CE,
         "_ce2": ce.iloc[1].CE,
         "_pe1": pe.iloc[0].PE,
         "_pe2": pe.iloc[1].PE,
-        "_is_live": is_live,
     }
 
 def process_windows(df, min_gap):
@@ -153,7 +156,7 @@ def process_windows(df, min_gap):
     return pd.DataFrame(rows)
 
 # ==================================================
-# STYLING (TIME HIGHLIGHT RULES)
+# STYLING
 # ==================================================
 
 def highlight_table(df):
@@ -166,6 +169,26 @@ def highlight_table(df):
 
     styles = pd.DataFrame("", index=df.index, columns=display_cols)
 
+    # 🔶 Highlight MAX columns (top-2 magnitude)
+    for col, num_col in [
+        ("MAX CE 1", "_ce1"),
+        ("MAX CE 2", "_ce2"),
+        ("MAX PE 1", "_pe1"),
+        ("MAX PE 2", "_pe2"),
+    ]:
+        vals = df[num_col].abs()
+        if len(vals) < 2:
+            continue
+
+        top1, top2 = vals.nlargest(2).values
+
+        for i, v in vals.items():
+            if v == top1:
+                styles.loc[i, col] = "background-color:#ff4d4d;color:white;font-weight:bold"
+            elif v == top2:
+                styles.loc[i, col] = "background-color:#ffa500;font-weight:bold"
+
+    # ⏱ TIME highlight conditions
     for i in df.index:
         ce2 = abs(df.loc[i, "_ce2"])
         pe1 = abs(df.loc[i, "_pe1"])
@@ -173,11 +196,9 @@ def highlight_table(df):
         ce1 = abs(df.loc[i, "_ce1"])
         diff = df.loc[i, "Δ (PE − CE)"]
 
-        # 🔴 CE dominance
         if ce2 > pe1 * 1.2 and diff < 0:
-            styles.loc[i, "TIME"] = "background-color:#ff4d4d;color:white;font-weight:bold"
+            styles.loc[i, "TIME"] = "background-color:#d32f2f;color:white;font-weight:bold"
 
-        # 🟢 PE dominance
         elif pe2 > ce1 * 1.2 and diff > 0:
             styles.loc[i, "TIME"] = "background-color:#2e7d32;color:white;font-weight:bold"
 
@@ -187,12 +208,9 @@ def highlight_table(df):
 # UI
 # ==================================================
 
-c1, c2 = st.columns([2, 1])
+_, c_gap = st.columns([3, 1])
 
-with c1:
-    st.markdown("**Indexes:** NIFTY | BANKNIFTY | MIDCPNIFTY")
-
-with c2:
+with c_gap:
     min_gap = st.selectbox(
         "Min Gap (minutes)",
         [5, 10, 15, 20, 30, 45, 60],
@@ -206,7 +224,7 @@ for symbol in ["NIFTY", "BANKNIFTY", "MIDCPNIFTY"]:
     df_all = load_all_snapshots(symbol)
 
     if df_all.empty:
-        st.warning(f"No valid snapshot data for {symbol}")
+        st.warning(f"No valid data for {symbol}")
         continue
 
     df_main = process_windows(df_all, min_gap)
