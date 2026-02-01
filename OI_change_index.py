@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 import os
 from streamlit_autorefresh import st_autorefresh
 
@@ -10,21 +10,22 @@ from streamlit_autorefresh import st_autorefresh
 DATA_INDEX_DIR = "data_index"
 
 st.set_page_config(layout="wide", page_title="Index OI Window Scanner")
-st.title("📊 NIFTY / BANKNIFTY / MIDCPNIFTY – OI Window Scanner")
+st.title("📊 Index OI Window Scanner (NIFTY / BANKNIFTY / MIDCPNIFTY)")
 
-# Refresh UI every 1 minute
 st_autorefresh(interval=60_000, key="ui_refresh")
+
+MARKET_START = time(9, 0)
+MARKET_END   = time(16, 0)
 
 # ==================================================
 # HELPERS – LOAD MULTI SNAPSHOTS
 # ==================================================
 
 def list_snapshot_files():
-    files = [
+    return sorted(
         f for f in os.listdir(DATA_INDEX_DIR)
         if f.startswith("index_OC_") and f.endswith(".csv")
-    ]
-    return sorted(files)
+    )
 
 def load_all_snapshots(symbol):
     rows = []
@@ -33,18 +34,19 @@ def load_all_snapshots(symbol):
         path = os.path.join(DATA_INDEX_DIR, f)
         df = pd.read_csv(path)
 
-        # Filter index
         df = df[df["Symbol"] == symbol].copy()
         if df.empty:
             continue
 
-        # Timestamp from file OR column
         if "timestamp" in df.columns:
             ts = pd.to_datetime(df["timestamp"].iloc[0])
         else:
-            # fallback from filename
             ts = f.replace("index_OC_", "").replace(".csv", "")
             ts = datetime.strptime(ts, "%Y-%m-%d_%H-%M")
+
+        # ⏱ MARKET HOURS FILTER
+        if not (MARKET_START <= ts.time() <= MARKET_END):
+            continue
 
         df["timestamp"] = ts
         rows.append(df)
@@ -58,7 +60,7 @@ def load_all_snapshots(symbol):
     return df_all
 
 # ==================================================
-# WINDOW LOGIC (SAME AS CRYPTO)
+# WINDOW LOGIC (UNCHANGED CORE)
 # ==================================================
 
 def build_all_windows(df, min_gap):
@@ -151,40 +153,35 @@ def process_windows(df, min_gap):
     return pd.DataFrame(rows)
 
 # ==================================================
-# STYLING
+# STYLING (TIME HIGHLIGHT RULES)
 # ==================================================
 
 def highlight_table(df):
-    cols = [
+    display_cols = [
         "TIME",
         "MAX CE 1", "MAX CE 2", "Σ ΔCE OI",
         "MAX PE 1", "MAX PE 2", "Σ ΔPE OI",
         "Δ (PE − CE)",
     ]
 
-    styles = pd.DataFrame("", index=df.index, columns=cols)
-
-    for col, raw in [
-        ("MAX CE 1", "_ce1"), ("MAX CE 2", "_ce2"),
-        ("MAX PE 1", "_pe1"), ("MAX PE 2", "_pe2"),
-    ]:
-        v = df[raw].abs()
-        if len(v) < 2:
-            continue
-        t1, t2 = v.nlargest(2).values
-        for i, x in v.items():
-            if x == t1:
-                styles.loc[i, col] = "background-color:#ffa500;color:white;font-weight:bold"
-            elif x == t2:
-                styles.loc[i, col] = "background-color:#ff4d4d;font-weight:bold"
+    styles = pd.DataFrame("", index=df.index, columns=display_cols)
 
     for i in df.index:
-        d = df.loc[i, "Δ (PE − CE)"]
-        color = "green" if d > 0 else "red" if d < 0 else "black"
-        for c in ["Σ ΔCE OI", "Σ ΔPE OI", "Δ (PE − CE)"]:
-            styles.loc[i, c] = f"color:{color};font-weight:bold"
+        ce2 = abs(df.loc[i, "_ce2"])
+        pe1 = abs(df.loc[i, "_pe1"])
+        pe2 = abs(df.loc[i, "_pe2"])
+        ce1 = abs(df.loc[i, "_ce1"])
+        diff = df.loc[i, "Δ (PE − CE)"]
 
-    return df[cols].style.apply(lambda _: styles, axis=None)
+        # 🔴 CE dominance
+        if ce2 > pe1 * 1.2 and diff < 0:
+            styles.loc[i, "TIME"] = "background-color:#ff4d4d;color:white;font-weight:bold"
+
+        # 🟢 PE dominance
+        elif pe2 > ce1 * 1.2 and diff > 0:
+            styles.loc[i, "TIME"] = "background-color:#2e7d32;color:white;font-weight:bold"
+
+    return df[display_cols].style.apply(lambda _: styles, axis=None)
 
 # ==================================================
 # UI
@@ -193,10 +190,7 @@ def highlight_table(df):
 c1, c2 = st.columns([2, 1])
 
 with c1:
-    index_symbol = st.selectbox(
-        "Select Index",
-        ["NIFTY", "BANKNIFTY", "MIDCPNIFTY"]
-    )
+    st.markdown("**Indexes:** NIFTY | BANKNIFTY | MIDCPNIFTY")
 
 with c2:
     min_gap = st.selectbox(
@@ -207,13 +201,18 @@ with c2:
 
 st.divider()
 
-df_all = load_all_snapshots(index_symbol)
+for symbol in ["NIFTY", "BANKNIFTY", "MIDCPNIFTY"]:
 
-if df_all.empty:
-    st.warning("No snapshot data available for selected index")
-    st.stop()
+    df_all = load_all_snapshots(symbol)
 
-df_main = process_windows(df_all, min_gap)
+    if df_all.empty:
+        st.warning(f"No valid snapshot data for {symbol}")
+        continue
 
-st.subheader(f"{index_symbol} — OI Window Table")
-st.dataframe(highlight_table(df_main), use_container_width=True)
+    df_main = process_windows(df_all, min_gap)
+
+    st.subheader(symbol)
+    st.dataframe(
+        highlight_table(df_main),
+        use_container_width=True
+    )
