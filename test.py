@@ -64,13 +64,14 @@ t3 = c3.selectbox("TS3", filtered_ts, 2)
 t4 = c4.selectbox("TS4", filtered_ts, 3)
 
 
-X = c5.number_input(
+X = st.number_input(
     "Strike Window X",
     min_value=1,
     max_value=10,
     value=4,
     step=1
 )
+
 
 # ==================================================
 # LOAD DATA
