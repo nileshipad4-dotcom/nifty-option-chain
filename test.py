@@ -50,19 +50,7 @@ filtered_ts = [
     if extract_time(ts) and time(8, 0) <= extract_time(ts) <= time(16, 0)
 ]
 
-# ==================================================
-# EARLY WINDOW (FIRST TWO CSVs AFTER 09:10)
-# ==================================================
-early_ts = sorted(
-    [ts for ts in filtered_ts if extract_time(ts) >= time(9, 10)],
-    key=lambda x: extract_time(x)
-)
 
-if len(early_ts) < 2:
-    st.error("Need at least 2 CSV files after 09:10 for early OI window")
-    st.stop()
-
-t0a, t0b = early_ts[0], early_ts[1]
 # ==================================================
 # USER CONTROLS
 # ==================================================
@@ -73,8 +61,10 @@ c1, c2, c3, c4 = st.columns(4)
 t1 = c1.selectbox("TS1", filtered_ts, 0)
 t2 = c2.selectbox("TS2", filtered_ts, 1)
 t3 = c3.selectbox("TS3", filtered_ts, 2)
+t4 = c4.selectbox("TS4", filtered_ts, 3)
 
-X = c4.number_input(
+
+X = c5.number_input(
     "Strike Window X",
     min_value=1,
     max_value=10,
@@ -88,8 +78,7 @@ X = c4.number_input(
 df1 = pd.read_csv(file_map[t1])
 df2 = pd.read_csv(file_map[t2])
 df3 = pd.read_csv(file_map[t3])
-df0a = pd.read_csv(file_map[t0a])
-df0b = pd.read_csv(file_map[t0b])
+
 
 # ==================================================
 # BUILD BASE TABLE
@@ -118,49 +107,46 @@ for c in df.columns:
         df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
 
 # ==================================================
-# EARLY OI DELTA (09:10 WINDOW)
+# CE_X_0 / PE_X_0 FROM TS3 - TS4
 # ==================================================
-early_df = (
-    df0a[["Stock", "Strike", "CE_OI", "PE_OI"]]
+ts34_df = (
+    df3[["Stock", "Strike", "CE_OI", "PE_OI"]]
     .merge(
-        df0b[["Stock", "Strike", "CE_OI", "PE_OI"]],
+        df4[["Stock", "Strike", "CE_OI", "PE_OI"]],
         on=["Stock", "Strike"],
-        suffixes=("_a", "_b")
+        suffixes=("_3", "_4")
     )
 )
 
-for c in ["CE_OI_a", "CE_OI_b", "PE_OI_a", "PE_OI_b", "Strike"]:
-    early_df[c] = pd.to_numeric(early_df[c], errors="coerce").fillna(0)
+for c in ["CE_OI_3", "CE_OI_4", "PE_OI_3", "PE_OI_4", "Strike"]:
+    ts34_df[c] = pd.to_numeric(ts34_df[c], errors="coerce").fillna(0)
 
-early_df["d_ce_0"] = early_df["CE_OI_b"] - early_df["CE_OI_a"]
-early_df["d_pe_0"] = early_df["PE_OI_b"] - early_df["PE_OI_a"]
+ts34_df["d_ce_0"] = ts34_df["CE_OI_3"] - ts34_df["CE_OI_4"]
+ts34_df["d_pe_0"] = ts34_df["PE_OI_3"] - ts34_df["PE_OI_4"]
 
-early_df["ce_x_0"] = (early_df["d_ce_0"] * early_df["Strike"]) / 10000
-early_df["pe_x_0"] = (early_df["d_pe_0"] * early_df["Strike"]) / 10000
+ts34_df["ce_x_0"] = (ts34_df["d_ce_0"] * ts34_df["Strike"]) / 10000
+ts34_df["pe_x_0"] = (ts34_df["d_pe_0"] * ts34_df["Strike"]) / 10000
 
 df = df.merge(
-    early_df[["Stock", "Strike", "ce_x_0", "pe_x_0"]],
+    ts34_df[["Stock", "Strike", "ce_x_0", "pe_x_0"]],
     on=["Stock", "Strike"],
     how="left"
 )
 
-df["ce_x_0"] = pd.to_numeric(df["ce_x_0"], errors="coerce").fillna(0)
-df["pe_x_0"] = pd.to_numeric(df["pe_x_0"], errors="coerce").fillna(0)
+df["ce_x_0"] = df["ce_x_0"].fillna(0)
+df["pe_x_0"] = df["pe_x_0"].fillna(0)
+
+
 
 # ==================================================
 # CORE CALCULATIONS
 # ==================================================
 df["d_ce"] = df["ce_0"] - df["ce_1"]
 df["d_pe"] = df["pe_0"] - df["pe_1"]
-df["d_ce_23"] = df["ce_1"] - df["ce_2"]
-df["d_pe_23"] = df["pe_1"] - df["pe_2"]
+
 df["total_ch"] = df["tot_ch_0"]
 
 
-df["ce_x_23"] = (df["d_ce_23"] * df["Strike"]) / 10000
-df["pe_x_23"] = (df["d_pe_23"] * df["Strike"]) / 10000
-
-df["diff_23"] = df["pe_x_23"] - df["ce_x_23"]
 
 
 df["ch"] = ((df["ltp_0"] - df["ltp_1"]) / df["ltp_1"]) * 100
@@ -237,7 +223,6 @@ table = df[[
     "ce_x_0",
     "pe_x_0",
     "diff",
-    "diff_23",
     "atm_diff"
 
 ]].rename(columns={
@@ -515,38 +500,9 @@ stock_summary = stock_summary[stock_summary["count"] >= MIN_COUNT]
 stock_summary = stock_summary.sort_values("count", ascending=False)
 diff_stocks = stock_summary["stk"].tolist()
 
-# --- SECOND SUMMARY (BASED ON diff_23) ---
-
-if TOP_FIRST:
-    sorted_df_23 = table.sort_values("diff_23", ascending=False)
-else:
-    sorted_df_23 = table.sort_values("diff_23", ascending=True)
-
-top_n_df_23 = sorted_df_23.merge(
-    display_df[["stk", "str"]],
-    on=["stk", "str"],
-    how="inner"
-).head(TOP_N)
 
 
-stock_summary_23 = (
-    top_n_df_23
-    .groupby("stk")
-    .agg(
-        count=("diff_23", "size")
-    )
-    .reset_index()
-)
 
-stock_summary_23 = stock_summary_23[stock_summary_23["count"] >= MIN_COUNT]
-stock_summary_23 = stock_summary_23.sort_values("count", ascending=False)
-common_stocks = set(stock_summary["stk"]) & set(stock_summary_23["stk"])
-
-
-def highlight_common(data, common_stocks):
-    styles = pd.DataFrame("", index=data.index, columns=data.columns)
-    styles.loc[data["stk"].isin(common_stocks), :] = "background-color:#1f4e79;color:white"
-    return styles
 
 fmt2 = {
     "count": "{:.0f}",
@@ -572,14 +528,7 @@ with c1:
         use_container_width=True
     )
 
-with c2:
-    st.subheader("📊 Based on diff_23")
-    st.dataframe(
-        stock_summary_23
-        .style
-        .format({"count": "{:.0f}"}, na_rep=""),
-        use_container_width=True
-    )
+
 
 st.markdown("---")
 st.subheader("📋 Detailed View – Stocks from 'Based on diff'")
