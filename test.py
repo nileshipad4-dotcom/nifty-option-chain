@@ -79,6 +79,7 @@ X = st.number_input(
 df1 = pd.read_csv(file_map[t1])
 df2 = pd.read_csv(file_map[t2])
 df3 = pd.read_csv(file_map[t3])
+df4 = pd.read_csv(file_map[t4])
 
 
 # ==================================================
@@ -321,8 +322,6 @@ fmt = {
     "diff": "{:.0f}",
     "atm_diff": "{:.0f}",
     "total_ch": "{:.2f}",
-    "diff_23": "{:.0f}"
-
 
 }
 
@@ -524,7 +523,6 @@ with c1:
     st.dataframe(
         stock_summary
         .style
-        .apply(highlight_common, common_stocks=common_stocks, axis=None)
         .format(fmt2, na_rep=""),
         use_container_width=True
     )
