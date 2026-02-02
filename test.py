@@ -448,3 +448,30 @@ st.dataframe(
     use_container_width=True
 )
 
+
+# ==================================================
+# 🔍 STOCK DETAIL VIEW (SINGLE STOCK)
+# ==================================================
+st.markdown("---")
+st.subheader("🔍 Stock Detail View")
+
+# Dropdown
+stock_list = [""] + sorted(display_df["stk"].unique().tolist())
+stock_a = st.selectbox("Select Stock", stock_list, index=0)
+
+if stock_a:
+    stock_df = (
+        display_df[display_df["stk"] == stock_a]
+        .sort_values("str")
+    )
+
+    st.dataframe(
+        stock_df
+        .style
+        .apply(atm_blue, axis=None)
+        .apply(red_early_columns, axis=None)
+        .format(fmt, na_rep=""),
+        use_container_width=True
+    )
+
+
