@@ -3,80 +3,90 @@ import pandas as pd
 from kiteconnect import KiteConnect
 from kite_config import KITE_API_KEY, KITE_ACCESS_TOKEN
 
-# ----------------------------------
+# -------------------------------------------------
 # Streamlit Config
-# ----------------------------------
+# -------------------------------------------------
 st.set_page_config(
     page_title="FnO Futures Open Interest",
     layout="wide"
 )
 
-st.title("📊 FnO Futures Open Interest (Kite API)")
-st.caption("Source: Zerodha Kite Connect")
+st.title("📊 FnO Futures Open Interest")
+st.caption("Source: Zerodha Kite Connect (Market Quotes API)")
 
-# ----------------------------------
+st.info(
+    "ℹ️ Open Interest is available ONLY during market hours "
+    "(9:15 AM – 3:30 PM IST)."
+)
+
+# -------------------------------------------------
 # Kite Connection
-# ----------------------------------
+# -------------------------------------------------
 kite = KiteConnect(api_key=KITE_API_KEY)
 kite.set_access_token(KITE_ACCESS_TOKEN)
 
-# ----------------------------------
-# UI Input
-# ----------------------------------
-symbol = st.text_input(
-    "Enter FnO Stock Symbol (e.g. RELIANCE, TCS, INFY)",
-    "RELIANCE"
-).upper()
-
-fetch_btn = st.button("Fetch Futures OI")
-
-# ----------------------------------
-# Fetch Data
-# ----------------------------------
-if fetch_btn:
+# -------------------------------------------------
+# Fetch Button
+# -------------------------------------------------
+if st.button("Fetch Futures Open Interest"):
     try:
         with st.spinner("Fetching data from Kite..."):
 
-            # Load NFO instruments
+            # 1️⃣ Load NFO instruments
             instruments = pd.DataFrame(kite.instruments("NFO"))
 
-            # Filter FUTSTK for given symbol
-            fut_df = instruments[
-                (instruments["instrument_type"] == "FUT") &
-                (instruments["tradingsymbol"].str.startswith(symbol))
-            ]
+            # 2️⃣ Filter stock futures
+            fut_df = instruments[instruments["instrument_type"] == "FUT"]
 
             if fut_df.empty:
-                st.error("❌ No Futures contracts found for this symbol.")
+                st.error("No FnO Futures instruments found.")
                 st.stop()
 
-            # Fetch live quotes
-            tokens = fut_df["instrument_token"].tolist()
-            quotes = kite.quote(tokens)
+            # 3️⃣ Build exchange-qualified symbols (CRITICAL)
+            fut_df["kite_symbol"] = (
+                fut_df["exchange"] + ":" + fut_df["tradingsymbol"]
+            )
 
-            data = []
-            for _, row in fut_df.iterrows():
-                token = row["instrument_token"]
-                q = quotes.get(token, {})
+            symbols = fut_df["kite_symbol"].tolist()
 
-                data.append({
-                    "Trading Symbol": row["tradingsymbol"],
-                    "Expiry": row["expiry"],
-                    "Last Price": q.get("last_price"),
-                    "Open Interest": q.get("oi"),
-                    "Volume": q.get("volume"),
-                    "OI Day High": q.get("oi_day_high"),
-                    "OI Day Low": q.get("oi_day_low")
-                })
+            # 4️⃣ Fetch quotes in batches
+            BATCH_SIZE = 250
+            rows = []
 
-            result_df = pd.DataFrame(data)
-            result_df = result_df.sort_values("Expiry")
+            for i in range(0, len(symbols), BATCH_SIZE):
+                batch = symbols[i:i + BATCH_SIZE]
+                quotes = kite.quote(batch)
 
-            # ----------------------------------
-            # Display
-            # ----------------------------------
-            st.subheader(f"📌 Futures Open Interest for {symbol}")
-            st.dataframe(result_df, use_container_width=True)
+                for sym in batch:
+                    q = quotes.get(sym, {})
+                    rows.append({
+                        "Symbol": sym,
+                        "Last Price": q.get("last_price"),
+                        "Open Interest": q.get("oi"),
+                        "OI Day High": q.get("oi_day_high"),
+                        "OI Day Low": q.get("oi_day_low"),
+                        "Volume": q.get("volume")
+                    })
+
+            # 5️⃣ DataFrame
+            df = pd.DataFrame(rows)
+
+            # Split symbol for better sorting
+            df["Underlying"] = df["Symbol"].str.split(":").str[1].str.extract(r"([A-Z]+)")
+            df = df.sort_values(["Underlying", "Symbol"])
+
+            # 6️⃣ Display
+            st.subheader("📌 Futures Open Interest – All FnO Stocks")
+            st.dataframe(df, use_container_width=True)
+
+            # 7️⃣ Download
+            csv = df.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                "⬇️ Download CSV",
+                csv,
+                "fno_futures_open_interest.csv",
+                "text/csv"
+            )
 
     except Exception as e:
-        st.error(f"⚠️ Kite API Error: {e}")
+        st.error(f"Kite API Error: {e}")
