@@ -11,11 +11,11 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("📊 FnO Futures Open Interest")
-st.caption("Source: Zerodha Kite Connect (Market Quotes API)")
+st.title("📊 FnO Futures – OI & Spot–Future Spread")
+st.caption("Source: Zerodha Kite Connect")
 
-st.info(
-    "ℹ️ Open Interest is available ONLY during market hours "
+st.warning(
+    "⚠️ Data is LIVE. Open Interest is available only during market hours "
     "(9:15 AM – 3:30 PM IST)."
 )
 
@@ -26,67 +26,85 @@ kite = KiteConnect(api_key=KITE_API_KEY)
 kite.set_access_token(KITE_ACCESS_TOKEN)
 
 # -------------------------------------------------
-# Fetch Button
+# Helper: Batched Quotes
 # -------------------------------------------------
-if st.button("Fetch Futures Open Interest"):
-    try:
-        with st.spinner("Fetching data from Kite..."):
+def batched_quotes(symbols, batch_size=250):
+    quotes = {}
+    for i in range(0, len(symbols), batch_size):
+        batch = symbols[i:i + batch_size]
+        quotes.update(kite.quote(batch))
+    return quotes
 
-            # 1️⃣ Load NFO instruments
-            instruments = pd.DataFrame(kite.instruments("NFO"))
+# -------------------------------------------------
+# MAIN LOGIC (AUTO RUN)
+# -------------------------------------------------
+try:
+    with st.spinner("Fetching FnO futures data from Kite..."):
 
-            # 2️⃣ Filter stock futures
-            fut_df = instruments[instruments["instrument_type"] == "FUT"]
+        # 1️⃣ Load all instruments
+        instruments = pd.DataFrame(kite.instruments())
 
-            if fut_df.empty:
-                st.error("No FnO Futures instruments found.")
-                st.stop()
+        # 2️⃣ Filter stock futures
+        fut_df = instruments[
+            (instruments["exchange"] == "NFO") &
+            (instruments["instrument_type"] == "FUT")
+        ].copy()
 
-            # 3️⃣ Build exchange-qualified symbols (CRITICAL)
-            fut_df["kite_symbol"] = (
-                fut_df["exchange"] + ":" + fut_df["tradingsymbol"]
-            )
+        if fut_df.empty:
+            st.error("No FnO futures instruments found.")
+            st.stop()
 
-            symbols = fut_df["kite_symbol"].tolist()
+        # 3️⃣ Build symbols
+        fut_df["fut_symbol"] = "NFO:" + fut_df["tradingsymbol"]
+        fut_df["spot_symbol"] = "NSE:" + fut_df["name"]
 
-            # 4️⃣ Fetch quotes in batches
-            BATCH_SIZE = 250
-            rows = []
+        fut_symbols = fut_df["fut_symbol"].tolist()
+        spot_symbols = fut_df["spot_symbol"].unique().tolist()
 
-            for i in range(0, len(symbols), BATCH_SIZE):
-                batch = symbols[i:i + BATCH_SIZE]
-                quotes = kite.quote(batch)
+        # 4️⃣ Fetch quotes
+        fut_quotes = batched_quotes(fut_symbols)
+        spot_quotes = batched_quotes(spot_symbols)
 
-                for sym in batch:
-                    q = quotes.get(sym, {})
-                    rows.append({
-                        "Symbol": sym,
-                        "Last Price": q.get("last_price"),
-                        "Open Interest": q.get("oi"),
-                        "OI Day High": q.get("oi_day_high"),
-                        "OI Day Low": q.get("oi_day_low"),
-                        "Volume": q.get("volume")
-                    })
+        # 5️⃣ Build output rows
+        rows = []
+        for _, row in fut_df.iterrows():
+            fut_q = fut_quotes.get(row["fut_symbol"], {})
+            spot_q = spot_quotes.get(row["spot_symbol"], {})
 
-            # 5️⃣ DataFrame
-            df = pd.DataFrame(rows)
+            fut_price = fut_q.get("last_price")
+            spot_price = spot_q.get("last_price")
+            lot_size = row["lot_size"]
 
-            # Split symbol for better sorting
-            df["Underlying"] = df["Symbol"].str.split(":").str[1].str.extract(r"([A-Z]+)")
-            df = df.sort_values(["Underlying", "Symbol"])
+            spread_value = None
+            if fut_price is not None and spot_price is not None:
+                spread_value = (spot_price - fut_price) * lot_size
 
-            # 6️⃣ Display
-            st.subheader("📌 Futures Open Interest – All FnO Stocks")
-            st.dataframe(df, use_container_width=True)
+            rows.append({
+                "Underlying": row["name"],
+                "Future Symbol": row["tradingsymbol"],
+                "Expiry": row["expiry"],
+                "Lot Size": lot_size,
+                "Underlying Price": spot_price,
+                "Future Price": fut_price,
+                "Open Interest": fut_q.get("oi"),
+                "Spread Value": spread_value
+            })
 
-            # 7️⃣ Download
-            csv = df.to_csv(index=False).encode("utf-8")
-            st.download_button(
-                "⬇️ Download CSV",
-                csv,
-                "fno_futures_open_interest.csv",
-                "text/csv"
-            )
+        df = pd.DataFrame(rows)
+        df = df.sort_values(["Underlying", "Expiry"])
 
-    except Exception as e:
-        st.error(f"Kite API Error: {e}")
+        # 6️⃣ Display
+        st.subheader("📌 FnO Futures Snapshot")
+        st.dataframe(df, use_container_width=True)
+
+        # 7️⃣ Download
+        csv = df.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            "⬇️ Download CSV",
+            csv,
+            "fno_futures_oi_spread.csv",
+            "text/csv"
+        )
+
+except Exception as e:
+    st.error(f"Kite API Error: {e}")
