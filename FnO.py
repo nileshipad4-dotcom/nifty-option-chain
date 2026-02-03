@@ -54,18 +54,25 @@ try:
             st.error("No FnO futures instruments found.")
             st.stop()
 
-        # 3️⃣ Build symbols
+        # 3️⃣ Sort by expiry (CRITICAL)
+        fut_df["expiry"] = pd.to_datetime(fut_df["expiry"])
+        fut_df = fut_df.sort_values("expiry")
+
+        # 4️⃣ Identify the 3 active expiries
+        expiries = fut_df["expiry"].drop_duplicates().head(3).tolist()
+
+        # 5️⃣ Build symbols
         fut_df["fut_symbol"] = "NFO:" + fut_df["tradingsymbol"]
         fut_df["spot_symbol"] = "NSE:" + fut_df["name"]
 
         fut_symbols = fut_df["fut_symbol"].tolist()
         spot_symbols = fut_df["spot_symbol"].unique().tolist()
 
-        # 4️⃣ Fetch quotes
+        # 6️⃣ Fetch quotes
         fut_quotes = batched_quotes(fut_symbols)
         spot_quotes = batched_quotes(spot_symbols)
 
-        # 5️⃣ Build output rows
+        # 7️⃣ Build final dataframe
         rows = []
         for _, row in fut_df.iterrows():
             fut_q = fut_quotes.get(row["fut_symbol"], {})
@@ -82,7 +89,7 @@ try:
             rows.append({
                 "Underlying": row["name"],
                 "Future Symbol": row["tradingsymbol"],
-                "Expiry": row["expiry"],
+                "Expiry": row["expiry"].date(),
                 "Lot Size": lot_size,
                 "Underlying Price": spot_price,
                 "Future Price": fut_price,
@@ -91,18 +98,25 @@ try:
             })
 
         df = pd.DataFrame(rows)
-        df = df.sort_values(["Underlying", "Expiry"])
 
-        # 6️⃣ Display
-        st.subheader("📌 FnO Futures Snapshot")
-        st.dataframe(df, use_container_width=True)
+        # -------------------------------------------------
+        # 8️⃣ DISPLAY: 3 TABLES (NEAR / NEXT / FAR)
+        # -------------------------------------------------
+        labels = ["🟢 Near Month", "🟡 Next Month", "🔵 Far Month"]
 
-        # 7️⃣ Download
+        for label, exp in zip(labels, expiries):
+            st.subheader(f"{label} – Expiry: {exp.date()}")
+            exp_df = df[df["Expiry"] == exp.date()].sort_values("Underlying")
+            st.dataframe(exp_df, use_container_width=True)
+
+        # -------------------------------------------------
+        # 9️⃣ Download (Full Data)
+        # -------------------------------------------------
         csv = df.to_csv(index=False).encode("utf-8")
         st.download_button(
-            "⬇️ Download CSV",
+            "⬇️ Download Full CSV",
             csv,
-            "fno_futures_oi_spread.csv",
+            "fno_futures_oi_spread_all_expiries.csv",
             "text/csv"
         )
 
